@@ -3,12 +3,16 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\UpsertPartnerRequest;
 use App\Models\Partner;
+use App\Services\PublicImageStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AdminPartnerController extends Controller
 {
+    public function __construct(private readonly PublicImageStorage $images) {}
+
     public function index(Request $request): JsonResponse
     {
         $this->authorizeAdmin($request);
@@ -18,11 +22,13 @@ class AdminPartnerController extends Controller
         ]);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(UpsertPartnerRequest $request): JsonResponse
     {
-        $this->authorizeAdmin($request);
-
-        $partner = Partner::create($this->payload($request));
+        $partner = $this->images->persistReplacement(
+            image: $request->file('logo'),
+            directory: 'partner-logos',
+            persist: fn (?string $logoUrl) => Partner::create($this->payload($request, $logoUrl)),
+        );
 
         return response()->json([
             'message' => 'Partener creat.',
@@ -30,11 +36,17 @@ class AdminPartnerController extends Controller
         ], 201);
     }
 
-    public function update(Request $request, Partner $partner): JsonResponse
+    public function update(UpsertPartnerRequest $request, Partner $partner): JsonResponse
     {
-        $this->authorizeAdmin($request);
-
-        $partner->update($this->payload($request));
+        $this->images->persistReplacement(
+            image: $request->file('logo'),
+            directory: 'partner-logos',
+            persist: function (?string $logoUrl) use ($request, $partner): void {
+                $partner->update($this->payload($request, $logoUrl));
+            },
+            currentUrl: $partner->logo_url,
+            removeCurrent: (bool) ($request->validated('remove_logo') ?? false),
+        );
 
         return response()->json([
             'message' => 'Partener actualizat.',
@@ -46,7 +58,9 @@ class AdminPartnerController extends Controller
     {
         $this->authorizeAdmin($request);
 
+        $logoUrl = $partner->logo_url;
         $partner->delete();
+        $this->images->delete($logoUrl);
 
         return response()->json([
             'message' => 'Partener șters.',
@@ -56,20 +70,13 @@ class AdminPartnerController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function payload(Request $request): array
+    private function payload(UpsertPartnerRequest $request, ?string $logoUrl): array
     {
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'logo_url' => ['nullable', 'url', 'max:2000'],
-            'website_url' => ['nullable', 'url', 'max:2000'],
-            'description' => ['nullable', 'string', 'max:1000'],
-            'sort_order' => ['nullable', 'integer', 'min:0', 'max:1000'],
-            'is_active' => ['nullable', 'boolean'],
-        ]);
+        $validated = $request->validated();
 
         return [
             'name' => $validated['name'],
-            'logo_url' => $validated['logo_url'] ?? null,
+            'logo_url' => $logoUrl,
             'website_url' => $validated['website_url'] ?? null,
             'description' => $validated['description'] ?? null,
             'sort_order' => $validated['sort_order'] ?? 0,

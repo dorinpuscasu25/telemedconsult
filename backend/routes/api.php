@@ -98,6 +98,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/admin/top-doctors', [AdminOperationsController::class, 'topDoctors']);
 
         Route::get('/admin/blog-posts', [AdminBlogPostController::class, 'index']);
+        Route::get('/admin/blog-posts/{blogPost}', [AdminBlogPostController::class, 'show']);
         Route::post('/admin/blog-posts', [AdminBlogPostController::class, 'store']);
         Route::put('/admin/blog-posts/{blogPost}', [AdminBlogPostController::class, 'update']);
         Route::delete('/admin/blog-posts/{blogPost}', [AdminBlogPostController::class, 'destroy']);

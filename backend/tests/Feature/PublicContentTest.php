@@ -7,6 +7,9 @@ use App\Models\Partner;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -83,5 +86,79 @@ class PublicContentTest extends TestCase
         $this->getJson('/api/v1/catalog/blog')
             ->assertOk()
             ->assertJsonPath('data.0.slug', 'articol-nou');
+    }
+
+    public function test_admin_can_upload_replace_and_delete_blog_cover(): void
+    {
+        Storage::fake('public');
+        $this->actingAsAdmin();
+
+        $created = $this->post('/api/v1/admin/blog-posts', [
+            'title' => 'Articol cu imagine',
+            'body' => 'Conținut',
+            'cover_image' => UploadedFile::fake()->image('coperta.jpg', 1200, 630),
+            'is_published' => '1',
+        ])->assertCreated();
+
+        $postId = $created->json('post.id');
+        $oldPath = $this->storagePath($created->json('post.cover_image_url'));
+        Storage::disk('public')->assertExists($oldPath);
+
+        $updated = $this->post("/api/v1/admin/blog-posts/{$postId}", [
+            '_method' => 'PUT',
+            'title' => 'Articol actualizat',
+            'body' => 'Conținut actualizat',
+            'cover_image' => UploadedFile::fake()->image('coperta-noua.png', 1200, 630),
+            'is_published' => '1',
+        ])->assertOk();
+
+        $newPath = $this->storagePath($updated->json('post.cover_image_url'));
+        Storage::disk('public')->assertMissing($oldPath);
+        Storage::disk('public')->assertExists($newPath);
+
+        $this->deleteJson("/api/v1/admin/blog-posts/{$postId}")->assertOk();
+        Storage::disk('public')->assertMissing($newPath);
+    }
+
+    public function test_admin_can_upload_partner_logo_and_invalid_files_are_rejected(): void
+    {
+        Storage::fake('public');
+        $this->actingAsAdmin();
+
+        $created = $this->post('/api/v1/admin/partners', [
+            'name' => 'Partener imagine',
+            'logo' => UploadedFile::fake()->image('logo.png', 600, 300),
+            'website_url' => 'https://example.com',
+            'is_active' => '1',
+        ])->assertCreated();
+
+        $logoPath = $this->storagePath($created->json('partner.logo_url'));
+        Storage::disk('public')->assertExists($logoPath);
+
+        $this->getJson('/api/v1/catalog/partners')
+            ->assertOk()
+            ->assertJsonPath('data.0.logo_url', $created->json('partner.logo_url'));
+
+        $this->withHeader('Accept', 'application/json')->post('/api/v1/admin/partners', [
+            'name' => 'Fișier invalid',
+            'logo' => UploadedFile::fake()->create('logo.svg', 10, 'image/svg+xml'),
+        ])->assertUnprocessable()->assertJsonValidationErrors('logo');
+
+        $this->assertSame(1, Partner::count());
+    }
+
+    private function actingAsAdmin(): User
+    {
+        Role::firstOrCreate(['name' => 'admin'], ['label' => 'Administrator']);
+        $admin = User::factory()->create(['status' => 'active']);
+        $admin->roles()->sync([Role::where('name', 'admin')->value('id')]);
+        Sanctum::actingAs($admin);
+
+        return $admin;
+    }
+
+    private function storagePath(string $url): string
+    {
+        return Str::after((string) parse_url($url, PHP_URL_PATH), '/storage/');
     }
 }

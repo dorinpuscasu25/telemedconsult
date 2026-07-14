@@ -133,7 +133,7 @@ export function AdminLayout() {
   const currentTitle =
     location.pathname === '/admin/operators' || location.pathname === '/admin/users' || location.pathname === '/coordinator/users' ?
     'Utilizatori' :
-    navItems.find((item) => item.path === location.pathname)?.label || 'Admin Panel';
+    navItems.find((item) => location.pathname === item.path || (item.path !== '/admin' && location.pathname.startsWith(item.path)))?.label || 'Admin Panel';
 
   const renderNav = (onNavigate?: () => void) => (
     <>

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, Copy, CreditCard, Download, FileUp, Gift, LockKeyhole, Plus, Trash2, User, UsersRound, WalletCards } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
@@ -113,6 +113,7 @@ const emptyPatient = {
 
 export function ProfilePage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [data, setData] = useState<ProfileResponse | null>(null);
   const [referralData, setReferralData] = useState<ReferralResponse | null>(null);
@@ -123,7 +124,7 @@ export function ProfilePage() {
   const [lifeForm, setLifeForm] = useState({ category: 'Alergii', note: '' });
   const [investigationForm, setInvestigationForm] = useState({ title: '', type: 'investigation', notes: '' });
   const [isPatientOpen, setIsPatientOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('patients');
+  const [activeTab, setActiveTab] = useState(() => profileTab(searchParams.get('tab')));
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [walletTopUpAmount, setWalletTopUpAmount] = useState<number | null>(null);
@@ -159,6 +160,25 @@ export function ProfilePage() {
       .then((response) => setRegionsCatalog(response.data ?? []))
       .catch(() => setRegionsCatalog([]));
   }, []);
+
+  useEffect(() => {
+    setActiveTab(profileTab(searchParams.get('tab')));
+  }, [searchParams]);
+
+  const changeTab = (tab: string) => {
+    const nextTab = profileTab(tab);
+    const nextParams = new URLSearchParams(searchParams);
+
+    setActiveTab(nextTab);
+
+    if (nextTab === 'patients') {
+      nextParams.delete('tab');
+    } else {
+      nextParams.set('tab', nextTab);
+    }
+
+    setSearchParams(nextParams, { replace: true });
+  };
 
   const localitiesForSelectedRegion =
     regionsCatalog.find((region) => String(region.id) === patientForm.region_id)?.localities ?? [];
@@ -352,7 +372,7 @@ export function ProfilePage() {
               </div>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
-              <Button className="rounded-xl" onClick={() => setActiveTab('cards')}>
+              <Button className="rounded-xl" onClick={() => changeTab('cards')}>
                 <CreditCard className="mr-2 h-4 w-4" />
                 Cumpără pachet
               </Button>
@@ -382,7 +402,7 @@ export function ProfilePage() {
         </section>
       )}
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={changeTab}>
         <TabsList className="mb-6 grid h-auto w-full max-w-3xl grid-cols-2 gap-1 rounded-xl bg-white/70 p-1 sm:grid-cols-4">
           <TabsTrigger value="patients">Pacienții mei</TabsTrigger>
           <TabsTrigger value="cards">Pachete</TabsTrigger>
@@ -409,7 +429,7 @@ export function ProfilePage() {
                 <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-5 text-sm text-amber-900">
                   <p className="font-semibold text-slate-950">Nu poți adăuga pacient fără pachet activ.</p>
                   <p className="mt-1">Cumpără întâi un pachet din wallet. Pachetul creează sloturile pe care le folosești pentru profilurile de pacient.</p>
-                  <Button variant="outline" className="mt-3 rounded-xl border-amber-300 bg-white" onClick={() => setActiveTab('cards')}>
+                  <Button variant="outline" className="mt-3 rounded-xl border-amber-300 bg-white" onClick={() => changeTab('cards')}>
                     Vezi pachetele
                   </Button>
                 </div>
@@ -418,7 +438,7 @@ export function ProfilePage() {
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                   <p className="font-semibold text-slate-950">Ai folosit toate sloturile disponibile.</p>
                   <p className="mt-1">Pentru încă un pacient trebuie să cumperi un pachet nou. Profilurile existente rămân în istoric.</p>
-                  <Button variant="outline" className="mt-3 rounded-xl border-amber-300 bg-white" onClick={() => setActiveTab('cards')}>
+                  <Button variant="outline" className="mt-3 rounded-xl border-amber-300 bg-white" onClick={() => changeTab('cards')}>
                     Cumpără pachet
                   </Button>
                 </div>
@@ -773,6 +793,10 @@ function ReferralStat({ icon: Icon, label, value }: { icon: React.ElementType; l
       </CardContent>
     </Card>
   );
+}
+
+function profileTab(value: string | null): string {
+  return ['patients', 'cards', 'referrals', 'account'].includes(value ?? '') ? String(value) : 'patients';
 }
 
 function apiErrorData(err: unknown): Record<string, unknown> | null {

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, ArrowRight, CalendarClock, MessageSquare, MessageSquareWarning, Stethoscope, User, Users, Wallet } from 'lucide-react';
+import { Activity, ArrowRight, CalendarClock, Gift, MessageSquare, MessageSquareWarning, Stethoscope, User, Users, Wallet } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -196,6 +196,12 @@ export function PatientHome() {
                 description="Cumpără o cartelă și adaugă profilurile pentru care vei solicita servicii."
                 icon={User}
                 onClick={() => navigate('/patient/profile')}
+              />
+              <ActionRow
+                title="Program de afiliere"
+                description="Copiază linkul personal, invită pacienți și urmărește bonusurile din portofel."
+                icon={Gift}
+                onClick={() => navigate('/patient/profile?tab=referrals')}
               />
               <ActionRow
                 title="Consultație online"

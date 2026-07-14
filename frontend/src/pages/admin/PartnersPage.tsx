@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Handshake, Plus, Save, Trash2 } from 'lucide-react';
+import { Handshake, ImagePlus, Plus, Save, Trash2 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
@@ -16,6 +16,8 @@ type Partner = {
   description: string;
   sort_order: number;
   is_active: boolean;
+  logo_file?: File | null;
+  remove_logo?: boolean;
 };
 
 const emptyPartner: Partner = {
@@ -24,7 +26,9 @@ const emptyPartner: Partner = {
   website_url: '',
   description: '',
   sort_order: 0,
-  is_active: true
+  is_active: true,
+  logo_file: null,
+  remove_logo: false
 };
 
 export function AdminPartnersPage() {
@@ -33,6 +37,7 @@ export function AdminPartnersPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [newPartnerKey, setNewPartnerKey] = useState(0);
 
   const loadPartners = () => {
     apiRequest<{ data: Partial<Partner>[] }>('/admin/partners')
@@ -41,7 +46,9 @@ export function AdminPartnersPage() {
         ...partner,
         logo_url: partner.logo_url ?? '',
         website_url: partner.website_url ?? '',
-        description: partner.description ?? ''
+        description: partner.description ?? '',
+        logo_file: null,
+        remove_logo: false
       }))))
       .catch((err) => setError(err instanceof Error ? err.message : 'Nu am putut încărca partenerii.'));
   };
@@ -59,21 +66,28 @@ export function AdminPartnersPage() {
     setMessage('');
   };
 
-  const cleanPayload = (partner: Partner) => ({
-    name: partner.name,
-    logo_url: partner.logo_url || undefined,
-    website_url: partner.website_url || undefined,
-    description: partner.description || undefined,
-    sort_order: partner.sort_order,
-    is_active: partner.is_active
-  });
+  const formPayload = (partner: Partner) => {
+    const form = new FormData();
+    form.append('name', partner.name.trim());
+    form.append('website_url', partner.website_url.trim());
+    form.append('description', partner.description.trim());
+    form.append('sort_order', String(partner.sort_order));
+    form.append('is_active', partner.is_active ? '1' : '0');
+    form.append('remove_logo', partner.remove_logo ? '1' : '0');
+    if (partner.logo_file) form.append('logo', partner.logo_file);
+    if (partner.id) form.append('_method', 'PUT');
+    return form;
+  };
 
   const savePartner = async (partner: Partner) => {
     setIsSaving(true);
     try {
       const path = partner.id ? `/admin/partners/${partner.id}` : '/admin/partners';
-      await apiRequest(path, { method: partner.id ? 'PUT' : 'POST', body: JSON.stringify(cleanPayload(partner)) });
-      if (!partner.id) setNewPartner(emptyPartner);
+      await apiRequest(path, { method: 'POST', body: formPayload(partner) });
+      if (!partner.id) {
+        setNewPartner({ ...emptyPartner });
+        setNewPartnerKey((current) => current + 1);
+      }
       notify(partner.id ? 'Partener actualizat.' : 'Partener creat.');
       loadPartners();
     } catch (err) {
@@ -119,7 +133,7 @@ export function AdminPartnersPage() {
           <CardDescription>Ordinea afișării crește de la valori mai mici la mai mari.</CardDescription>
         </CardHeader>
         <CardContent>
-          <PartnerForm partner={newPartner} onChange={setNewPartner} onSave={() => savePartner(newPartner)} isSaving={isSaving} />
+          <PartnerForm key={newPartnerKey} partner={newPartner} onChange={setNewPartner} onSave={() => savePartner(newPartner)} isSaving={isSaving} />
         </CardContent>
       </Card>
 
@@ -148,6 +162,7 @@ export function AdminPartnersPage() {
             </CardHeader>
             <CardContent>
               <PartnerForm
+                key={`${partner.id}-${partner.logo_url}`}
                 partner={partner}
                 onChange={(next) => setPartners((current) => current.map((item, itemIndex) => (itemIndex === index ? next : item)))}
                 onSave={() => savePartner(partner)}
@@ -173,10 +188,10 @@ function PartnerForm({ partner, onChange, onSave, isSaving }: {
         <TextField label="Nume" value={partner.name} onChange={(value) => onChange({ ...partner, name: value })} />
         <NumberField label="Ordine" value={partner.sort_order} onChange={(value) => onChange({ ...partner, sort_order: value })} />
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <TextField label="URL logo" value={partner.logo_url} onChange={(value) => onChange({ ...partner, logo_url: value })} />
+      <div className="grid gap-4">
         <TextField label="URL site" value={partner.website_url} onChange={(value) => onChange({ ...partner, website_url: value })} />
       </div>
+      <PartnerLogoUpload partner={partner} onChange={onChange} />
       <div className="space-y-2">
         <Label>Descriere</Label>
         <Textarea
@@ -198,6 +213,60 @@ function PartnerForm({ partner, onChange, onSave, isSaving }: {
       </div>
     </div>
   );
+}
+
+function PartnerLogoUpload({ partner, onChange }: { partner: Partner; onChange: (partner: Partner) => void }) {
+  const inputRef = React.useRef<HTMLInputElement | null>(null);
+  const previewUrl = useImagePreview(partner.logo_file ?? null, partner.remove_logo ? null : partner.logo_url || null);
+
+  const clearLogo = () => {
+    if (inputRef.current) inputRef.current.value = '';
+    onChange({ ...partner, logo_file: null, remove_logo: Boolean(partner.logo_url) });
+  };
+
+  return (
+    <div className="grid gap-4 rounded-xl border border-slate-200 bg-white/70 p-4 sm:grid-cols-[160px_1fr] sm:items-center">
+      <div className="grid h-24 place-items-center overflow-hidden rounded-xl border border-dashed border-slate-300 bg-slate-50">
+        {previewUrl ? <img src={previewUrl} alt={`Logo ${partner.name || 'partener'}`} className="h-full w-full object-contain p-2" /> : <ImagePlus className="h-7 w-7 text-slate-300" />}
+      </div>
+      <div className="space-y-3">
+        <div className="space-y-2">
+          <Label>Încarcă logo</Label>
+          <Input
+            ref={inputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="rounded-xl bg-white"
+            onChange={(event) => onChange({ ...partner, logo_file: event.target.files?.[0] ?? null, remove_logo: false })}
+          />
+        </div>
+        <p className="text-xs text-slate-500">JPG, PNG sau WebP, maximum 5 MB.</p>
+        {previewUrl && (
+          <Button type="button" variant="outline" size="sm" className="rounded-lg text-red-600" onClick={clearLogo}>
+            <Trash2 className="mr-2 h-4 w-4" /> Elimină logo-ul
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function useImagePreview(file: File | null, currentUrl: string | null): string | null {
+  const [preview, setPreview] = useState<string | null>(currentUrl);
+
+  useEffect(() => {
+    if (!file) {
+      setPreview(currentUrl);
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+
+    return () => URL.revokeObjectURL(url);
+  }, [currentUrl, file]);
+
+  return preview;
 }
 
 function TextField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {

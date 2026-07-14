@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { RoleName, useAuth } from '../contexts/AuthContext';
 import {
   Activity,
+  Gift,
   LogOut,
   User,
   Wallet,
@@ -60,6 +61,11 @@ export function AppLayout() {
           label: 'Pacienții mei',
           path: '/patient/profile',
           icon: User
+        },
+        {
+          label: 'Afiliere',
+          path: '/patient/profile?tab=referrals',
+          icon: Gift
         },
         {
           label: 'Medici',
@@ -133,9 +139,21 @@ export function AppLayout() {
     }
   };
   const navItems = getNavItems();
-  const isNavItemActive = (path: string) =>
-    location.pathname === path ||
-    (location.pathname.startsWith(path) && path !== `/${role}`);
+  const isNavItemActive = (target: string) => {
+    const [targetPath, targetQuery = ''] = target.split('?');
+    const pathMatches = location.pathname === targetPath ||
+      (location.pathname.startsWith(targetPath) && targetPath !== `/${role}`);
+
+    if (!pathMatches) return false;
+
+    const targetTab = new URLSearchParams(targetQuery).get('tab');
+    const currentTab = new URLSearchParams(location.search).get('tab');
+
+    if (targetTab) return currentTab === targetTab;
+    if (targetPath === '/patient/profile') return currentTab !== 'referrals';
+
+    return true;
+  };
 
   return (
     <div className="min-h-screen gradient-bg flex flex-col">

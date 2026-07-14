@@ -51,6 +51,7 @@ import { InvestigationsPage } from './pages/admin/InvestigationsPage';
 import { FeatureFlagsPage } from './pages/admin/FeatureFlagsPage';
 import { PatientCardPackagesPage } from './pages/admin/PatientCardPackagesPage';
 import { AdminBlogPage } from './pages/admin/BlogPage';
+import { AdminBlogEditorPage } from './pages/admin/BlogEditorPage';
 import { AdminPartnersPage } from './pages/admin/PartnersPage';
 import { RegistrationsPage } from './pages/admin/RegistrationsPage';
 import { CoordinatorDashboard } from './pages/coordinator/CoordinatorDashboard';
@@ -136,6 +137,8 @@ function AppRoutes() {
         <Route path="investigations" element={<InvestigationsPage />} />
         <Route path="features" element={<FeatureFlagsPage />} />
         <Route path="blog" element={<AdminBlogPage />} />
+        <Route path="blog/new" element={<AdminBlogEditorPage />} />
+        <Route path="blog/:id/edit" element={<AdminBlogEditorPage />} />
         <Route path="partners" element={<AdminPartnersPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>

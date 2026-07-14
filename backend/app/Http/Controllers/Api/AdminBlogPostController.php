@@ -3,14 +3,17 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\UpsertBlogPostRequest;
 use App\Models\BlogPost;
+use App\Services\PublicImageStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
 
 class AdminBlogPostController extends Controller
 {
+    public function __construct(private readonly PublicImageStorage $images) {}
+
     public function index(Request $request): JsonResponse
     {
         $this->authorizeAdmin($request);
@@ -20,11 +23,20 @@ class AdminBlogPostController extends Controller
         ]);
     }
 
-    public function store(Request $request): JsonResponse
+    public function show(Request $request, BlogPost $blogPost): JsonResponse
     {
         $this->authorizeAdmin($request);
 
-        $post = BlogPost::create($this->payload($request));
+        return response()->json(['post' => $this->serialize($blogPost)]);
+    }
+
+    public function store(UpsertBlogPostRequest $request): JsonResponse
+    {
+        $post = $this->images->persistReplacement(
+            image: $request->file('cover_image'),
+            directory: 'blog-covers',
+            persist: fn (?string $coverImageUrl) => BlogPost::create($this->payload($request, null, $coverImageUrl)),
+        );
 
         return response()->json([
             'message' => 'Articol creat.',
@@ -32,11 +44,17 @@ class AdminBlogPostController extends Controller
         ], 201);
     }
 
-    public function update(Request $request, BlogPost $blogPost): JsonResponse
+    public function update(UpsertBlogPostRequest $request, BlogPost $blogPost): JsonResponse
     {
-        $this->authorizeAdmin($request);
-
-        $blogPost->update($this->payload($request, $blogPost));
+        $this->images->persistReplacement(
+            image: $request->file('cover_image'),
+            directory: 'blog-covers',
+            persist: function (?string $coverImageUrl) use ($request, $blogPost): void {
+                $blogPost->update($this->payload($request, $blogPost, $coverImageUrl));
+            },
+            currentUrl: $blogPost->cover_image_url,
+            removeCurrent: (bool) ($request->validated('remove_cover_image') ?? false),
+        );
 
         return response()->json([
             'message' => 'Articol actualizat.',
@@ -48,7 +66,9 @@ class AdminBlogPostController extends Controller
     {
         $this->authorizeAdmin($request);
 
+        $coverImageUrl = $blogPost->cover_image_url;
         $blogPost->delete();
+        $this->images->delete($coverImageUrl);
 
         return response()->json([
             'message' => 'Articol șters.',
@@ -58,31 +78,41 @@ class AdminBlogPostController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function payload(Request $request, ?BlogPost $blogPost = null): array
-    {
-        $validated = $request->validate([
-            'title' => ['required', 'string', 'max:255'],
-            'slug' => ['nullable', 'string', 'max:255', Rule::unique('blog_posts', 'slug')->ignore($blogPost)],
-            'excerpt' => ['nullable', 'string', 'max:500'],
-            'body' => ['required', 'string'],
-            'cover_image_url' => ['nullable', 'url', 'max:2000'],
-            'author_name' => ['nullable', 'string', 'max:255'],
-            'is_published' => ['nullable', 'boolean'],
-        ]);
+    private function payload(
+        UpsertBlogPostRequest $request,
+        ?BlogPost $blogPost,
+        ?string $coverImageUrl,
+    ): array {
+        $validated = $request->validated();
 
         $isPublished = $validated['is_published'] ?? false;
-        $slug = ($validated['slug'] ?? null) ?: Str::slug($validated['title']);
+        $slug = ($validated['slug'] ?? null) ?: $this->uniqueSlug($validated['title'], $blogPost);
 
         return [
             'title' => $validated['title'],
             'slug' => $slug,
             'excerpt' => $validated['excerpt'] ?? null,
             'body' => $validated['body'],
-            'cover_image_url' => $validated['cover_image_url'] ?? null,
+            'cover_image_url' => $coverImageUrl,
             'author_name' => $validated['author_name'] ?? null,
             'is_published' => $isPublished,
             'published_at' => $isPublished ? ($blogPost?->published_at ?? now()) : null,
         ];
+    }
+
+    private function uniqueSlug(string $title, ?BlogPost $blogPost = null): string
+    {
+        $base = Str::slug($title) ?: 'articol';
+        $slug = $base;
+        $suffix = 2;
+
+        while (BlogPost::where('slug', $slug)
+            ->when($blogPost, fn ($query) => $query->whereKeyNot($blogPost->id))
+            ->exists()) {
+            $slug = $base.'-'.$suffix++;
+        }
+
+        return $slug;
     }
 
     /**
