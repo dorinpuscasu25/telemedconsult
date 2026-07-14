@@ -1,0 +1,179 @@
+name: telemedconsult
+
+x-backend-service: &backend-service
+  image: telemedconsult-api:latest
+  build:
+    context: ./backend
+    dockerfile: Dockerfile
+    target: app
+  env_file:
+    - ./backend/.env.docker
+  volumes:
+    - app-storage:/var/www/html/storage
+  networks:
+    - telemedconsult
+
+services:
+  frontend:
+    image: telemedconsult-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    env_file:
+      - ./frontend/.env.docker
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:80:80"
+    depends_on:
+      api:
+        condition: service_healthy
+      reverb:
+        condition: service_started
+    networks:
+      - telemedconsult
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  api:
+    image: telemedconsult-api-nginx:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: api-nginx
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:80"
+    depends_on:
+      app:
+        condition: service_started
+      init:
+        condition: service_completed_successfully
+    volumes:
+      - app-storage:/var/www/html/storage:ro
+    networks:
+      - telemedconsult
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/up"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  app:
+    <<: *backend-service
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  init:
+    <<: *backend-service
+    restart: "no"
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        php artisan migrate --force
+        php artisan storage:link --force
+        if [ "$${RUN_SEEDERS}" = "true" ]; then
+          php artisan db:seed --force
+        fi
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  queue:
+    <<: *backend-service
+    restart: unless-stopped
+    command: ["php", "artisan", "queue:work", "redis", "--sleep=1", "--tries=3", "--timeout=120", "--max-time=3600"]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  scheduler:
+    <<: *backend-service
+    restart: unless-stopped
+    command: ["php", "artisan", "schedule:work"]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  reverb:
+    <<: *backend-service
+    restart: unless-stopped
+    command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
+    ports:
+      - "127.0.0.1:8090:8080"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8.4
+    env_file:
+      - ./backend/.env.docker
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - telemedconsult
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  redis:
+    image: redis:7.4-alpine
+    env_file:
+      - ./backend/.env.docker
+    restart: unless-stopped
+    command:
+      - /bin/sh
+      - -lc
+      - exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}"
+    volumes:
+      - redis-data:/data
+    networks:
+      - telemedconsult
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  phpmyadmin:
+    image: phpmyadmin:5.2-apache
+    env_file:
+      - ./backend/.env.docker
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:8080:80"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - telemedconsult
+
+networks:
+  telemedconsult:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  redis-data:
+  app-storage:
