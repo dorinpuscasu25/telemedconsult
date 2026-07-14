@@ -4,8 +4,8 @@ namespace Database\Seeders;
 
 use App\Models\BlogPost;
 use App\Models\Partner;
-use App\Models\PlatformSetting;
 use App\Models\PatientCardPackage;
+use App\Models\PlatformSetting;
 use App\Models\Role;
 use App\Models\Specialty;
 use App\Models\User;
@@ -19,15 +19,12 @@ class DatabaseSeeder extends Seeder
 
     public function run(): void
     {
-        $roles = collect([
-            ['name' => 'admin', 'label' => 'Administrator'],
-            ['name' => 'patient', 'label' => 'Pacient'],
-            ['name' => 'doctor', 'label' => 'Medic'],
-            ['name' => 'operator', 'label' => 'Operator'],
-            ['name' => 'coordinator', 'label' => 'Coordonator'],
-        ])->mapWithKeys(fn (array $role) => [
-            $role['name'] => Role::updateOrCreate(['name' => $role['name']], $role),
-        ]);
+        $this->call(RolesSeeder::class);
+
+        $roles = Role::query()
+            ->whereIn('name', array_column(RolesSeeder::ROLES, 'name'))
+            ->get()
+            ->keyBy('name');
 
         collect([
             ['name' => 'Medicină de familie', 'slug' => 'medicina-de-familie'],
