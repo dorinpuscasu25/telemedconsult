@@ -133,32 +133,33 @@ export function AppLayout() {
     }
   };
   const navItems = getNavItems();
+  const isNavItemActive = (path: string) =>
+    location.pathname === path ||
+    (location.pathname.startsWith(path) && path !== `/${role}`);
+
   return (
     <div className="min-h-screen gradient-bg flex flex-col">
       {/* Top Navbar */}
       <header className="glass-panel sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex">
+          <div className="flex h-16 items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center">
               <Link to={`/${role}`} className="flex-shrink-0 flex items-center">
                 <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white shadow-lg shadow-primary/20">
                   <Activity className="h-6 w-6" />
                 </div>
-                <span className="ml-3 font-bold text-xl text-slate-900 tracking-tight">
+                <span className="ml-3 hidden font-bold text-xl text-slate-900 tracking-tight md:inline">
                   telemedconsult.md
                 </span>
               </Link>
-              <nav className="hidden sm:ml-10 sm:flex sm:space-x-2 items-center">
+              <nav className="ml-8 hidden items-center gap-1 xl:flex" aria-label="Navigație principală">
                 {navItems.map((item) => {
-                  const isActive =
-                  location.pathname === item.path ||
-                  location.pathname.startsWith(item.path) &&
-                  item.path !== `/${role}`;
+                  const isActive = isNavItemActive(item.path);
                   return (
                     <Link
                       key={item.path}
                       to={item.path}
-                      className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${isActive ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900'}`}>
+                      className={`inline-flex h-10 shrink-0 items-center whitespace-nowrap rounded-xl px-3 text-sm font-medium transition-all duration-200 ${isActive ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900'}`}>
                       
                       <item.icon
                         className={`h-4 w-4 mr-2 ${isActive ? 'text-white' : 'text-slate-400'}`} />
@@ -170,7 +171,7 @@ export function AppLayout() {
               </nav>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
               <NotificationBell />
               <DropdownMenu>
                 <DropdownMenuTrigger className="focus:outline-none">
@@ -230,6 +231,24 @@ export function AppLayout() {
               </DropdownMenu>
             </div>
           </div>
+
+          <nav
+            className="flex snap-x items-center gap-2 overflow-x-auto border-t border-slate-200/70 py-2 [scrollbar-width:none] xl:hidden [&::-webkit-scrollbar]:hidden"
+            aria-label="Navigație principală">
+            {navItems.map((item) => {
+              const isActive = isNavItemActive(item.path);
+
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`inline-flex h-10 shrink-0 snap-start items-center whitespace-nowrap rounded-xl px-3 text-sm font-medium transition-all duration-200 ${isActive ? 'bg-primary text-white shadow-sm shadow-primary/20' : 'bg-white/60 text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
+                  <item.icon className={`mr-2 h-4 w-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
         </div>
       </header>
 
