@@ -97,6 +97,8 @@ type ReferralResponse = {
   }>;
 };
 
+type ProfileTab = 'patients' | 'cards' | 'referrals' | 'account';
+
 const emptyPatient = {
   first_name: '',
   last_name: '',
@@ -223,7 +225,7 @@ export function ProfilePage() {
     } catch (err) {
       const data = apiErrorData(err);
       if (data?.code === 'insufficient_wallet_balance') {
-        setError(data.message || 'Balanță insuficientă pentru cartelă.');
+        setError(typeof data.message === 'string' ? data.message : 'Balanță insuficientă pentru cartelă.');
         setMessage('');
         setWalletTopUpAmount(Number(data.missing_amount || data.required_amount || pack.price));
         return;
@@ -335,12 +337,55 @@ export function ProfilePage() {
   const availableSlots = purchases.reduce((sum, item) => sum + item.available_slots, 0);
   const hasPurchasedCards = purchases.length > 0;
   const hasRequestablePatient = profiles.some((profile) => profile.can_request_consultation);
+  const patientNextStep = !hasPurchasedCards
+    ? {
+        step: 'Primul pas',
+        title: 'Cumpără un pachet pentru a începe',
+        description: 'Pachetul îți permite să adaugi un pacient și să soliciți servicii medicale pentru el.',
+        action: 'Alege un pachet',
+        onClick: () => changeTab('cards')
+      }
+    : profiles.length === 0 && availableSlots > 0
+      ? {
+          step: 'Pasul următor',
+          title: 'Adaugă primul pacient',
+          description: 'Completează datele persoanei care va beneficia de consultații sau examinări.',
+          action: 'Adaugă pacient',
+          onClick: () => setIsPatientOpen(true)
+        }
+      : {
+          step: 'Verificare necesară',
+          title: 'Finalizează datele pacientului',
+          description: 'Selectează pacientul și verifică informațiile necesare pentru activarea serviciilor medicale.',
+          action: 'Verifică pacientul',
+          onClick: () => document.getElementById('patient-profiles')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        };
+  const pageHeading = {
+    patients: {
+      title: 'Pacienții mei',
+      description: 'Adaugă și gestionează persoanele pentru care soliciți servicii medicale.'
+    },
+    cards: {
+      title: 'Pachete pentru pacienți',
+      description: 'Alege pachetul potrivit pentru a activa unul sau mai multe profiluri de pacient.'
+    },
+    referrals: {
+      title: 'Program de afiliere',
+      description: referralData
+        ? `Invită o persoană pe platformă și primești ${referralData.reward_amount} ${referralData.currency} după confirmarea contului.`
+        : 'Invită persoane pe platformă și urmărește bonusurile primite.'
+    },
+    account: {
+      title: 'Datele contului',
+      description: 'Actualizează numele și datele tale de contact.'
+    }
+  }[activeTab];
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-950">Pacienții mei</h1>
-        <p className="mt-1 text-sm text-slate-500">Cumperi o cartelă, adaugi pacientul, apoi poți solicita consultații și examinări.</p>
+        <h1 className="text-3xl font-bold tracking-tight text-slate-950">{pageHeading.title}</h1>
+        <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">{pageHeading.description}</p>
       </div>
 
       {(message || error) && (
@@ -356,67 +401,47 @@ export function ProfilePage() {
         </div>
       )}
 
-      {!hasRequestablePatient && (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      {activeTab === 'patients' && !hasRequestablePatient && (
+        <section className="rounded-2xl border border-blue-200 bg-blue-50 p-5 shadow-sm sm:p-6">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex gap-4">
-              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-amber-100 text-amber-700">
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white text-primary shadow-sm">
                 <LockKeyhole className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-sm font-semibold uppercase text-amber-700">Accesul la consultații este blocat momentan</p>
-                <h2 className="mt-1 text-xl font-bold text-slate-950">Pentru a folosi platforma trebuie mai întâi să cumperi un pachet și să adaugi un pacient.</h2>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-amber-900">
-                  Contul tău este doar proprietarul portofelului. Serviciile medicale se pornesc doar pentru un profil de pacient activ, iar profilurile se pot crea numai dintr-un pachet cumpărat.
-                </p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">{patientNextStep.step}</p>
+                <h2 className="mt-1 text-xl font-bold text-slate-950">{patientNextStep.title}</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{patientNextStep.description}</p>
               </div>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
-              <Button className="rounded-xl" onClick={() => changeTab('cards')}>
-                <CreditCard className="mr-2 h-4 w-4" />
-                Cumpără pachet
+            <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+              <Button onClick={patientNextStep.onClick}>
+                {hasPurchasedCards ? <Plus className="h-4 w-4" /> : <CreditCard className="h-4 w-4" />}
+                {patientNextStep.action}
               </Button>
-              <Button variant="outline" className="rounded-xl bg-white" onClick={() => navigate('/patient/wallet')}>
-                Alimentează portofelul
+              <Button variant="ghost" size="sm" onClick={() => navigate('/patient/wallet')}>
+                Deschide portofelul
               </Button>
             </div>
-          </div>
-
-          <div className="mt-5 grid gap-3 md:grid-cols-3">
-            <OnboardingStep
-              done={hasPurchasedCards}
-              title="1. Cumpără pachet"
-              text="Pachetul deblochează unul sau mai multe sloturi de pacient."
-            />
-            <OnboardingStep
-              done={availableSlots > 0 || profiles.length > 0}
-              title="2. Adaugă pacient"
-              text="Completezi nume, IDNP și datele de bază ale pacientului."
-            />
-            <OnboardingStep
-              done={hasRequestablePatient}
-              title="3. Solicită servicii"
-              text="După profil activ poți alege medic sau operator."
-            />
           </div>
         </section>
       )}
 
       <Tabs value={activeTab} onValueChange={changeTab}>
-        <TabsList className="mb-6 grid h-auto w-full max-w-3xl grid-cols-2 gap-1 rounded-xl bg-white/70 p-1 sm:grid-cols-4">
-          <TabsTrigger value="patients">Pacienții mei</TabsTrigger>
-          <TabsTrigger value="cards">Pachete</TabsTrigger>
-          <TabsTrigger value="referrals">Afiliere</TabsTrigger>
-          <TabsTrigger value="account">Cont</TabsTrigger>
-        </TabsList>
+        {(activeTab === 'patients' || activeTab === 'cards') && (
+          <TabsList className="mb-6 grid h-auto w-full max-w-md grid-cols-2 gap-1 rounded-xl bg-white/70 p-1">
+            <TabsTrigger value="patients">Profiluri pacient</TabsTrigger>
+            <TabsTrigger value="cards">Cumpără pachet</TabsTrigger>
+          </TabsList>
+        )}
 
-        <TabsContent value="patients" className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+        <TabsContent id="patient-profiles" value="patients" className="scroll-mt-24 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
           <Card className="border-slate-200/70 bg-white shadow-sm">
             <CardHeader>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <CardTitle>Profiluri pacient</CardTitle>
-                  <CardDescription>Sloturi disponibile: {availableSlots}</CardDescription>
+                  <CardDescription>Locuri disponibile pentru pacienți: {availableSlots}</CardDescription>
                 </div>
                 <Button className="rounded-xl" disabled={availableSlots <= 0} onClick={() => setIsPatientOpen(true)}>
                   <Plus className="mr-2 h-4 w-4" />
@@ -428,7 +453,7 @@ export function ProfilePage() {
               {profiles.length === 0 && (
                 <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-5 text-sm text-amber-900">
                   <p className="font-semibold text-slate-950">Nu poți adăuga pacient fără pachet activ.</p>
-                  <p className="mt-1">Cumpără întâi un pachet din wallet. Pachetul creează sloturile pe care le folosești pentru profilurile de pacient.</p>
+                  <p className="mt-1">Cumpără mai întâi un pachet. Fiecare pachet îți permite să adaugi unul sau mai mulți pacienți.</p>
                   <Button variant="outline" className="mt-3 rounded-xl border-amber-300 bg-white" onClick={() => changeTab('cards')}>
                     Vezi pachetele
                   </Button>
@@ -436,7 +461,7 @@ export function ProfilePage() {
               )}
               {profiles.length > 0 && availableSlots <= 0 && (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                  <p className="font-semibold text-slate-950">Ai folosit toate sloturile disponibile.</p>
+                  <p className="font-semibold text-slate-950">Ai folosit toate locurile disponibile.</p>
                   <p className="mt-1">Pentru încă un pacient trebuie să cumperi un pachet nou. Profilurile existente rămân în istoric.</p>
                   <Button variant="outline" className="mt-3 rounded-xl border-amber-300 bg-white" onClick={() => changeTab('cards')}>
                     Cumpără pachet
@@ -548,8 +573,8 @@ export function ProfilePage() {
         <TabsContent value="cards" className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
           <Card className="border-slate-200/70 bg-white shadow-sm">
             <CardHeader>
-              <CardTitle>Pachete de tip subscription</CardTitle>
-              <CardDescription>Acesta este pasul obligatoriu: fără pachet activ nu poți crea pacient și nu poți solicita consultații.</CardDescription>
+              <CardTitle>Alege un pachet</CardTitle>
+              <CardDescription>Pachetul îți permite să adaugi pacienți și să soliciți servicii medicale pentru ei.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
               {packages.map((pack) => (
@@ -577,11 +602,11 @@ export function ProfilePage() {
           </Card>
           <Card className="border-slate-200/70 bg-white shadow-sm">
             <CardHeader>
-              <CardTitle>Cartele cumpărate</CardTitle>
-              <CardDescription>Sloturile nefolosite pot crea profiluri noi.</CardDescription>
+              <CardTitle>Pachetele tale</CardTitle>
+              <CardDescription>Vezi câte locuri pentru pacienți mai ai disponibile.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {purchases.length === 0 && <p className="text-sm text-slate-500">Nu ai cumpărat cartele încă.</p>}
+              {purchases.length === 0 && <p className="text-sm text-slate-500">Nu ai cumpărat niciun pachet încă.</p>}
               {purchases.map((purchase) => (
                 <div key={purchase.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <p className="font-semibold text-slate-950">{purchase.used_slots}/{purchase.profile_slots} profiluri folosite</p>
@@ -624,21 +649,28 @@ export function ProfilePage() {
 
           {referralData && (
             <>
-              <Card className="overflow-hidden border-0 bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-xl shadow-blue-200/60">
-                <CardContent className="grid gap-6 p-5 sm:p-7 lg:grid-cols-[1fr_auto] lg:items-center">
-                  <div>
-                    <div className="mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-white/15">
-                      <Gift className="h-6 w-6" />
+              <Card className="border-slate-200/70 bg-white shadow-sm">
+                <CardContent className="p-5 sm:p-6">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-blue-50 text-primary">
+                        <Gift className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-slate-500">Bonus pentru fiecare cont eligibil</p>
+                        <p className="mt-0.5 text-2xl font-bold text-slate-950">{referralData.reward_amount} {referralData.currency}</p>
+                      </div>
                     </div>
-                    <p className="text-sm font-semibold uppercase tracking-wider text-blue-100">Program de afiliere</p>
-                    <h2 className="mt-2 text-2xl font-bold sm:text-3xl">Invită un pacient și primești {referralData.reward_amount} {referralData.currency}</h2>
-                    <p className="mt-3 max-w-2xl text-sm leading-6 text-blue-100">
-                      Bonusul intră automat în portofelul tău după ce pacientul invitat își creează contul și confirmă adresa de email.
-                    </p>
+                    <div className="rounded-xl bg-slate-50 px-4 py-3 sm:text-right">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Câștig total</p>
+                      <p className="mt-1 text-xl font-bold text-slate-950">{referralData.stats.earned_total} {referralData.currency}</p>
+                    </div>
                   </div>
-                  <div className="rounded-2xl bg-white/15 px-6 py-4 text-center backdrop-blur-sm">
-                    <p className="text-sm text-blue-100">Câștig total</p>
-                    <p className="mt-1 text-3xl font-bold">{referralData.stats.earned_total} {referralData.currency}</p>
+
+                  <div className="mt-6 grid gap-3 md:grid-cols-3">
+                    <ReferralStep number="1" title="Copiază linkul" text="Folosește linkul personal afișat mai jos." />
+                    <ReferralStep number="2" title="Trimite-l unei persoane" text="Persoana își creează un cont nou de pacient." />
+                    <ReferralStep number="3" title="Primești bonusul" text="Bonusul intră în portofel după confirmarea emailului." />
                   </div>
                 </CardContent>
               </Card>
@@ -649,27 +681,28 @@ export function ProfilePage() {
                 </div>
               )}
 
-              <div className="grid gap-4 sm:grid-cols-3">
-                <ReferralStat icon={UsersRound} label="Persoane invitate" value={referralData.stats.invited_count} />
-                <ReferralStat icon={CheckCircle2} label="Bonusuri acordate" value={referralData.stats.rewarded_count} />
-                <ReferralStat icon={WalletCards} label="În așteptare" value={referralData.stats.pending_count} />
-              </div>
-
               <Card className="border-slate-200/70 bg-white shadow-sm">
                 <CardHeader>
-                  <CardTitle>Linkul tău personal</CardTitle>
-                  <CardDescription>Trimite acest link. Codul tău este {referralData.code}.</CardDescription>
+                  <CardTitle>Linkul tău personal de invitație</CardTitle>
+                  <CardDescription>Copiază linkul și trimite-l persoanei pe care vrei să o inviți.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-col gap-3 sm:flex-row">
                     <Input readOnly value={referralData.referral_link} className="h-11 min-w-0 rounded-xl bg-slate-50" />
                     <Button type="button" disabled={!referralData.enabled} onClick={copyReferralLink} className="h-11 shrink-0 rounded-xl px-5">
                       {copiedReferral ? <CheckCircle2 className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
-                      {copiedReferral ? 'Copiat' : 'Copiază linkul'}
+                      {copiedReferral ? 'Link copiat' : 'Copiază linkul'}
                     </Button>
                   </div>
+                  <p className="mt-3 text-xs text-slate-500">Codul tău de invitație: <span className="font-semibold text-slate-700">{referralData.code}</span></p>
                 </CardContent>
               </Card>
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                <ReferralStat icon={UsersRound} label="Persoane invitate" value={referralData.stats.invited_count} />
+                <ReferralStat icon={CheckCircle2} label="Bonusuri acordate" value={referralData.stats.rewarded_count} />
+                <ReferralStat icon={WalletCards} label="În așteptare" value={referralData.stats.pending_count} />
+              </div>
 
               <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
                 <Card className="border-slate-200/70 bg-white shadow-sm">
@@ -767,18 +800,6 @@ function displayName(profile: PatientProfile) {
   return `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || `Profil #${profile.id}`;
 }
 
-function OnboardingStep({ done, title, text }: { done: boolean; title: string; text: string }) {
-  return (
-    <div className={`rounded-xl border p-4 ${done ? 'border-emerald-200 bg-white text-slate-700' : 'border-amber-200 bg-white/70 text-amber-900'}`}>
-      <div className="flex items-center gap-2">
-        <CheckCircle2 className={`h-4 w-4 ${done ? 'text-emerald-600' : 'text-amber-500'}`} />
-        <p className="font-semibold text-slate-950">{title}</p>
-      </div>
-      <p className="mt-2 text-sm leading-5">{text}</p>
-    </div>
-  );
-}
-
 function ReferralStat({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: number }) {
   return (
     <Card className="border-slate-200/70 bg-white shadow-sm">
@@ -795,8 +816,22 @@ function ReferralStat({ icon: Icon, label, value }: { icon: React.ElementType; l
   );
 }
 
-function profileTab(value: string | null): string {
-  return ['patients', 'cards', 'referrals', 'account'].includes(value ?? '') ? String(value) : 'patients';
+function ReferralStep({ number, title, text }: { number: string; title: string; text: string }) {
+  return (
+    <div className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary text-sm font-bold text-white">
+        {number}
+      </div>
+      <div>
+        <p className="font-semibold text-slate-950">{title}</p>
+        <p className="mt-1 text-sm leading-5 text-slate-600">{text}</p>
+      </div>
+    </div>
+  );
+}
+
+function profileTab(value: string | null): ProfileTab {
+  return value === 'cards' || value === 'referrals' || value === 'account' ? value : 'patients';
 }
 
 function apiErrorData(err: unknown): Record<string, unknown> | null {

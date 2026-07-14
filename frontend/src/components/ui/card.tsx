@@ -13,7 +13,7 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
       data-slot="card"
       data-size={size}
       className={cn(
-        'flex flex-col gap-4 overflow-hidden rounded-xl bg-card border border-border py-4 text-sm text-card-foreground data-[size=sm]:gap-3 data-[size=sm]:py-3',
+        'flex flex-col gap-5 overflow-hidden rounded-2xl border border-slate-200 bg-white py-5 text-sm text-card-foreground shadow-sm data-[size=sm]:gap-3 data-[size=sm]:rounded-xl data-[size=sm]:py-3',
         className,
       )}
       {...props}
@@ -28,7 +28,7 @@ const CardHeader = forwardRef<
   <div
     ref={ref}
     data-slot="card-header"
-    className={cn('grid auto-rows-min items-start gap-1 px-4', className)}
+    className={cn('grid auto-rows-min items-start gap-1.5 px-5 data-[size=sm]:px-4', className)}
     {...props}
   />
 ))
@@ -40,7 +40,7 @@ const CardTitle = forwardRef<
   <div
     ref={ref}
     data-slot="card-title"
-    className={cn('text-base leading-snug font-medium', className)}
+    className={cn('text-lg leading-snug font-semibold text-slate-950', className)}
     {...props}
   />
 ))
@@ -52,7 +52,7 @@ const CardDescription = forwardRef<
   <div
     ref={ref}
     data-slot="card-description"
-    className={cn('text-sm text-muted-foreground', className)}
+    className={cn('text-sm leading-5 text-slate-500', className)}
     {...props}
   />
 ))
@@ -79,7 +79,7 @@ const CardContent = forwardRef<
   <div
     ref={ref}
     data-slot="card-content"
-    className={cn('px-4', className)}
+    className={cn('px-5', className)}
     {...props}
   />
 ))

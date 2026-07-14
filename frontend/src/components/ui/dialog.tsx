@@ -1,167 +1,66 @@
-import React from 'react'
-import { X } from 'lucide-react'
-import { type ClassValue, clsx } from 'clsx'
-import { twMerge } from 'tailwind-merge'
+import * as React from 'react';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
+import { X } from 'lucide-react';
+import { cn } from './utils';
 
-// --- merged from src/Dialog.tsx ---
-interface DialogContextType {
-  open: boolean;
-  setOpen: (open: boolean) => void;
-}
+const Dialog = DialogPrimitive.Root;
+const DialogTrigger = DialogPrimitive.Trigger;
+const DialogClose = DialogPrimitive.Close;
 
-const DialogContext = React.createContext<DialogContextType>({
-  open: false,
-  setOpen: () => {},
-});
-
-interface DialogProps {
-  children: React.ReactNode;
-  open?: boolean;
-  defaultOpen?: boolean;
-  onOpenChange?: (open: boolean) => void;
-}
-
-const Dialog: React.FC<DialogProps> = ({ children, open, defaultOpen = false, onOpenChange }) => {
-  const [isOpen, setIsOpen] = React.useState(defaultOpen);
-  const controlledOpen = open !== undefined ? open : isOpen;
-
-  const handleOpenChange = (newOpen: boolean) => {
-    if (open === undefined) setIsOpen(newOpen);
-    onOpenChange?.(newOpen);
-  };
-
-  return (
-    <DialogContext.Provider value={{ open: controlledOpen, setOpen: handleOpenChange }}>
+const DialogContent = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { showCloseButton?: boolean }
+>(({ className, children, showCloseButton = true, ...props }, ref) => (
+  <DialogPrimitive.Portal>
+    <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <DialogPrimitive.Content
+      ref={ref}
+      className={cn(
+        'fixed left-1/2 top-1/2 z-50 grid max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-5 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 text-sm shadow-2xl outline-none sm:p-6 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+        className
+      )}
+      {...props}
+    >
       {children}
-    </DialogContext.Provider>
-  );
-};
-
-interface DialogTriggerProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  asChild?: boolean;
-}
-
-const DialogTrigger = React.forwardRef<HTMLButtonElement, DialogTriggerProps>(
-  ({ onClick, ...props }, ref) => {
-    const { setOpen } = React.useContext(DialogContext);
-
-    return (
-      <button
-        ref={ref}
-        type="button"
-        data-slot="dialog-trigger"
-        onClick={(e) => {
-          setOpen(true);
-          onClick?.(e);
-        }}
-        {...props}
-      />
-    );
-  }
-);
-DialogTrigger.displayName = "DialogTrigger";
-
-interface DialogCloseProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {}
-
-const DialogClose = React.forwardRef<HTMLButtonElement, DialogCloseProps>(
-  ({ onClick, ...props }, ref) => {
-/* deduped destructure: const { setOpen } = React.useContext(DialogContext); */
-
-    return (
-      <button
-        ref={ref}
-        type="button"
-        data-slot="dialog-close"
-        onClick={(e) => {
-          setOpen(false);
-          onClick?.(e);
-        }}
-        {...props}
-      />
-    );
-  }
-);
-DialogClose.displayName = "DialogClose";
-
-interface DialogContentProps extends React.HTMLAttributes<HTMLDivElement> {
-  showCloseButton?: boolean;
-}
-
-const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
-  ({ className, children, showCloseButton = true, ...props }, ref) => {
-    const { open, setOpen } = React.useContext(DialogContext);
-    if (!open) return null;
-
-    return (
-      <>
-        <div
-          className="fixed inset-0 z-50 bg-black/10 supports-[backdrop-filter]:backdrop-blur-[2px]"
-          onClick={() => setOpen(false)}
-        />
-        <div
-          ref={ref}
-          data-slot="dialog-content"
-          className={cn(
-            "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-background p-4 text-sm shadow-2xl outline-none sm:max-w-sm",
-            className
-          )}
-          {...props}
-        >
-          {children}
-          {showCloseButton && (
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="absolute top-2 right-2 inline-flex size-7 items-center justify-center rounded-md hover:bg-muted"
-            >
-              <X className="size-4" />
-              <span className="sr-only">Close</span>
-            </button>
-          )}
-        </div>
-      </>
-    );
-  }
-);
-DialogContent.displayName = "DialogContent";
+      {showCloseButton && (
+        <DialogPrimitive.Close className="absolute right-3 top-3 grid h-10 w-10 place-items-center rounded-xl text-slate-500 outline-none transition hover:bg-slate-100 hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-primary/40">
+          <X className="h-5 w-5" />
+          <span className="sr-only">Închide</span>
+        </DialogPrimitive.Close>
+      )}
+    </DialogPrimitive.Content>
+  </DialogPrimitive.Portal>
+));
+DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 const DialogHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} data-slot="dialog-header" className={cn("flex flex-col gap-2", className)} {...props} />
+    <div ref={ref} className={cn('flex flex-col gap-2 pr-10 text-left', className)} {...props} />
   )
 );
-DialogHeader.displayName = "DialogHeader";
+DialogHeader.displayName = 'DialogHeader';
 
 const DialogFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div
-      ref={ref}
-      data-slot="dialog-footer"
-      className={cn("flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end", className)}
-      {...props}
-    />
+    <div ref={ref} className={cn('flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end', className)} {...props} />
   )
 );
-DialogFooter.displayName = "DialogFooter";
+DialogFooter.displayName = 'DialogFooter';
 
-const DialogTitle = React.forwardRef<HTMLHeadingElement, React.HTMLAttributes<HTMLHeadingElement>>(
-  ({ className, ...props }, ref) => (
-    <h2 ref={ref} data-slot="dialog-title" className={cn("text-base leading-none font-medium", className)} {...props} />
-  )
-);
-DialogTitle.displayName = "DialogTitle";
+const DialogTitle = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Title>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
+>(({ className, ...props }, ref) => (
+  <DialogPrimitive.Title ref={ref} className={cn('text-xl font-semibold leading-tight text-slate-950', className)} {...props} />
+));
+DialogTitle.displayName = DialogPrimitive.Title.displayName;
 
-const DialogDescription = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLParagraphElement>>(
-  ({ className, ...props }, ref) => (
-    <p ref={ref} data-slot="dialog-description" className={cn("text-sm text-muted-foreground", className)} {...props} />
-  )
-);
-DialogDescription.displayName = "DialogDescription";
+const DialogDescription = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Description>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
+>(({ className, ...props }, ref) => (
+  <DialogPrimitive.Description ref={ref} className={cn('text-sm leading-6 text-slate-500', className)} {...props} />
+));
+DialogDescription.displayName = DialogPrimitive.Description.displayName;
 
-// --- merged from utils.ts ---
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-export { Dialog }
-
-export { DialogTrigger, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription }
+export { Dialog, DialogTrigger, DialogClose, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription };

@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell } from 'lucide-react';
-import { Button } from './ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,15 +48,15 @@ export function NotificationBell() {
 
   return (
     <DropdownMenu onOpenChange={(open) => open && loadNotifications()}>
-      <DropdownMenuTrigger asChild>
-        <Button type="button" variant="outline" size="icon" className="relative rounded-xl bg-white/70">
-          <Bell className="h-4 w-4" />
+      <DropdownMenuTrigger
+        className="relative grid h-10 w-10 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        aria-label="Deschide notificările">
+          <Bell className="h-4 w-4" aria-hidden="true" />
           {unreadCount > 0 && (
             <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-5 text-white">
               {unreadCount > 9 ? '9+' : unreadCount}
             </span>
           )}
-        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80">
         <div className="flex items-center justify-between px-2 py-1.5">

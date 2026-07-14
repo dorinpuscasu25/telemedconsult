@@ -1,4 +1,3 @@
-import React from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { RoleName, useAuth } from '../contexts/AuthContext';
 import {
@@ -12,6 +11,8 @@ import {
   Users,
   Stethoscope,
   BarChart2,
+  ChevronDown,
+  MoreHorizontal,
   Plane,
   MessageSquareWarning } from
 'lucide-react';
@@ -139,6 +140,12 @@ export function AppLayout() {
     }
   };
   const navItems = getNavItems();
+  const desktopPrimaryItems = role === 'patient'
+    ? navItems.filter((item) => !['Operatori', 'Chat', 'Reclamații'].includes(item.label))
+    : navItems;
+  const desktopMoreItems = role === 'patient'
+    ? navItems.filter((item) => ['Operatori', 'Chat', 'Reclamații'].includes(item.label))
+    : [];
   const isNavItemActive = (target: string) => {
     const [targetPath, targetQuery = ''] = target.split('?');
     const pathMatches = location.pathname === targetPath ||
@@ -150,7 +157,7 @@ export function AppLayout() {
     const currentTab = new URLSearchParams(location.search).get('tab');
 
     if (targetTab) return currentTab === targetTab;
-    if (targetPath === '/patient/profile') return currentTab !== 'referrals';
+    if (targetPath === '/patient/profile') return !['referrals', 'account'].includes(currentTab ?? '');
 
     return true;
   };
@@ -159,10 +166,10 @@ export function AppLayout() {
     <div className="min-h-screen gradient-bg flex flex-col">
       {/* Top Navbar */}
       <header className="glass-panel sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center">
-              <Link to={`/${role}`} className="flex-shrink-0 flex items-center">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-16 items-center justify-between gap-4">
+            <div className="flex min-w-0 flex-1 items-center">
+              <Link to={`/${role}`} className="flex shrink-0 items-center">
                 <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white shadow-lg shadow-primary/20">
                   <Activity className="h-6 w-6" />
                 </div>
@@ -170,14 +177,14 @@ export function AppLayout() {
                   telemedconsult.md
                 </span>
               </Link>
-              <nav className="ml-8 hidden items-center gap-1 xl:flex" aria-label="Navigație principală">
-                {navItems.map((item) => {
+              <nav className="ml-6 hidden min-w-0 items-center gap-1 xl:flex" aria-label="Navigație principală">
+                {desktopPrimaryItems.map((item) => {
                   const isActive = isNavItemActive(item.path);
                   return (
                     <Link
                       key={item.path}
                       to={item.path}
-                      className={`inline-flex h-10 shrink-0 items-center whitespace-nowrap rounded-xl px-3 text-sm font-medium transition-all duration-200 ${isActive ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900'}`}>
+                      className={`inline-flex h-10 shrink-0 items-center whitespace-nowrap rounded-xl px-2.5 text-sm font-medium transition-all duration-200 ${isActive ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900'}`}>
                       
                       <item.icon
                         className={`h-4 w-4 mr-2 ${isActive ? 'text-white' : 'text-slate-400'}`} />
@@ -186,31 +193,47 @@ export function AppLayout() {
                     </Link>);
 
                 })}
+                {desktopMoreItems.length > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger className={`inline-flex h-10 items-center gap-2 rounded-xl px-2.5 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${desktopMoreItems.some((item) => isNavItemActive(item.path)) ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900'}`}>
+                      <MoreHorizontal className="h-4 w-4" />
+                      Mai multe
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-52">
+                      {desktopMoreItems.map((item) => (
+                        <DropdownMenuItem key={item.path} className="cursor-pointer gap-3 px-3 py-2.5" onClick={() => navigate(item.path)}>
+                          <item.icon className="h-4 w-4 text-slate-400" />
+                          <span>{item.label}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </nav>
             </div>
 
-            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <div className="flex shrink-0 items-center gap-2">
               <NotificationBell />
               <DropdownMenu>
-                <DropdownMenuTrigger className="focus:outline-none">
-                  <div className="flex items-center space-x-3 cursor-pointer">
-                    <div className="hidden md:block text-right">
-                      <p className="text-sm font-medium text-slate-900">
-                        {user?.name}
-                      </p>
-                      <p className="text-xs text-slate-500 capitalize">
-                        {user?.role}
-                      </p>
-                    </div>
-                    <Avatar>
-                      <AvatarImage src={user?.avatar} />
-                      <AvatarFallback>
+                <DropdownMenuTrigger className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-1.5 pr-2.5 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
+                    <Avatar size="sm">
+                      {user?.avatar && <AvatarImage src={user.avatar} />}
+                      <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
                         {user?.name?.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
-                  </div>
+                    <div className="hidden max-w-32 text-left lg:block">
+                      <p className="truncate text-sm font-semibold text-slate-900">
+                        {user?.name}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {role ? ROLE_LABELS[role] : ''}
+                      </p>
+                    </div>
+                    <ChevronDown className="hidden h-3.5 w-3.5 text-slate-400 sm:block" />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuContent align="end" className="w-60">
                   <DropdownMenuLabel>Contul meu</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   {roles.length > 1 && roles.map((item) =>
@@ -222,14 +245,9 @@ export function AppLayout() {
                   </DropdownMenuItem>
                   )}
                   {roles.length > 1 && <DropdownMenuSeparator />}
-                  <DropdownMenuItem asChild>
-                    <Link
-                      to={`/${role}/profile`}
-                      className="cursor-pointer flex items-center">
-                      
+                  <DropdownMenuItem onClick={() => navigate(role === 'patient' ? '/patient/profile?tab=account' : `/${role}/profile`)} className="cursor-pointer flex items-center">
                       <User className="mr-2 h-4 w-4" />
-                      <span>Profil</span>
-                    </Link>
+                      <span>{role === 'patient' ? 'Contul meu' : 'Profil'}</span>
                   </DropdownMenuItem>
                   {role === 'doctor' &&
                   <DropdownMenuItem onClick={openDoctorVacationMode} className="cursor-pointer flex items-center">

@@ -1,128 +1,60 @@
-import React from 'react'
-import { type ClassValue, clsx } from 'clsx'
-import { twMerge } from 'tailwind-merge'
+import * as React from 'react';
+import * as TabsPrimitive from '@radix-ui/react-tabs';
+import { cn } from './utils';
 
-// --- merged from src/Tabs.tsx ---
-interface TabsContextType {
-  value: string;
-  onValueChange: (value: string) => void;
-}
+const Tabs = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Root>
+>(({ className, ...props }, ref) => (
+  <TabsPrimitive.Root ref={ref} className={cn('flex flex-col gap-2', className)} {...props} />
+));
+Tabs.displayName = TabsPrimitive.Root.displayName;
 
-const TabsContext = React.createContext<TabsContextType>({
-  value: "",
-  onValueChange: () => {},
-});
+const TabsList = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.List>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List> & { variant?: 'default' | 'line' }
+>(({ className, variant = 'default', ...props }, ref) => (
+  <TabsPrimitive.List
+    ref={ref}
+    data-slot="tabs-list"
+    data-variant={variant}
+    className={cn(
+      'inline-flex min-h-11 w-fit items-center justify-center rounded-xl p-1 text-slate-600',
+      variant === 'default' ? 'bg-slate-100' : 'gap-1 rounded-none border-b border-slate-200 bg-transparent p-0',
+      className
+    )}
+    {...props}
+  />
+));
+TabsList.displayName = TabsPrimitive.List.displayName;
 
-interface TabsProps extends React.HTMLAttributes<HTMLDivElement> {
-  defaultValue?: string;
-  value?: string;
-  onValueChange?: (value: string) => void;
-}
+const TabsTrigger = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
+>(({ className, ...props }, ref) => (
+  <TabsPrimitive.Trigger
+    ref={ref}
+    data-slot="tabs-trigger"
+    className={cn(
+      'inline-flex min-h-9 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition-colors outline-none hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-white data-[state=active]:text-slate-950 data-[state=active]:shadow-sm',
+      className
+    )}
+    {...props}
+  />
+));
+TabsTrigger.displayName = TabsPrimitive.Trigger.displayName;
 
-const Tabs = React.forwardRef<HTMLDivElement, TabsProps>(
-  ({ className, defaultValue = "", value, onValueChange, children, ...props }, ref) => {
-    const [internalValue, setInternalValue] = React.useState(defaultValue);
-    const controlledValue = value !== undefined ? value : internalValue;
+const TabsContent = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>
+>(({ className, ...props }, ref) => (
+  <TabsPrimitive.Content
+    ref={ref}
+    data-slot="tabs-content"
+    className={cn('outline-none focus-visible:ring-2 focus-visible:ring-primary/30', className)}
+    {...props}
+  />
+));
+TabsContent.displayName = TabsPrimitive.Content.displayName;
 
-    const handleChange = (newValue: string) => {
-      if (value === undefined) setInternalValue(newValue);
-      onValueChange?.(newValue);
-    };
-
-    return (
-      <TabsContext.Provider value={{ value: controlledValue, onValueChange: handleChange }}>
-        <div
-          ref={ref}
-          data-slot="tabs"
-          className={cn("flex flex-col gap-2", className)}
-          {...props}
-        >
-          {children}
-        </div>
-      </TabsContext.Provider>
-    );
-  }
-);
-Tabs.displayName = "Tabs";
-
-interface TabsListProps extends React.HTMLAttributes<HTMLDivElement> {
-  variant?: "default" | "line";
-}
-
-const TabsList = React.forwardRef<HTMLDivElement, TabsListProps>(
-  ({ className, variant = "default", ...props }, ref) => (
-    <div
-      ref={ref}
-      data-slot="tabs-list"
-      data-variant={variant}
-      role="tablist"
-      className={cn(
-        "inline-flex h-8 w-fit items-center justify-center rounded-lg p-[3px] text-muted-foreground",
-        variant === "default" ? "bg-muted" : "gap-1 bg-transparent rounded-none",
-        className
-      )}
-      {...props}
-    />
-  )
-);
-TabsList.displayName = "TabsList";
-
-interface TabsTriggerProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  value: string;
-}
-
-const TabsTrigger = React.forwardRef<HTMLButtonElement, TabsTriggerProps>(
-  ({ className, value: tabValue, ...props }, ref) => {
-    const { value, onValueChange } = React.useContext(TabsContext);
-    const isActive = value === tabValue;
-
-    return (
-      <button
-        ref={ref}
-        type="button"
-        role="tab"
-        data-slot="tabs-trigger"
-        data-active={isActive || undefined}
-        aria-selected={isActive}
-        onClick={() => onValueChange(tabValue)}
-        className={cn(
-          "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-          isActive && "bg-background text-foreground shadow-sm dark:border-input dark:bg-input/30",
-          className
-        )}
-        {...props}
-      />
-    );
-  }
-);
-TabsTrigger.displayName = "TabsTrigger";
-
-interface TabsContentProps extends React.HTMLAttributes<HTMLDivElement> {
-  value: string;
-}
-
-const TabsContent = React.forwardRef<HTMLDivElement, TabsContentProps>(
-  ({ className, value: tabValue, ...props }, ref) => {
-    const { value } = React.useContext(TabsContext);
-    if (value !== tabValue) return null;
-
-    return (
-      <div
-        ref={ref}
-        data-slot="tabs-content"
-        role="tabpanel"
-        className={cn("flex-1 text-sm outline-none", className)}
-        {...props}
-      />
-    );
-  }
-);
-TabsContent.displayName = "TabsContent";
-
-// --- merged from utils.ts ---
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-export { Tabs }
-
-export { TabsList, TabsTrigger, TabsContent }
+export { Tabs, TabsList, TabsTrigger, TabsContent };
