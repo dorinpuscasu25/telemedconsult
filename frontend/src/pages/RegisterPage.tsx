@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Activity, ArrowLeft, CheckCircle2, HeartPulse, Mail, ShieldCheck, Stethoscope, Users } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Activity, ArrowLeft, CheckCircle2, Gift, HeartPulse, Mail, ShieldCheck, Stethoscope, Users } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '../components/ui/button';
 import {
@@ -49,8 +49,10 @@ export function RegisterPage() {
   const [isResending, setIsResending] = useState(false);
   const { register, verifyEmailOtp, resendEmailOtp } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const normalizedEmail = useMemo(() => email.trim().toLowerCase(), [email]);
+  const referralCode = useMemo(() => (searchParams.get('ref') || '').trim().toUpperCase(), [searchParams]);
   const passwordsMatch = passwordConfirmation.length === 0 || password === passwordConfirmation;
   const isProvider = accountType === 'doctor' || accountType === 'operator';
 
@@ -100,7 +102,8 @@ export function RegisterPage() {
         account_type: accountType,
         specialty_id: accountType === 'doctor' ? Number(specialtyId) : undefined,
         license_number: accountType === 'doctor' ? licenseNumber.trim() || undefined : undefined,
-        region: accountType === 'operator' ? region : undefined
+        region: accountType === 'operator' ? region : undefined,
+        referral_code: accountType === 'patient' && referralCode ? referralCode : undefined
       });
       setMessage(response.message);
       setRequiresApproval(Boolean(response.requires_approval));
@@ -184,6 +187,20 @@ export function RegisterPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <Feedback error={error} message={message} />
+
+                  {referralCode && (
+                    <div className={`flex gap-3 rounded-xl border p-3 text-sm ${accountType === 'patient' ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                      <Gift className="mt-0.5 h-5 w-5 shrink-0" />
+                      <div>
+                        <p className="font-semibold">Invitație de afiliere detectată</p>
+                        <p className="mt-0.5 leading-5">
+                          {accountType === 'patient'
+                            ? 'Linkul va fi aplicat automat. Persoana care te-a invitat primește bonusul după ce îți confirmi emailul.'
+                            : 'Bonusul se aplică numai unei înregistrări noi de pacient.'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="space-y-2">
                     <Label className="font-medium text-slate-700">Tip de cont</Label>

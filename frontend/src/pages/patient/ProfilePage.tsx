@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, CreditCard, Download, FileUp, LockKeyhole, Plus, Trash2, User, WalletCards } from 'lucide-react';
+import { CheckCircle2, Copy, CreditCard, Download, FileUp, Gift, LockKeyhole, Plus, Trash2, User, UsersRound, WalletCards } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import {
@@ -74,6 +74,29 @@ type ProfileResponse = {
   card_purchases: CardPurchase[];
 };
 
+type ReferralResponse = {
+  enabled: boolean;
+  code: string;
+  referral_link: string;
+  reward_amount: number;
+  currency: string;
+  rules: string;
+  stats: {
+    invited_count: number;
+    rewarded_count: number;
+    pending_count: number;
+    earned_total: number;
+  };
+  latest_referrals: Array<{
+    id: number;
+    name: string;
+    email: string;
+    status: 'pending' | 'rewarded' | 'ineligible';
+    reward_amount: number;
+    created_at: string;
+  }>;
+};
+
 const emptyPatient = {
   first_name: '',
   last_name: '',
@@ -92,6 +115,7 @@ export function ProfilePage() {
   const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [data, setData] = useState<ProfileResponse | null>(null);
+  const [referralData, setReferralData] = useState<ReferralResponse | null>(null);
   const [accountForm, setAccountForm] = useState({ name: '', phone: '', telegram_chat_id: '' });
   const [patientForm, setPatientForm] = useState(emptyPatient);
   const [regionsCatalog, setRegionsCatalog] = useState<CatalogRegion[]>([]);
@@ -103,6 +127,7 @@ export function ProfilePage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [walletTopUpAmount, setWalletTopUpAmount] = useState<number | null>(null);
+  const [copiedReferral, setCopiedReferral] = useState(false);
 
   const loadProfile = () => {
     apiRequest<ProfileResponse>('/patient/profile').then((response) => {
@@ -121,8 +146,15 @@ export function ProfilePage() {
     });
   };
 
+  const loadReferral = () => {
+    apiRequest<ReferralResponse>('/patient/referrals')
+      .then(setReferralData)
+      .catch(() => setReferralData(null));
+  };
+
   useEffect(() => {
     loadProfile();
+    loadReferral();
     apiRequest<{ data: CatalogRegion[] }>('/catalog/regions', { auth: false })
       .then((response) => setRegionsCatalog(response.data ?? []))
       .catch(() => setRegionsCatalog([]));
@@ -265,6 +297,18 @@ export function ProfilePage() {
     }
   };
 
+  const copyReferralLink = async () => {
+    if (!referralData?.referral_link) return;
+
+    try {
+      await navigator.clipboard.writeText(referralData.referral_link);
+      setCopiedReferral(true);
+      window.setTimeout(() => setCopiedReferral(false), 2000);
+    } catch (err) {
+      fail(err, 'Nu am putut copia linkul. Selectează-l și copiază-l manual.');
+    }
+  };
+
   const profiles = data?.patient_profiles ?? [];
   const packages = data?.card_packages ?? [];
   const purchases = data?.card_purchases ?? [];
@@ -339,9 +383,10 @@ export function ProfilePage() {
       )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-6 grid w-full max-w-xl grid-cols-3 rounded-xl bg-white/70 p-1">
+        <TabsList className="mb-6 grid h-auto w-full max-w-3xl grid-cols-2 gap-1 rounded-xl bg-white/70 p-1 sm:grid-cols-4">
           <TabsTrigger value="patients">Pacienții mei</TabsTrigger>
           <TabsTrigger value="cards">Pachete</TabsTrigger>
+          <TabsTrigger value="referrals">Afiliere</TabsTrigger>
           <TabsTrigger value="account">Cont</TabsTrigger>
         </TabsList>
 
@@ -549,6 +594,99 @@ export function ProfilePage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="referrals" className="space-y-6">
+          {!referralData && (
+            <Card className="border-slate-200/70 bg-white shadow-sm">
+              <CardContent className="p-6 text-sm text-slate-500">Se încarcă programul de afiliere...</CardContent>
+            </Card>
+          )}
+
+          {referralData && (
+            <>
+              <Card className="overflow-hidden border-0 bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-xl shadow-blue-200/60">
+                <CardContent className="grid gap-6 p-5 sm:p-7 lg:grid-cols-[1fr_auto] lg:items-center">
+                  <div>
+                    <div className="mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-white/15">
+                      <Gift className="h-6 w-6" />
+                    </div>
+                    <p className="text-sm font-semibold uppercase tracking-wider text-blue-100">Program de afiliere</p>
+                    <h2 className="mt-2 text-2xl font-bold sm:text-3xl">Invită un pacient și primești {referralData.reward_amount} {referralData.currency}</h2>
+                    <p className="mt-3 max-w-2xl text-sm leading-6 text-blue-100">
+                      Bonusul intră automat în portofelul tău după ce pacientul invitat își creează contul și confirmă adresa de email.
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-white/15 px-6 py-4 text-center backdrop-blur-sm">
+                    <p className="text-sm text-blue-100">Câștig total</p>
+                    <p className="mt-1 text-3xl font-bold">{referralData.stats.earned_total} {referralData.currency}</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {!referralData.enabled && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  Programul de afiliere este momentan dezactivat. Linkul tău rămâne rezervat și va putea fi folosit după reactivare.
+                </div>
+              )}
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                <ReferralStat icon={UsersRound} label="Persoane invitate" value={referralData.stats.invited_count} />
+                <ReferralStat icon={CheckCircle2} label="Bonusuri acordate" value={referralData.stats.rewarded_count} />
+                <ReferralStat icon={WalletCards} label="În așteptare" value={referralData.stats.pending_count} />
+              </div>
+
+              <Card className="border-slate-200/70 bg-white shadow-sm">
+                <CardHeader>
+                  <CardTitle>Linkul tău personal</CardTitle>
+                  <CardDescription>Trimite acest link. Codul tău este {referralData.code}.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <Input readOnly value={referralData.referral_link} className="h-11 min-w-0 rounded-xl bg-slate-50" />
+                    <Button type="button" disabled={!referralData.enabled} onClick={copyReferralLink} className="h-11 shrink-0 rounded-xl px-5">
+                      {copiedReferral ? <CheckCircle2 className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
+                      {copiedReferral ? 'Copiat' : 'Copiază linkul'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+                <Card className="border-slate-200/70 bg-white shadow-sm">
+                  <CardHeader>
+                    <CardTitle>Regulament</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="whitespace-pre-line text-sm leading-6 text-slate-600">{referralData.rules}</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-slate-200/70 bg-white shadow-sm">
+                  <CardHeader>
+                    <CardTitle>Ultimele invitații</CardTitle>
+                    <CardDescription>Datele sunt mascate pentru protejarea confidențialității.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {referralData.latest_referrals.length === 0 && (
+                      <p className="text-sm text-slate-500">Nu ai invitații încă. Copiază linkul și trimite-l unei persoane care are nevoie de un cont de pacient.</p>
+                    )}
+                    {referralData.latest_referrals.map((referral) => (
+                      <div key={referral.id} className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="font-semibold text-slate-900">{referral.name}</p>
+                          <p className="text-sm text-slate-500">{referral.email} • {new Date(referral.created_at).toLocaleDateString('ro-MD')}</p>
+                        </div>
+                        <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${referral.status === 'rewarded' ? 'bg-emerald-100 text-emerald-700' : referral.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-600'}`}>
+                          {referral.status === 'rewarded' ? `+${referral.reward_amount} ${referralData.currency}` : referral.status === 'pending' ? 'În așteptare' : 'Neeligibil'}
+                        </span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              </div>
+            </>
+          )}
+        </TabsContent>
       </Tabs>
 
       <Dialog open={isPatientOpen} onOpenChange={setIsPatientOpen}>
@@ -618,6 +756,22 @@ function OnboardingStep({ done, title, text }: { done: boolean; title: string; t
       </div>
       <p className="mt-2 text-sm leading-5">{text}</p>
     </div>
+  );
+}
+
+function ReferralStat({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: number }) {
+  return (
+    <Card className="border-slate-200/70 bg-white shadow-sm">
+      <CardContent className="flex items-center gap-4 p-5">
+        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-blue-50 text-primary">
+          <Icon className="h-5 w-5" />
+        </div>
+        <div>
+          <p className="text-2xl font-bold text-slate-950">{value}</p>
+          <p className="text-sm text-slate-500">{label}</p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

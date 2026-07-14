@@ -3,8 +3,8 @@
 use App\Http\Controllers\Api\AdminBlogPostController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AdminFeatureFlagController;
-use App\Http\Controllers\Api\AdminOperationsController;
 use App\Http\Controllers\Api\AdminInvestigationTypeController;
+use App\Http\Controllers\Api\AdminOperationsController;
 use App\Http\Controllers\Api\AdminPartnerController;
 use App\Http\Controllers\Api\AdminPatientCardPackageController;
 use App\Http\Controllers\Api\AdminRegionController;
@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\IntegrationController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PatientEngagementController;
 use App\Http\Controllers\Api\PatientProfileController;
+use App\Http\Controllers\Api\ReferralController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\WorkflowController;
 use Illuminate\Support\Facades\Broadcast;
@@ -24,9 +25,9 @@ use Illuminate\Support\Facades\Route;
 Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
 Route::prefix('v1')->group(function () {
-    Route::post('/auth/register', [AuthController::class, 'register']);
-    Route::post('/auth/verify-email-otp', [AuthController::class, 'verifyEmailOtp']);
-    Route::post('/auth/resend-email-otp', [AuthController::class, 'resendEmailOtp']);
+    Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:10,1');
+    Route::post('/auth/verify-email-otp', [AuthController::class, 'verifyEmailOtp'])->middleware('throttle:10,1');
+    Route::post('/auth/resend-email-otp', [AuthController::class, 'resendEmailOtp'])->middleware('throttle:5,1');
     Route::post('/auth/login', [AuthController::class, 'login']);
     Route::post('/auth/verify-login-otp', [AuthController::class, 'verifyLoginOtp']);
 
@@ -130,6 +131,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/wallet/top-up', [WalletController::class, 'topUp']);
 
         Route::get('/patient/profile', [PatientProfileController::class, 'show']);
+        Route::get('/patient/referrals', [ReferralController::class, 'show']);
         Route::put('/patient/profile', [PatientProfileController::class, 'update']);
         Route::post('/patient/card-purchases', [PatientProfileController::class, 'buyCardPackage']);
         Route::post('/patient/profiles', [PatientProfileController::class, 'storePatientProfile']);

@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart3, Settings } from 'lucide-react';
+import { BarChart3, Gift, Settings } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Switch } from '../../components/ui/switch';
+import { Textarea } from '../../components/ui/textarea';
 import { apiRequest } from '../../lib/api';
 
 type SettingsMap = Record<string, string | number | boolean | unknown[]>;
@@ -28,6 +29,8 @@ const defaultSettings: SettingsMap = {
   'rate.bank_transaction': 3.2,
   'rate.affiliate_doctor_topup': 5,
   'rate.affiliate_operator': 6,
+  'affiliate.patient_registration_reward': 0,
+  'affiliate.patient_registration_rules': 'Invită o persoană folosind linkul tău personal. Bonusul afișat se rezervă la înregistrare și intră în portofelul tău după ce noul pacient își confirmă emailul. Se acordă un singur bonus pentru fiecare pacient nou. Conturile proprii, duplicate sau frauduloase nu sunt eligibile. Bonusul este credit de platformă și poate fi folosit pentru serviciile disponibile pe telemedconsult.md.',
   minimum_consultation_price: 500,
   operator_exam_price: 250,
   'chat.free_days': 3,
@@ -51,6 +54,7 @@ const settingLabels: Record<string, string> = {
   'rate.bank_transaction': 'Comision tranzacție bancară (%)',
   'rate.affiliate_doctor_topup': 'Afiliere medic la alimentare (%)',
   'rate.affiliate_operator': 'Afiliere operator (%)',
+  'affiliate.patient_registration_reward': 'Bonus fix pentru pacient verificat (MDL)',
   'chat.free_days': 'Zile chat gratuit',
   'chat.reactivation_price': 'Preț reactivare chat',
   'chat.reactivation_hours': 'Ore reactivare chat',
@@ -167,6 +171,30 @@ export function SettingsPage() {
             {commissionSettingKeys.map((key) => (
               <NumberField key={key} label={settingLabel(key)} value={Number(settings[key])} onChange={(value) => update(key, value)} />
             ))}
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card border-0 lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center"><Gift className="mr-2 h-5 w-5 text-primary" /> Program de afiliere pacienți</CardTitle>
+            <CardDescription>Suma este rezervată când pacientul se înregistrează și intră în portofelul celui care l-a invitat după confirmarea emailului.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-5 lg:grid-cols-[280px_1fr]">
+            <NumberField
+              label={settingLabel('affiliate.patient_registration_reward')}
+              value={Number(settings['affiliate.patient_registration_reward'])}
+              onChange={(value) => update('affiliate.patient_registration_reward', value)}
+            />
+            <div className="space-y-2">
+              <Label>Regulament afișat pacientului</Label>
+              <Textarea
+                rows={6}
+                maxLength={4000}
+                value={String(settings['affiliate.patient_registration_rules'] ?? '')}
+                onChange={(event) => update('affiliate.patient_registration_rules', event.target.value)}
+                className="rounded-xl bg-white/50"
+              />
+            </div>
           </CardContent>
         </Card>
 

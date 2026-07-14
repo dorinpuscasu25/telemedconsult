@@ -37,6 +37,7 @@ export interface RegisterPayload {
   specialty_id?: number;
   license_number?: string;
   region?: string;
+  referral_code?: string;
 }
 interface AuthContextType {
   user: User | null;

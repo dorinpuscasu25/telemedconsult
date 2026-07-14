@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class AdminOperationsController extends Controller
 {
@@ -273,6 +274,25 @@ class AdminOperationsController extends Controller
             'settings.*.type' => ['nullable', Rule::in(['string', 'number', 'boolean', 'json'])],
         ]);
 
+        collect($validated['settings'] ?? [])->each(function (array $setting) {
+            if (($setting['key'] ?? null) === 'affiliate.patient_registration_reward') {
+                $value = $setting['value'] ?? null;
+
+                if (! is_numeric($value) || (float) $value < 0 || (float) $value > 10000) {
+                    throw ValidationException::withMessages([
+                        'settings' => ['Bonusul de afiliere trebuie să fie între 0 și 10.000 MDL.'],
+                    ]);
+                }
+            }
+
+            if (($setting['key'] ?? null) === 'affiliate.patient_registration_rules'
+                && mb_strlen((string) ($setting['value'] ?? '')) > 4000) {
+                throw ValidationException::withMessages([
+                    'settings' => ['Regulamentul de afiliere poate avea maximum 4.000 de caractere.'],
+                ]);
+            }
+        });
+
         DB::transaction(function () use ($request, $validated) {
             $config = app(PlatformConfig::class);
             $settings = collect($validated['settings'] ?? []);
@@ -437,6 +457,10 @@ class AdminOperationsController extends Controller
 
         if (Str::startsWith($key, 'rate.')) {
             return 'commissions';
+        }
+
+        if (Str::startsWith($key, 'affiliate.')) {
+            return 'affiliate';
         }
 
         if (Str::startsWith($key, 'chat.')) {

@@ -20,6 +20,12 @@ class PlatformConfig
         'rate.operator_subscription_bank_transaction' => ['value' => 3.2, 'group' => 'commissions', 'type' => 'number'],
         'rate.affiliate_doctor_topup' => ['value' => 5, 'group' => 'affiliate', 'type' => 'number'],
         'rate.affiliate_operator' => ['value' => 6, 'group' => 'affiliate', 'type' => 'number'],
+        'affiliate.patient_registration_reward' => ['value' => 0, 'group' => 'affiliate', 'type' => 'number'],
+        'affiliate.patient_registration_rules' => [
+            'value' => 'Invită o persoană folosind linkul tău personal. Bonusul afișat se rezervă la înregistrare și intră în portofelul tău după ce noul pacient își confirmă emailul. Se acordă un singur bonus pentru fiecare pacient nou. Conturile proprii, duplicate sau frauduloase nu sunt eligibile. Bonusul este credit de platformă și poate fi folosit pentru serviciile disponibile pe telemedconsult.md.',
+            'group' => 'affiliate',
+            'type' => 'string',
+        ],
         'minimum_consultation_price' => ['value' => 500, 'group' => 'financial', 'type' => 'number'],
         'operator_exam_price' => ['value' => 250, 'group' => 'financial', 'type' => 'number'],
         'chat.free_days' => ['value' => 3, 'group' => 'chat', 'type' => 'number'],

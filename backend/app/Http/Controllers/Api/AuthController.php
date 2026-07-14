@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\RegisterRequest;
 use App\Models\DoctorProfile;
 use App\Models\EmailVerificationOtp;
 use App\Models\OperatorProfile;
@@ -11,6 +12,7 @@ use App\Models\Specialty;
 use App\Models\User;
 use App\Notifications\AppEventNotification;
 use App\Services\PlatformConfig;
+use App\Services\ReferralProgram;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -25,43 +27,22 @@ use Throwable;
 
 class AuthController extends Controller
 {
-    public function register(Request $request): JsonResponse
+    public function register(RegisterRequest $request, ReferralProgram $referralProgram): JsonResponse
     {
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'phone' => ['nullable', 'string', 'max:50'],
-            'telegram_chat_id' => ['nullable', 'string', 'max:100'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
-            'account_type' => ['nullable', Rule::in(['patient', 'doctor', 'operator'])],
-            'specialty_id' => ['nullable', 'required_if:account_type,doctor', Rule::exists('specialties', 'id')],
-            'license_number' => ['nullable', 'string', 'max:255'],
-            'region' => [
-                'nullable',
-                'required_if:account_type,operator',
-                'string',
-                'max:255',
-                Rule::exists('regions', 'name')->where('is_active', true),
-            ],
-        ], [
-            'name.required' => 'Introduceți numele complet.',
-            'email.required' => 'Introduceți emailul.',
-            'email.email' => 'Introduceți un email valid.',
-            'email.unique' => 'Există deja un cont cu acest email.',
-            'password.required' => 'Introduceți parola.',
-            'password.min' => 'Parola trebuie să aibă minim 8 caractere.',
-            'password.confirmed' => 'Parolele introduse nu coincid.',
-            'specialty_id.required_if' => 'Alegeți specialitatea.',
-            'region.required_if' => 'Alegeți regiunea din catalog.',
-            'region.exists' => 'Regiunea selectată nu există în catalog.',
-        ]);
+        $validated = $request->validated();
 
         $accountType = $validated['account_type'] ?? 'patient';
         $isProvider = in_array($accountType, ['doctor', 'operator'], true);
 
         $role = Role::where('name', $accountType)->firstOrFail();
 
-        $user = DB::transaction(function () use ($validated, $role, $accountType, $isProvider) {
+        if ($accountType === 'patient' && filled($validated['referral_code'] ?? null) && ! $referralProgram->enabled()) {
+            throw ValidationException::withMessages([
+                'referral_code' => ['Programul de afiliere este momentan dezactivat.'],
+            ]);
+        }
+
+        $user = DB::transaction(function () use ($validated, $role, $accountType, $isProvider, $referralProgram) {
             $user = User::create([
                 'name' => $validated['name'],
                 'email' => $validated['email'],
@@ -75,6 +56,12 @@ class AuthController extends Controller
             // Self-serve accounts hold exactly one role, so a patient can never
             // drift into a doctor/operator (or vice-versa) through registration.
             $user->roles()->sync([$role->id]);
+
+            $referralProgram->ensureCode($user);
+
+            if ($accountType === 'patient') {
+                $referralProgram->attachPatient($user, $validated['referral_code'] ?? null);
+            }
 
             $this->createProviderProfile($user, $accountType, $validated);
 
@@ -188,6 +175,7 @@ class AuthController extends Controller
         DB::transaction(function () use ($user, $otp) {
             $otp->forceFill(['verified_at' => now()])->save();
             $user->forceFill(['email_verified_at' => now()])->save();
+            app(ReferralProgram::class)->rewardVerifiedPatient($user);
         });
 
         $this->forgetDemoOtp($user);
