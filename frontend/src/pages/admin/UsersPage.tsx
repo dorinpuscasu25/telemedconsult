@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Ban, MoreHorizontal, Pencil, Plus, RefreshCw, Search, ShieldCheck, Trash2, Unlock } from 'lucide-react';
+import { Ban, MoreHorizontal, Pencil, Plus, RefreshCw, Search, ShieldCheck, Trash2, Unlock, Wallet } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -161,6 +161,7 @@ export function UsersPage() {
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [actionError, setActionError] = useState('');
   const [processingUserId, setProcessingUserId] = useState<string | null>(null);
+  const [walletUser, setWalletUser] = useState<AdminUser | null>(null);
 
   const loadUsers = () => {
     const params = new URLSearchParams();
@@ -493,6 +494,10 @@ export function UsersPage() {
                             <Pencil className="h-4 w-4" />
                             Editează
                           </DropdownMenuItem>
+                          <DropdownMenuItem className="cursor-pointer" onClick={() => setWalletUser(adminUser)}>
+                            <Wallet className="h-4 w-4" />
+                            Portofel
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             className={`cursor-pointer ${isSelf ? 'opacity-50' : ''}`}
                             onClick={() => {
@@ -770,6 +775,172 @@ export function UsersPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {walletUser && <WalletDialog user={walletUser} onClose={() => setWalletUser(null)} />}
     </div>
+  );
+}
+
+interface WalletTransactionRow {
+  id: string;
+  date: string;
+  amount: number;
+  type: string;
+  description: string;
+  admin: string | null;
+}
+
+interface WalletState {
+  balance: number;
+  currency: string;
+  transactions: WalletTransactionRow[];
+}
+
+const money = (value: number) => value.toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/**
+ * Portofelul unui utilizator: soldul, ultimele mișcări și formularul de
+ * ajustare. Soldul se vede înainte de operație tocmai ca adminul să nu adauge
+ * bani pe orb, iar motivul e obligatoriu — rămâne în istoricul tranzacției.
+ */
+function WalletDialog({ user, onClose }: { user: AdminUser; onClose: () => void }) {
+  const [wallet, setWallet] = useState<WalletState | null>(null);
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+  const [direction, setDirection] = useState<'credit' | 'debit'>('credit');
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const load = () => {
+    apiRequest<{ data: WalletState }>(`/admin/users/${user.id}/wallet`)
+      .then((response) => setWallet(response.data))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Nu am putut încărca portofelul.'));
+  };
+
+  useEffect(load, [user.id]);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setMessage('');
+    setError('');
+    setIsSaving(true);
+
+    try {
+      const result = await apiRequest<{ message: string }>(`/admin/users/${user.id}/wallet`, {
+        method: 'POST',
+        body: JSON.stringify({ amount: Number(amount), direction, reason })
+      });
+      setMessage(result.message);
+      setAmount('');
+      setReason('');
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Operația a eșuat.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto rounded-lg bg-white sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="text-lg font-semibold text-slate-900">Portofel — {user.name}</DialogTitle>
+          <DialogDescription>{user.email}</DialogDescription>
+        </DialogHeader>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <p className="text-xs text-slate-500">Sold curent</p>
+          <p className="text-2xl font-semibold text-slate-900">
+            {wallet ? `${money(wallet.balance)} ${wallet.currency}` : '…'}
+          </p>
+        </div>
+
+        {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        {message && (
+          <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</p>
+        )}
+
+        <form onSubmit={submit} className="space-y-3">
+          <div className="flex rounded-lg border border-slate-200 p-0.5">
+            {(
+              [
+                ['credit', 'Adaugă'],
+                ['debit', 'Scade']
+              ] as Array<['credit' | 'debit', string]>
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setDirection(value)}
+                className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium ${
+                  direction === value ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Sumă (MDL)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              min="0.01"
+              required
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              placeholder="ex. 150"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Motiv</Label>
+            <Input
+              required
+              minLength={3}
+              maxLength={255}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="ex. compensare consultație anulată"
+            />
+            <p className="text-xs text-slate-400">Rămâne în istoricul tranzacției și îi apare utilizatorului.</p>
+          </div>
+
+          <DialogFooter className="pt-1">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Închide
+            </Button>
+            <Button type="submit" disabled={isSaving || !amount || reason.trim().length < 3}>
+              {isSaving ? 'Se procesează…' : direction === 'credit' ? 'Adaugă în portofel' : 'Scade din portofel'}
+            </Button>
+          </DialogFooter>
+        </form>
+
+        {wallet && wallet.transactions.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Ultimele mișcări</p>
+            <div className="space-y-1">
+              {wallet.transactions.map((transaction) => (
+                <div key={transaction.id} className="flex items-start justify-between gap-3 border-b border-slate-100 py-1 text-xs last:border-0">
+                  <div>
+                    <p className="text-slate-700">{transaction.description}</p>
+                    <p className="text-slate-400">
+                      {new Date(transaction.date).toLocaleString('ro-RO', { dateStyle: 'short', timeStyle: 'short' })}
+                      {transaction.admin && ` · ${transaction.admin}`}
+                    </p>
+                  </div>
+                  <span className={`shrink-0 font-semibold ${transaction.amount > 0 ? 'text-emerald-600' : 'text-slate-700'}`}>
+                    {transaction.amount > 0 ? '+' : ''}
+                    {money(transaction.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

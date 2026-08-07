@@ -16,6 +16,7 @@ use App\Models\WalletTransaction;
 use App\Models\WithdrawalRequest;
 use App\Notifications\AppEventNotification;
 use App\Services\PlatformConfig;
+use App\Services\WalletAdjustment;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -76,6 +77,80 @@ class AdminOperationsController extends Controller
             ],
             'transactions' => $transactions,
             'withdrawals' => $withdrawals,
+        ]);
+    }
+
+    /**
+     * Portofelul unui utilizator, așa cum îl vede adminul înainte să-l ajusteze:
+     * soldul curent plus ultimele mișcări, ca să nu adauge bani „pe orb”.
+     */
+    public function userWallet(Request $request, User $user): JsonResponse
+    {
+        $this->authorizeAdmin($request);
+
+        $wallet = Wallet::where('user_id', $user->id)->first();
+
+        return response()->json([
+            'data' => [
+                'user' => ['id' => (string) $user->id, 'name' => $user->name, 'email' => $user->email],
+                'balance' => ($wallet?->balance_minor ?? 0) / 100,
+                'currency' => $wallet?->currency ?? 'MDL',
+                'transactions' => $wallet
+                    ? $wallet->transactions()->latest()->limit(20)->get()->map(fn (WalletTransaction $transaction) => [
+                        'id' => (string) $transaction->id,
+                        'date' => $transaction->created_at,
+                        'amount' => $transaction->amount_minor / 100,
+                        'type' => $transaction->type,
+                        'description' => $transaction->description,
+                        'admin' => $transaction->metadata['admin_name'] ?? null,
+                    ])->values()
+                    : [],
+            ],
+        ]);
+    }
+
+    /**
+     * Adaugă (sau scade) manual fonduri din portofelul unui utilizator.
+     *
+     * Motivul e obligatoriu: peste o lună, o mișcare de bani fără explicație nu
+     * se mai poate reconstitui. Rămâne în tranzacție, vizibil și în Tranzacții.
+     */
+    public function adjustUserWallet(Request $request, User $user): JsonResponse
+    {
+        $this->authorizeAdmin($request);
+
+        $validated = $request->validate([
+            'amount' => ['required', 'numeric', 'min:0.01', 'max:1000000'],
+            'direction' => ['required', Rule::in(['credit', 'debit'])],
+            'reason' => ['required', 'string', 'min:3', 'max:255'],
+        ], [
+            'reason.required' => 'Scrie motivul ajustării — rămâne în istoricul tranzacției.',
+            'amount.min' => 'Suma trebuie să fie cel puțin 0,01 MDL.',
+        ]);
+
+        $amountMinor = (int) round(((float) $validated['amount']) * 100);
+
+        if ($validated['direction'] === 'debit') {
+            $amountMinor = -$amountMinor;
+        }
+
+        $transaction = app(WalletAdjustment::class)->apply(
+            $user,
+            $amountMinor,
+            trim($validated['reason']),
+            $request->user(),
+        );
+
+        $balance = (int) Wallet::where('user_id', $user->id)->value('balance_minor');
+
+        return response()->json([
+            'message' => ($amountMinor > 0 ? 'Am adăugat ' : 'Am scăzut ')
+                .number_format(abs($amountMinor) / 100, 2, ',', '.').' MDL. Sold nou: '
+                .number_format($balance / 100, 2, ',', '.').' MDL.',
+            'data' => [
+                'balance' => $balance / 100,
+                'transaction_id' => (string) $transaction->id,
+            ],
         ]);
     }
 

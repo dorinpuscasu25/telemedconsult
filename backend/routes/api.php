@@ -99,6 +99,8 @@ Route::prefix('v1')->group(function () {
         Route::get('/admin/registrations', [AdminController::class, 'registrations']);
         Route::post('/admin/users/{user}/approve', [AdminController::class, 'approveUser']);
         Route::post('/admin/users/{user}/reject', [AdminController::class, 'rejectUser']);
+        Route::get('/admin/users/{user}/wallet', [AdminOperationsController::class, 'userWallet']);
+        Route::post('/admin/users/{user}/wallet', [AdminOperationsController::class, 'adjustUserWallet']);
         Route::get('/admin/financial', [AdminOperationsController::class, 'financial']);
         Route::put('/admin/withdrawals/{withdrawalRequest}', [AdminOperationsController::class, 'updateWithdrawal']);
         Route::get('/admin/complaints', [AdminOperationsController::class, 'complaints']);
