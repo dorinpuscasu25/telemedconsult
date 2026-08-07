@@ -84,6 +84,17 @@ services:
         if [ "$${RUN_SEEDERS}" = "true" ]; then
           php artisan db:seed --force
         fi
+        # Webhook-ul Telegram: setWebhook e idempotent la ei, deci se poate
+        # rula la fiecare pornire. Eșecul NU oprește deploy-ul (domeniul poate
+        # să nu fie încă public) — restul platformei merge fără notificări.
+        if [ "$${TELEGRAM_WEBHOOK_AUTO_SET:-false}" = "true" ] && [ -n "$${TELEGRAM_BOT_TOKEN:-}" ]; then
+          php artisan telegram:webhook set || echo "AVERTISMENT: webhook-ul Telegram nu s-a înregistrat; rulează manual după ce domeniul e public."
+        fi
+        # Abonarea la notificările HIGO creează o resursă NOUĂ la fiecare
+        # rulare, deci e oprită implicit. Vezi HIGO_SUBSCRIBE_ON_DEPLOY.
+        if [ "$${HIGO_SUBSCRIBE_ON_DEPLOY:-false}" = "true" ]; then
+          php artisan higo:subscribe || echo "AVERTISMENT: abonarea la notificările HIGO a eșuat; examinările vin prin higo:pull."
+        fi
     depends_on:
       mysql:
         condition: service_healthy
@@ -100,6 +111,9 @@ services:
       redis:
         condition: service_healthy
 
+  # Înlocuiește cron-ul: rulează în prim-plan și declanșează sarcinile definite
+  # în routes/console.php (azi: `higo:pull` la 5 minute). Nu are nevoie de nicio
+  # intrare în crontab-ul serverului — `restart: unless-stopped` îl ține pornit.
   scheduler:
     <<: *backend-service
     restart: unless-stopped
@@ -107,6 +121,9 @@ services:
     depends_on:
       init:
         condition: service_completed_successfully
+      redis:
+        # `withoutOverlapping()` ține lacătul în cache (redis).
+        condition: service_healthy
 
   reverb:
     <<: *backend-service

@@ -37,10 +37,13 @@ class HigoPullExamsCommand extends Command
         HigoProvisioner $provisioner,
         PlatformConfig $config,
     ): int {
+        // Integrarea oprită NU e o eroare: comanda rulează din scheduler la
+        // fiecare 5 minute, iar pe un server unde HIGO încă nu e configurat un
+        // exit de eșec ar umple logurile și ar arăta ca o pană reală.
         if (! $provisioner->enabled()) {
-            $this->error('Integrarea HIGO este oprită: verifică HIGO_BASE_URL, HIGO_SYNC_ENABLED și modulul „Aparate & integrare HIGO”.');
+            $this->components->warn('Integrarea HIGO este oprită — nu aduc nimic. Verifică HIGO_BASE_URL, HIGO_SYNC_ENABLED și modulul „Aparate & integrare HIGO”.');
 
-            return self::FAILURE;
+            return self::SUCCESS;
         }
 
         $startedAt = now();

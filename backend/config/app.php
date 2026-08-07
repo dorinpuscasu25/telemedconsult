@@ -67,7 +67,10 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    // Se poate schimba din .env (`APP_TIMEZONE=Europe/Chisinau`) fără deploy.
+    // Contează pentru sarcinile programate la oră fixă și pentru datele afișate
+    // în panouri; intervalele („la 5 minute”) nu depind de fus.
+    'timezone' => env('APP_TIMEZONE', 'UTC'),
 
     /*
     |--------------------------------------------------------------------------
