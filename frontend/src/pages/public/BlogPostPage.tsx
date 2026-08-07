@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, CalendarDays } from 'lucide-react';
 import { apiRequest } from '../../lib/api';
+import { useSiteContent } from '../../contexts/SiteContentContext';
 
 type BlogPost = {
   id: number;
@@ -22,8 +23,11 @@ function formatDate(value: string | null): string {
   }
 }
 
-export function BlogPostPage() {
+/** `backTo` permite refolosirea paginii în interiorul aplicației, unde
+ *  întoarcerea trebuie să ducă la lista de noutăți a rolului curent. */
+export function BlogPostPage({ backTo = '/noutati' }: { backTo?: string } = {}) {
   const { slug } = useParams<{ slug: string }>();
+  const { text } = useSiteContent();
   const [post, setPost] = useState<BlogPost | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -39,8 +43,8 @@ export function BlogPostPage() {
 
   return (
     <article className="mx-auto w-full max-w-3xl px-4 py-14 md:px-8">
-      <Link to="/blog" className="mb-8 inline-flex items-center text-sm font-medium text-slate-500 transition-colors hover:text-slate-800">
-        <ArrowLeft className="mr-1.5 h-4 w-4" /> Înapoi la blog
+      <Link to={backTo} className="mb-8 inline-flex items-center text-sm font-medium text-slate-500 transition-colors hover:text-slate-800">
+        <ArrowLeft className="mr-1.5 h-4 w-4" /> {text('news.back')}
       </Link>
 
       {isLoading ? (

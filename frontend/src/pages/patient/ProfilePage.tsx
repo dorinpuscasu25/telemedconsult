@@ -22,12 +22,14 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Textarea } from '../../components/ui/textarea';
 import { apiRequest } from '../../lib/api';
+import { dateOnly, money } from '../../lib/format';
+import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 
 type PatientProfile = {
   id: number;
   first_name?: string | null;
   last_name?: string | null;
-  identity_number?: string | null;
+  patient_code?: string | null;
   birth_date?: string | null;
   gender?: string | null;
   country?: string | null;
@@ -78,21 +80,36 @@ type ReferralResponse = {
   enabled: boolean;
   code: string;
   referral_link: string;
-  reward_amount: number;
+  /** Procentul din fiecare alimentare a invitatului care ajunge la invitator. */
+  commission_rate: number;
+  /** Alimentările sub această sumă nu generează comision. */
+  minimum_topup: number;
+  /** true = comision doar la prima alimentare a invitatului. */
+  first_deposit_only: boolean;
   currency: string;
-  rules: string;
+  rules: string | null;
   stats: {
     invited_count: number;
-    rewarded_count: number;
+    active_count: number;
     pending_count: number;
     earned_total: number;
+    commission_count: number;
   };
   latest_referrals: Array<{
     id: number;
     name: string;
     email: string;
-    status: 'pending' | 'rewarded' | 'ineligible';
-    reward_amount: number;
+    status: 'earning' | 'waiting_topup';
+    earned_total: number;
+    commission_count: number;
+    created_at: string;
+  }>;
+  latest_commissions: Array<{
+    id: number;
+    deposit_amount: number;
+    commission_amount: number;
+    rate_percent: number;
+    currency: string;
     created_at: string;
   }>;
 };
@@ -102,7 +119,6 @@ type ProfileTab = 'patients' | 'cards' | 'referrals' | 'account';
 const emptyPatient = {
   first_name: '',
   last_name: '',
-  identity_number: '',
   birth_date: '',
   gender: 'Altul',
   country: 'Republica Moldova',
@@ -115,11 +131,12 @@ const emptyPatient = {
 
 export function ProfilePage() {
   const navigate = useNavigate();
+  const { isEnabled } = useFeatureFlags();
   const [searchParams, setSearchParams] = useSearchParams();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [data, setData] = useState<ProfileResponse | null>(null);
   const [referralData, setReferralData] = useState<ReferralResponse | null>(null);
-  const [accountForm, setAccountForm] = useState({ name: '', phone: '', telegram_chat_id: '' });
+  const [accountForm, setAccountForm] = useState({ name: '', phone: '' });
   const [patientForm, setPatientForm] = useState(emptyPatient);
   const [regionsCatalog, setRegionsCatalog] = useState<CatalogRegion[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<PatientProfile | null>(null);
@@ -137,8 +154,7 @@ export function ProfilePage() {
       setData(response);
       setAccountForm({
         name: response.user.name || '',
-        phone: response.user.phone || '',
-        telegram_chat_id: response.user.telegram_chat_id || ''
+        phone: response.user.phone || ''
       });
       setSelectedProfile((current) => {
         if (current && response.patient_profiles.some((profile) => profile.id === current.id)) {
@@ -164,11 +180,24 @@ export function ProfilePage() {
   }, []);
 
   useEffect(() => {
-    setActiveTab(profileTab(searchParams.get('tab')));
-  }, [searchParams]);
+    const requestedTab = profileTab(searchParams.get('tab'));
+    const permittedTab = requestedTab === 'referrals' && !isEnabled('affiliate_program')
+      ? 'patients'
+      : requestedTab === 'cards' && (!isEnabled('patient_cards') || !isEnabled('payments'))
+        ? 'patients'
+        : requestedTab;
+
+    setActiveTab(permittedTab);
+    if (permittedTab !== requestedTab) setSearchParams({}, { replace: true });
+  }, [isEnabled, searchParams, setSearchParams]);
 
   const changeTab = (tab: string) => {
-    const nextTab = profileTab(tab);
+    const requestedTab = profileTab(tab);
+    const nextTab = requestedTab === 'referrals' && !isEnabled('affiliate_program')
+      ? 'patients'
+      : requestedTab === 'cards' && (!isEnabled('patient_cards') || !isEnabled('payments'))
+        ? 'patients'
+        : requestedTab;
     const nextParams = new URLSearchParams(searchParams);
 
     setActiveTab(nextTab);
@@ -337,7 +366,16 @@ export function ProfilePage() {
   const availableSlots = purchases.reduce((sum, item) => sum + item.available_slots, 0);
   const hasPurchasedCards = purchases.length > 0;
   const hasRequestablePatient = profiles.some((profile) => profile.can_request_consultation);
-  const patientNextStep = !hasPurchasedCards
+  const canBuyPatientPackages = isEnabled('patient_cards') && isEnabled('payments');
+  const patientNextStep = !canBuyPatientPackages && !hasRequestablePatient
+    ? {
+        step: 'Indisponibil momentan',
+        title: 'Pachetele pentru pacienți sunt dezactivate',
+        description: 'Administratorul a dezactivat temporar cumpărarea pachetelor. Profilurile deja active rămân disponibile.',
+        action: 'Deschide contul meu',
+        onClick: () => changeTab('account')
+      }
+    : !hasPurchasedCards
     ? {
         step: 'Primul pas',
         title: 'Cumpără un pachet pentru a începe',
@@ -372,8 +410,8 @@ export function ProfilePage() {
     referrals: {
       title: 'Program de afiliere',
       description: referralData
-        ? `Invită o persoană pe platformă și primești ${referralData.reward_amount} ${referralData.currency} după confirmarea contului.`
-        : 'Invită persoane pe platformă și urmărește bonusurile primite.'
+        ? `Primești ${referralData.commission_rate}% din ${referralData.first_deposit_only ? 'prima sumă alimentată' : 'fiecare sumă alimentată'} de persoanele pe care le inviți.`
+        : 'Invită persoane pe platformă și urmărește comisioanele primite.'
     },
     account: {
       title: 'Datele contului',
@@ -431,7 +469,7 @@ export function ProfilePage() {
         {(activeTab === 'patients' || activeTab === 'cards') && (
           <TabsList className="mb-6 grid h-auto w-full max-w-md grid-cols-2 gap-1 rounded-xl bg-white/70 p-1">
             <TabsTrigger value="patients">Profiluri pacient</TabsTrigger>
-            <TabsTrigger value="cards">Cumpără pachet</TabsTrigger>
+            {canBuyPatientPackages && <TabsTrigger value="cards">Cumpără pachet</TabsTrigger>}
           </TabsList>
         )}
 
@@ -631,9 +669,17 @@ export function ProfilePage() {
                 <Field label="Telefon">
                   <Input value={accountForm.phone} onChange={(event) => setAccountForm({ ...accountForm, phone: event.target.value })} className="rounded-xl" />
                 </Field>
-                <Field label="Telegram chat id">
-                  <Input value={accountForm.telegram_chat_id} onChange={(event) => setAccountForm({ ...accountForm, telegram_chat_id: event.target.value })} className="rounded-xl" />
-                </Field>
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">Notificări Telegram</p>
+                    <p className="text-xs text-slate-500">
+                      {data?.user?.telegram_chat_id ? 'Contul tău este conectat la botul platformei.' : 'Primește notificările instant, direct în Telegram.'}
+                    </p>
+                  </div>
+                  <Button type="button" variant="outline" className="rounded-xl" onClick={() => navigate('/patient/telegram')}>
+                    {data?.user?.telegram_chat_id ? 'Gestionează' : 'Conectează'}
+                  </Button>
+                </div>
                 <Button className="rounded-xl">Salvează</Button>
               </form>
             </CardContent>
@@ -657,21 +703,34 @@ export function ProfilePage() {
                         <Gift className="h-5 w-5" />
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-slate-500">Bonus pentru fiecare cont eligibil</p>
-                        <p className="mt-0.5 text-2xl font-bold text-slate-950">{referralData.reward_amount} {referralData.currency}</p>
+                        <p className="text-sm font-medium text-slate-500">
+                          Comisionul tău din {referralData.first_deposit_only ? 'prima alimentare' : 'fiecare alimentare'}
+                        </p>
+                        <p className="mt-0.5 text-2xl font-bold text-slate-950">{referralData.commission_rate}%</p>
                       </div>
                     </div>
                     <div className="rounded-xl bg-slate-50 px-4 py-3 sm:text-right">
                       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Câștig total</p>
-                      <p className="mt-1 text-xl font-bold text-slate-950">{referralData.stats.earned_total} {referralData.currency}</p>
+                      <p className="mt-1 text-xl font-bold text-slate-950">{money(referralData.stats.earned_total)} {referralData.currency}</p>
                     </div>
                   </div>
 
                   <div className="mt-6 grid gap-3 md:grid-cols-3">
                     <ReferralStep number="1" title="Copiază linkul" text="Folosește linkul personal afișat mai jos." />
                     <ReferralStep number="2" title="Trimite-l unei persoane" text="Persoana își creează un cont nou de pacient." />
-                    <ReferralStep number="3" title="Primești bonusul" text="Bonusul intră în portofel după confirmarea emailului." />
+                    <ReferralStep
+                      number="3"
+                      title="Primești comisionul"
+                      text={`Când alimentează portofelul, ${referralData.commission_rate}% din sumă intră automat în portofelul tău.`}
+                    />
                   </div>
+
+                  <p className="mt-4 rounded-xl bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-900">
+                    Primești <strong>{referralData.commission_rate}%</strong> din{' '}
+                    {referralData.first_deposit_only ? 'prima sumă alimentată' : 'fiecare sumă alimentată'} de persoana invitată.
+                    {referralData.minimum_topup > 0 && ` Sunt eligibile alimentările de cel puțin ${money(referralData.minimum_topup)} ${referralData.currency}.`}
+                    {' '}Comisionul se acordă doar pentru plăți confirmate, nu la simpla înregistrare.
+                  </p>
                 </CardContent>
               </Card>
 
@@ -700,8 +759,8 @@ export function ProfilePage() {
 
               <div className="grid gap-4 sm:grid-cols-3">
                 <ReferralStat icon={UsersRound} label="Persoane invitate" value={referralData.stats.invited_count} />
-                <ReferralStat icon={CheckCircle2} label="Bonusuri acordate" value={referralData.stats.rewarded_count} />
-                <ReferralStat icon={WalletCards} label="În așteptare" value={referralData.stats.pending_count} />
+                <ReferralStat icon={CheckCircle2} label="Au alimentat portofelul" value={referralData.stats.active_count} />
+                <ReferralStat icon={WalletCards} label="Fără alimentare încă" value={referralData.stats.pending_count} />
               </div>
 
               <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
@@ -720,23 +779,52 @@ export function ProfilePage() {
                     <CardDescription>Datele sunt mascate pentru protejarea confidențialității.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    {referralData.latest_referrals.length === 0 && (
+                    {(referralData.latest_referrals ?? []).length === 0 && (
                       <p className="text-sm text-slate-500">Nu ai invitații încă. Copiază linkul și trimite-l unei persoane care are nevoie de un cont de pacient.</p>
                     )}
-                    {referralData.latest_referrals.map((referral) => (
+                    {(referralData.latest_referrals ?? []).map((referral) => (
                       <div key={referral.id} className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="font-semibold text-slate-900">{referral.name}</p>
-                          <p className="text-sm text-slate-500">{referral.email} • {new Date(referral.created_at).toLocaleDateString('ro-MD')}</p>
+                          <p className="text-sm text-slate-500">{referral.email} • {dateOnly(referral.created_at)}</p>
                         </div>
-                        <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${referral.status === 'rewarded' ? 'bg-emerald-100 text-emerald-700' : referral.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-600'}`}>
-                          {referral.status === 'rewarded' ? `+${referral.reward_amount} ${referralData.currency}` : referral.status === 'pending' ? 'În așteptare' : 'Neeligibil'}
+                        <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${referral.status === 'earning' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {referral.status === 'earning'
+                            ? `+${money(referral.earned_total)} ${referralData.currency}`
+                            : 'Nu a alimentat încă'}
                         </span>
                       </div>
                     ))}
                   </CardContent>
                 </Card>
               </div>
+
+              <Card className="border-slate-200/70 bg-white shadow-sm">
+                <CardHeader>
+                  <CardTitle>Comisioane primite</CardTitle>
+                  <CardDescription>Fiecare alimentare a persoanelor invitate generează un comision separat.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {(referralData.latest_commissions ?? []).length === 0 && (
+                    <p className="text-sm text-slate-500">Încă nu ai primit comisioane. Comisionul apare aici după prima alimentare confirmată a unei persoane invitate.</p>
+                  )}
+                  {(referralData.latest_commissions ?? []).map((commission) => (
+                    <div key={commission.id} className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="font-semibold text-slate-900">
+                          Alimentare de {money(commission.deposit_amount)} {commission.currency}
+                        </p>
+                        <p className="text-sm text-slate-500">
+                          {dateOnly(commission.created_at)} • cotă {commission.rate_percent}%
+                        </p>
+                      </div>
+                      <span className="w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                        +{money(commission.commission_amount)} {commission.currency}
+                      </span>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
             </>
           )}
         </TabsContent>
@@ -751,7 +839,6 @@ export function ProfilePage() {
             <div className="grid gap-4 py-5 md:grid-cols-2">
               <Field label="Prenume"><Input value={patientForm.first_name} onChange={(event) => setPatientForm({ ...patientForm, first_name: event.target.value })} required className="rounded-xl" /></Field>
               <Field label="Nume"><Input value={patientForm.last_name} onChange={(event) => setPatientForm({ ...patientForm, last_name: event.target.value })} required className="rounded-xl" /></Field>
-              <Field label="IDNP"><Input value={patientForm.identity_number} onChange={(event) => setPatientForm({ ...patientForm, identity_number: event.target.value })} required className="rounded-xl" /></Field>
               <Field label="Data nașterii"><Input type="date" value={patientForm.birth_date} onChange={(event) => setPatientForm({ ...patientForm, birth_date: event.target.value })} className="rounded-xl" /></Field>
               <Field label="Țară"><Input value={patientForm.country} onChange={(event) => setPatientForm({ ...patientForm, country: event.target.value })} required className="rounded-xl" /></Field>
               <Field label="Raion / municipiu">

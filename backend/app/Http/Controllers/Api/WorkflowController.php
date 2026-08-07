@@ -5,16 +5,16 @@ namespace App\Http\Controllers\Api;
 use App\Events\ConversationMessageSent;
 use App\Events\ConversationUpdated;
 use App\Http\Controllers\Controller;
+use App\Jobs\SyncHigoEntity;
 use App\Models\Consultation;
 use App\Models\ConsultationObjectiveData;
 use App\Models\ConsultationRequest;
 use App\Models\Conversation;
-use App\Models\DoctorAvailability;
 use App\Models\DoctorInvestigationRequirement;
+use App\Models\HigoExamMedia;
 use App\Models\MedicalDocument;
 use App\Models\Message;
 use App\Models\PatientProfile;
-use App\Models\PlatformSetting;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
@@ -23,13 +23,17 @@ use App\Services\ConsultationCostEstimator;
 use App\Services\ConsultationStateMachine;
 use App\Services\FeatureFlags;
 use App\Services\FinancialBreakdown;
+use App\Services\ObjectiveDataSchema;
 use App\Services\OperatorAssignmentService;
 use App\Services\PlatformConfig;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\Rule;
 
 class WorkflowController extends Controller
@@ -47,15 +51,18 @@ class WorkflowController extends Controller
 
         $this->expireStaleRequests();
 
-        $requests = ConsultationRequest::with(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData'])
+        $requests = ConsultationRequest::with(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])
             ->when($user->hasRole('patient') && ! $user->hasRole('admin'), fn ($query) => $query->where('patient_id', $user->id))
             ->when($user->hasRole('doctor') && ! $user->hasRole('admin'), fn ($query) => $query->where(function ($q) use ($user) {
                 $q->where('type', 'doctor')->orWhere('doctor_id', $user->id);
             }))
+            // Operatorul își vede examinările atribuite indiferent de tipul
+            // solicitării: la o consultație cu examinare, `type` e „doctor”, dar
+            // deplasarea la domiciliu e tot a lui. Plus solicitările de operator
+            // încă neatribuite, care rămân disponibile pentru preluare.
             ->when($user->hasRole('operator') && ! $user->hasRole('admin'), fn ($query) => $query->where(function ($q) use ($user) {
-                $q->where('type', 'operator')->where(function ($operatorQuery) use ($user) {
-                    $operatorQuery->whereNull('operator_id')->orWhere('operator_id', $user->id);
-                });
+                $q->where('operator_id', $user->id)
+                    ->orWhere(fn ($pool) => $pool->where('type', 'operator')->whereNull('operator_id'));
             }))
             ->latest()
             ->get()
@@ -80,6 +87,18 @@ class WorkflowController extends Controller
 
         $patientProfile = $this->resolvePatientProfile($request, (int) $validated['patient_profile_id']);
         $kind = $validated['consultation_kind'] ?? 'with_exam';
+        $features = app(FeatureFlags::class);
+
+        if (! empty($validated['doctor_id']) || $kind !== 'with_exam') {
+            abort_unless($features->enabled('doctors'), 403, 'Catalogul medicilor este momentan dezactivat.');
+        }
+
+        if ($kind === 'with_exam') {
+            abort_unless($features->enabled('with_exam_consultations'), 403, 'Consultațiile cu examinare sunt momentan dezactivate.');
+            abort_unless($features->enabled('operators'), 403, 'Operatorii sunt momentan dezactivați.');
+        } else {
+            abort_unless($features->enabled('video_consultations'), 403, 'Consultațiile video sunt momentan dezactivate.');
+        }
 
         if ($kind !== 'with_exam') {
             $doctor = ! empty($validated['doctor_id']) ? User::with('doctorProfile')->find($validated['doctor_id']) : null;
@@ -163,8 +182,13 @@ class WorkflowController extends Controller
 
         $features = app(FeatureFlags::class);
 
+        if (! empty($validated['doctor_id']) || in_array($validated['type'], ['doctor', 'video'], true)) {
+            abort_unless($features->enabled('doctors'), 403, 'Catalogul medicilor este momentan dezactivat.');
+        }
+
         if ($validated['consultation_kind'] === 'with_exam') {
             abort_unless($features->enabled('with_exam_consultations'), 403, 'Consultațiile cu examinare sunt momentan dezactivate.');
+            abort_unless($features->enabled('operators'), 403, 'Operatorii sunt momentan dezactivați.');
             $this->ensureWithExamAddress($patientProfile);
             // Operator is assigned automatically — never picked manually.
             $validated['operator_id'] = $this->assignOperatorOrFail($patientProfile, $validated['doctor_id'] ?? null);
@@ -239,13 +263,14 @@ class WorkflowController extends Controller
             ConversationMessageSent::dispatch($conversation, $message->load('sender'));
             ConversationUpdated::dispatch($conversation->load(['patient', 'doctor', 'operator', 'messages.sender']));
             $this->notifyRequestCreated($item);
+            $this->linkPatientToAssignedOperator($item);
 
             return $item;
         });
 
         return response()->json([
             'message' => 'Solicitare creată.',
-            'request' => $this->serializeRequest($item->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData'])),
+            'request' => $this->serializeRequest($item->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
             'conversation' => Conversation::with(['patient', 'doctor', 'operator', 'messages.sender'])
                 ->where('consultation_request_id', $item->id)
                 ->first(),
@@ -292,7 +317,10 @@ class WorkflowController extends Controller
 
         $conversation = Conversation::where('consultation_request_id', $consultationRequest->id)->first();
         if ($conversation) {
-            $conversation->forceFill($payload)->save();
+            // Doar participanții, nu și `operator_accepted_at`: conversația nu are
+            // acea coloană, iar scrierea ei făcea ca orice acceptare de operator
+            // să eșueze cu eroare de bază de date.
+            $conversation->forceFill(Arr::only($payload, ['doctor_id', 'operator_id']))->save();
             ConversationUpdated::dispatch($conversation->refresh()->load(['patient', 'doctor', 'operator', 'messages.sender']));
         }
 
@@ -305,7 +333,7 @@ class WorkflowController extends Controller
 
         return response()->json([
             'message' => 'Solicitare acceptată.',
-            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData'])),
+            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
         ]);
     }
 
@@ -315,12 +343,17 @@ class WorkflowController extends Controller
         abort_unless($user->hasRole('doctor') || $user->hasRole('operator') || $user->hasRole('admin'), 403);
         abort_unless(in_array($consultationRequest->status, ['new', 'accepted'], true), 422, 'Solicitarea nu mai poate fi finalizată.');
 
-        // FSM1 (spec §10): a with_exam consultation can only be concluded once BOTH
-        // the operator's objective data and the patient's anamnesis are complete.
+        // FSM1 (spec §10): o consultație cu examinare ajunge la concluzie doar cu
+        // datele obiective ȘI anamneza complete.
+        //
+        // Poarta protejează concluzia medicului — nu vrem un diagnostic pus pe
+        // gol. Când nu există medic asignat (vizită doar cu operator), nu are ce
+        // proteja, așa că operatorul își poate încheia deplasarea fără ea.
         abort_unless(
-            app(ConsultationStateMachine::class)->readyForDoctor($consultationRequest),
+            ! $consultationRequest->doctor_id
+                || app(ConsultationStateMachine::class)->readyForDoctor($consultationRequest),
             422,
-            'Consultația nu poate fi concluzionată încă: sunt necesare datele obiective ale operatorului ȘI anamneza pacientului.',
+            'Operatorul nu a finalizat încă examinarea la domiciliu.',
         );
 
         $validated = $request->validate([
@@ -477,7 +510,7 @@ class WorkflowController extends Controller
 
         return response()->json([
             'message' => 'Datele au fost transmise medicului.',
-            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData'])),
+            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
         ]);
     }
 
@@ -503,7 +536,7 @@ class WorkflowController extends Controller
 
         return response()->json([
             'message' => 'Anamneza a fost salvată.',
-            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData'])),
+            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
         ]);
     }
 
@@ -513,17 +546,31 @@ class WorkflowController extends Controller
         abort_unless($user->hasRole('operator') || $user->hasRole('admin'), 403);
         abort_unless($consultationRequest->patient_profile_id, 422, 'Solicitarea nu are profil de pacient asociat.');
 
+        // Cheile din vocabularul canonic sunt validate (interval fiziologic);
+        // orice altă cheie trece nevalidată, ca payload-urile din aparat să nu
+        // fie respinse doar pentru că trimit un câmp pe care nu-l știm încă.
         $validated = $request->validate([
             'source' => ['nullable', 'string', 'max:100'],
             'payload' => ['required', 'array'],
-        ]);
+            ...ObjectiveDataSchema::validationRules(),
+        ], ObjectiveDataSchema::validationMessages());
+
+        // Atenție: `validated()` întoarce doar cheile care au reguli, deci ar
+        // arunca exact câmpurile necunoscute pe care vrem să le păstrăm. Luăm
+        // payload-ul brut din input — validarea de mai sus și-a făcut deja treaba
+        // pe cheile cunoscute.
+        $payload = collect((array) $request->input('payload', []))
+            ->reject(fn ($value) => $value === null || $value === '' || is_array($value))
+            ->all();
+
+        abort_if($payload === [], 422, 'Completează cel puțin o măsurătoare sau o observație.');
 
         $data = ConsultationObjectiveData::create([
             'consultation_request_id' => $consultationRequest->id,
             'patient_profile_id' => $consultationRequest->patient_profile_id,
             'operator_id' => $user->id,
             'source' => $validated['source'] ?? 'manual',
-            'payload' => $validated['payload'],
+            'payload' => $payload,
             'completed_at' => now(),
         ]);
 
@@ -541,8 +588,94 @@ class WorkflowController extends Controller
         return response()->json([
             'message' => 'Date obiective salvate.',
             'objective_data' => $data,
-            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData'])),
+            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
         ], 201);
+    }
+
+    /**
+     * Operatorul declară că a terminat examinarea la domiciliu.
+     *
+     * Măsurătorile se introduc în aparatul HIGO și ajung la noi separat, prin
+     * `higo:pull` sau prin notificarea lor — deci formularul din dashboard e
+     * opțional, o alternativă pentru ce aparatul nu acoperă. Fără acțiunea asta,
+     * operatorul ar fi obligat să retasteze manual date pe care le-a măsurat deja.
+     *
+     * Poarta care cere date obiective rămâne intactă: ea protejează concluzia
+     * medicului, iar aici tocmai o satisfacem în mod explicit.
+     */
+    public function completeExamination(Request $request, ConsultationRequest $consultationRequest): JsonResponse
+    {
+        $user = $request->user()->loadMissing('roles');
+        abort_unless($user->hasRole('operator') || $user->hasRole('admin'), 403);
+        abort_unless(
+            (int) $consultationRequest->operator_id === (int) $user->id || $user->hasRole('admin'),
+            403,
+            'Această examinare nu îți este atribuită.',
+        );
+
+        if (! $consultationRequest->objective_data_completed_at) {
+            $consultationRequest->forceFill(['objective_data_completed_at' => now()])->save();
+
+            $consultationRequest->doctor?->notify(new AppEventNotification(
+                'Examinare finalizată',
+                'Operatorul a finalizat examinarea la domiciliu. Datele din aparat apar pe măsură ce sunt sincronizate.',
+                '/doctor/consultations',
+            ));
+
+            $this->notifyDoctorReady($consultationRequest);
+        }
+
+        return response()->json([
+            'message' => 'Examinare finalizată. Datele din aparat se atașează automat când sosesc.',
+            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
+        ]);
+    }
+
+    /**
+     * Medicul pornește consultația după ce operatorul a terminat examinarea.
+     *
+     * E momentul în care se deschide chatul cu pacientul. Acțiunea e explicită,
+     * nu automată: medicul decide când se apucă de caz, iar pacientul vede clar
+     * că a început.
+     */
+    public function startConsultation(Request $request, ConsultationRequest $consultationRequest): JsonResponse
+    {
+        $user = $request->user()->loadMissing('roles');
+        abort_unless($user->hasRole('doctor') || $user->hasRole('admin'), 403);
+        abort_unless(
+            ! $consultationRequest->doctor_id
+                || (int) $consultationRequest->doctor_id === (int) $user->id
+                || $user->hasRole('admin'),
+            403,
+            'Această consultație nu îți este atribuită.',
+        );
+        abort_if($consultationRequest->conclusion_sent_at, 422, 'Consultația a fost deja concluzionată.');
+        abort_unless(
+            app(ConsultationStateMachine::class)->readyForDoctor($consultationRequest),
+            422,
+            'Operatorul nu a finalizat încă examinarea la domiciliu.',
+        );
+
+        if (! $consultationRequest->doctor_started_at) {
+            $consultationRequest->forceFill([
+                'doctor_id' => $consultationRequest->doctor_id ?: $user->id,
+                'doctor_started_at' => now(),
+            ])->save();
+
+            $this->activateDoctorChat($consultationRequest);
+
+            $consultationRequest->patient?->notify(new AppEventNotification(
+                'Consultația a început',
+                ($consultationRequest->doctor?->name ?? 'Medicul').' a preluat rezultatele examinării. Poți discuta acum în chat.',
+                '/patient/chat',
+                'success',
+            ));
+        }
+
+        return response()->json([
+            'message' => 'Consultație pornită. Chatul cu pacientul este deschis.',
+            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
+        ]);
     }
 
     public function addOnService(Request $request, ConsultationRequest $consultationRequest): JsonResponse
@@ -647,7 +780,7 @@ class WorkflowController extends Controller
 
         return response()->json([
             'message' => 'Link video adăugat.',
-            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData'])),
+            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
         ]);
     }
 
@@ -742,7 +875,7 @@ class WorkflowController extends Controller
 
         return response()->json([
             'message' => 'Chat reactivat.',
-            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData'])),
+            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
         ]);
     }
 
@@ -757,7 +890,10 @@ class WorkflowController extends Controller
                     ->orWhere('operator_id', $user->id);
             })
             ->latest()
-            ->get();
+            ->get()
+            ->map(fn (Conversation $conversation) => tap($conversation, function (Conversation $item) use ($user) {
+                $item->setAttribute('chat', $this->chatState($item, $user));
+            }));
 
         return response()->json(['data' => $conversations]);
     }
@@ -767,16 +903,26 @@ class WorkflowController extends Controller
         $user = $request->user();
 
         abort_unless(in_array($user->id, array_filter([$conversation->patient_id, $conversation->doctor_id, $conversation->operator_id]), true), 403);
-        abort_unless($conversation->status === 'open', 422, 'Această conversație nu este activă încă.');
+        abort_unless($conversation->status === 'open' || $conversation->consultation_request_id, 422, 'Această conversație nu este activă încă.');
 
         $consultationRequest = $conversation->consultation_request_id
             ? ConsultationRequest::find($conversation->consultation_request_id)
             : null;
 
         if ($consultationRequest && ! $this->canWriteChat($consultationRequest)) {
-            $conversation->forceFill(['status' => 'closed'])->save();
-            ConversationUpdated::dispatch($conversation->refresh()->load(['patient', 'doctor', 'operator', 'messages.sender']));
-            abort(422, 'Chat-ul nu este activ. Îl poți reactiva din consultație cât timp fereastra de 14 zile este deschisă.');
+            // Un chat care încă nu s-a deschis NU trebuie marcat închis: e în
+            // așteptarea examinării. Doar unul care a fost activ și i-a expirat
+            // fereastra se închide efectiv.
+            if ($consultationRequest->conclusion_sent_at) {
+                $conversation->forceFill(['status' => 'closed'])->save();
+                ConversationUpdated::dispatch($conversation->refresh()->load(['patient', 'doctor', 'operator', 'messages.sender']));
+
+                abort(422, 'Chatul s-a închis. Îl poți reactiva din consultație cât timp fereastra este deschisă.');
+            }
+
+            abort(422, $consultationRequest->objective_data_completed_at
+                ? 'Chatul se deschide după ce medicul pornește consultația.'
+                : 'Chatul se deschide după ce operatorul efectuează examinarea la domiciliu.');
         }
 
         $validated = $request->validate([
@@ -802,16 +948,26 @@ class WorkflowController extends Controller
         $user = $request->user();
 
         abort_unless(in_array($user->id, array_filter([$conversation->patient_id, $conversation->doctor_id, $conversation->operator_id]), true), 403);
-        abort_unless($conversation->status === 'open', 422, 'Această conversație nu este activă încă.');
+        abort_unless($conversation->status === 'open' || $conversation->consultation_request_id, 422, 'Această conversație nu este activă încă.');
 
         $consultationRequest = $conversation->consultation_request_id
             ? ConsultationRequest::find($conversation->consultation_request_id)
             : null;
 
         if ($consultationRequest && ! $this->canWriteChat($consultationRequest)) {
-            $conversation->forceFill(['status' => 'closed'])->save();
-            ConversationUpdated::dispatch($conversation->refresh()->load(['patient', 'doctor', 'operator', 'messages.sender']));
-            abort(422, 'Chat-ul nu este activ. Îl poți reactiva din consultație cât timp fereastra de 14 zile este deschisă.');
+            // Un chat care încă nu s-a deschis NU trebuie marcat închis: e în
+            // așteptarea examinării. Doar unul care a fost activ și i-a expirat
+            // fereastra se închide efectiv.
+            if ($consultationRequest->conclusion_sent_at) {
+                $conversation->forceFill(['status' => 'closed'])->save();
+                ConversationUpdated::dispatch($conversation->refresh()->load(['patient', 'doctor', 'operator', 'messages.sender']));
+
+                abort(422, 'Chatul s-a închis. Îl poți reactiva din consultație cât timp fereastra este deschisă.');
+            }
+
+            abort(422, $consultationRequest->objective_data_completed_at
+                ? 'Chatul se deschide după ce medicul pornește consultația.'
+                : 'Chatul se deschide după ce operatorul efectuează examinarea la domiciliu.');
         }
 
         $validated = $request->validate([
@@ -960,19 +1116,116 @@ class WorkflowController extends Controller
             'patient_profile' => $item->patientProfile ? [
                 'id' => (string) $item->patientProfile->id,
                 'name' => $item->patientProfile->display_name,
-                'identity_number' => $item->patientProfile->identity_number,
+                'patient_code' => $item->patientProfile->patient_code,
+                'birth_date' => $item->patientProfile->birth_date?->toDateString(),
+                'age' => $item->patientProfile->birth_date?->age,
+                'gender' => $item->patientProfile->gender,
                 'country' => $item->patientProfile->country,
                 'region' => $item->patientProfile->region,
                 'locality' => $item->patientProfile->locality,
                 'address' => $item->patientProfile->address,
+                'emergency_contact' => $item->patientProfile->emergency_contact,
+                'medical_summary' => $item->patientProfile->medical_summary,
+                'life_history' => $item->patientProfile->life_history ?? [],
                 'active_until' => $item->patientProfile->active_until,
             ] : null,
             'doctor' => $item->doctor ? ['id' => (string) $item->doctor->id, 'name' => $item->doctor->name] : null,
             'operator' => $item->operator ? ['id' => (string) $item->operator->id, 'name' => $item->operator->name] : null,
             'specialty' => $item->specialty?->name,
-            'objective_data' => $item->relationLoaded('objectiveData') ? $item->objectiveData->pluck('payload')->values() : [],
+            'investigations' => collect($item->pricing_snapshot['cost_breakdown']['investigations'] ?? [])->values(),
+            'objective_data' => $this->serializeObjectiveData($item),
+            'exam_media' => $this->serializeExamMedia($item),
             'created_at' => $item->created_at,
         ];
+    }
+
+    /**
+     * Imaginile și înregistrările din aparat, grupate pe tipul examinării.
+     *
+     * Pentru otoscopie, dermatoscop, gât și auscultații ele SUNT rezultatul —
+     * examinările astea nu produc nicio valoare numerică. Url-ul e al nostru,
+     * nu al lor: fișierele se servesc din `ExamMediaController`, cu verificare
+     * de acces la fiecare cerere.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function serializeExamMedia(ConsultationRequest $item): array
+    {
+        return HigoExamMedia::where('consultation_request_id', $item->id)
+            ->whereNotNull('path')
+            ->orderBy('exam_type')
+            ->orderBy('sequence')
+            ->orderBy('id')
+            ->get()
+            ->map(fn (HigoExamMedia $media) => [
+                'id' => (string) $media->id,
+                'exam_type' => $media->exam_type,
+                'kind' => $media->kind,
+                'content_type' => $media->content_type,
+                'sequence' => $media->sequence,
+                'size_bytes' => $media->size_bytes,
+                'url' => URL::temporarySignedRoute(
+                    'exam-media.show',
+                    now()->addMinutes((int) config('higo.media.link_minutes', 60)),
+                    ['media' => $media->id],
+                ),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Datele obiective, cu proveniența lor: medicul trebuie să vadă dacă o
+     * măsurătoare vine din aparatul HIGO sau a fost notată de mână de operator,
+     * cine a înregistrat-o și când.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function serializeObjectiveData(ConsultationRequest $item): array
+    {
+        if (! $item->relationLoaded('objectiveData')) {
+            return [];
+        }
+
+        return $item->objectiveData
+            ->sortBy('completed_at')
+            ->map(fn (ConsultationObjectiveData $data) => [
+                'id' => (string) $data->id,
+                'source' => $data->source,
+                'from_device' => $data->source !== null && str_starts_with($data->source, 'higo'),
+                'operator' => $data->relationLoaded('operator') ? $data->operator?->name : null,
+                'completed_at' => $data->completed_at,
+                'payload' => $data->payload ?? [],
+                // Aceleași măsurători, dar cu eticheta și unitatea din
+                // vocabularul canonic: fișa nu trebuie să ghicească dacă „38.1”
+                // e grade sau ce înseamnă `auscultation_lungs`.
+                'values' => $this->labelMeasurements($data->payload ?? []),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Etichetează măsurătorile cu vocabularul canonic. Cheile pe care nu le
+     * cunoaștem (o măsurătoare nouă a aparatului, încă nemapată) rămân în
+     * listă, umanizate — o mapare incompletă nu are voie să ascundă date.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return list<array<string, mixed>>
+     */
+    private function labelMeasurements(array $payload): array
+    {
+        return collect($payload)
+            ->except(['recorded_at'])
+            ->map(fn ($value, string $key) => [
+                'key' => $key,
+                'label' => ObjectiveDataSchema::label($key),
+                'unit' => ObjectiveDataSchema::unit($key),
+                'value' => is_array($value) ? json_encode($value, JSON_UNESCAPED_UNICODE) : $value,
+                'known' => ObjectiveDataSchema::knows($key),
+            ])
+            ->values()
+            ->all();
     }
 
     private function priceForRequest(array $validated): int
@@ -1018,7 +1271,7 @@ class WorkflowController extends Controller
         abort_if($profile->active_until && $profile->active_until->isPast(), 422, 'Cartela profilului de pacient a expirat. Reînnoiește cartela înainte de o consultație nouă.');
 
         abort_unless(
-            filled($profile->first_name) && filled($profile->last_name) && filled($profile->identity_number),
+            filled($profile->first_name) && filled($profile->last_name),
             422,
             'Profilul de pacient este incomplet. Completează numele și IDNP-ul înainte de consultație.',
         );
@@ -1082,9 +1335,71 @@ class WorkflowController extends Controller
         ];
     }
 
+    /**
+     * Starea reală a chatului, cu explicația potrivită pentru fiecare etapă.
+     *
+     * Ciclul de viață are patru stări distincte, nu două: chatul stă închis până
+     * când operatorul încarcă datele examinării, se deschide pentru consultație,
+     * apoi se închide după concluzie — reactivabil contra cost o perioadă, iar
+     * după expirarea ferestrei, definitiv.
+     *
+     * @return array<string, mixed>
+     */
+    private function chatState(Conversation $conversation, User $user): array
+    {
+        $request = $conversation->consultationRequest;
+
+        if (! $request) {
+            return [
+                'state' => $conversation->status === 'open' ? 'open' : 'closed',
+                'can_write' => $conversation->status === 'open',
+                'can_reactivate' => false,
+                'message' => null,
+            ];
+        }
+
+        $isPatient = (int) $user->id === (int) $request->patient_id;
+
+        if ($this->canWriteChat($request)) {
+            return ['state' => 'open', 'can_write' => true, 'can_reactivate' => false, 'message' => null];
+        }
+
+        // Înainte de concluzie, un chat închis înseamnă că examinarea nu e gata —
+        // nu că s-a terminat ceva. Reactivarea n-are niciun sens aici.
+        if (! $request->conclusion_sent_at) {
+            return [
+                'state' => 'pending',
+                'can_write' => false,
+                'can_reactivate' => false,
+                'message' => $request->objective_data_completed_at
+                    ? 'Examinarea e gata. Chatul se deschide când medicul pornește consultația.'
+                    : 'Chatul se deschide după ce operatorul efectuează examinarea la domiciliu.',
+            ];
+        }
+
+        $reactivatable = $request->chat_expires_at && $request->chat_expires_at->isFuture();
+
+        return [
+            'state' => $reactivatable ? 'reactivatable' : 'closed',
+            'can_write' => false,
+            // Doar pacientul plătește reactivarea.
+            'can_reactivate' => $reactivatable && $isPatient,
+            'message' => $reactivatable
+                ? 'Perioada gratuită de discuții s-a încheiat. Poți reactiva chatul contra cost.'
+                : 'Fereastra de discuții pentru această consultație s-a închis definitiv.',
+            'reactivate_until' => $request->chat_expires_at,
+        ];
+    }
+
     private function canWriteChat(ConsultationRequest $consultationRequest): bool
     {
         if (! $consultationRequest->conclusion_sent_at && in_array($consultationRequest->consultation_kind, ['video', 'preliminary'], true)) {
+            return true;
+        }
+
+        // Din momentul în care medicul pornește consultația și până la concluzie,
+        // chatul e deschis pentru discuții.
+        if (! $consultationRequest->conclusion_sent_at && $consultationRequest->doctor_started_at) {
             return true;
         }
 
@@ -1102,7 +1417,7 @@ class WorkflowController extends Controller
 
     private function ensureSchedulable(array $validated, ?int $ignoreRequestId = null): void
     {
-        $scheduledAt = \Carbon\CarbonImmutable::parse($validated['scheduled_at']);
+        $scheduledAt = CarbonImmutable::parse($validated['scheduled_at']);
         abort_if($scheduledAt->isPast(), 422, 'Alegeți o dată/oră din viitor.');
 
         $providerId = $validated['doctor_id'] ?? $validated['operator_id'] ?? null;
@@ -1123,14 +1438,22 @@ class WorkflowController extends Controller
                 ->exists();
             abort_if($onVacation, 422, 'Medicul este în concediu în această perioadă.');
 
-            $hasAvailability = $provider->doctorAvailabilities()
-                ->where('weekday', $scheduledAt->dayOfWeek)
-                ->where('is_active', true)
-                ->whereTime('starts_at', '<=', $scheduledAt->format('H:i:s'))
-                ->whereTime('ends_at', '>=', $scheduledAt->addMinutes(30)->format('H:i:s'))
-                ->exists();
+            // Programul săptămânal e o restricție opțională, nu o condiție de
+            // existență: un medic care nu și-a configurat niciun interval rămâne
+            // programabil oricând. Comutatorul explicit e `is_available`, deja
+            // verificat mai sus — altfel am avea două semnale care se contrazic.
+            $hasSchedule = $provider->doctorAvailabilities()->where('is_active', true)->exists();
 
-            abort_unless($hasAvailability, 422, 'Medicul nu are program disponibil în acest interval.');
+            if ($hasSchedule) {
+                $fitsSchedule = $provider->doctorAvailabilities()
+                    ->where('weekday', $scheduledAt->dayOfWeek)
+                    ->where('is_active', true)
+                    ->whereTime('starts_at', '<=', $scheduledAt->format('H:i:s'))
+                    ->whereTime('ends_at', '>=', $scheduledAt->addMinutes(30)->format('H:i:s'))
+                    ->exists();
+
+                abort_unless($fitsSchedule, 422, 'Medicul nu are program disponibil în acest interval.');
+            }
         } else {
             abort_unless($provider->operatorProfile?->is_available, 422, 'Operatorul nu este disponibil în acest moment.');
         }
@@ -1203,7 +1526,7 @@ class WorkflowController extends Controller
 
             return response()->json([
                 'message' => 'Solicitarea a fost reatribuită sau, dacă nu mai există operatori, anulată cu refund.',
-                'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData'])),
+                'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
             ]);
         }
 
@@ -1371,6 +1694,7 @@ class WorkflowController extends Controller
             ])->save();
 
             $this->notifyOperatorAssignment($consultationRequest->refresh()->load(['patient', 'patientProfile', 'operator']));
+            $this->linkPatientToAssignedOperator($consultationRequest);
             $consultationRequest->patient?->notify(new AppEventNotification(
                 'Operator reasignat',
                 'Am reatribuit consultația ta către alt operator disponibil.',
@@ -1510,6 +1834,21 @@ class WorkflowController extends Controller
         return (int) app(PlatformConfig::class)->number($key, $default);
     }
 
+    /**
+     * HIGO cere ca pacientul să fie legat de operatorul care îl examinează, ca
+     * aparatul acelui operator să poată face examinarea. Pacientul e creat acolo
+     * fără legătură — la înregistrare nu se știe cine îl va vizita — deci o
+     * adăugăm acum, când operatorul tocmai a fost atribuit.
+     */
+    private function linkPatientToAssignedOperator(ConsultationRequest $item): void
+    {
+        $item->loadMissing(['patientProfile', 'operator']);
+
+        if ($item->patientProfile && $item->operator) {
+            dispatch(SyncHigoEntity::linkPatientToOperator($item->patientProfile, $item->operator));
+        }
+    }
+
     private function notifyRequestCreated(ConsultationRequest $item): void
     {
         $item->loadMissing(['patient', 'patientProfile', 'doctor', 'operator']);
@@ -1603,6 +1942,32 @@ class WorkflowController extends Controller
      * NT5 — doctor has work: fires only once both flags are set (awaiting_doctor),
      * in the R9.2 order (money in cabinet, anamnesis done, objective data done).
      */
+    /**
+     * Deschide conversația în momentul în care consultația ajunge la medic, ca
+     * el să poată discuta cu pacientul înainte de concluzie.
+     */
+    private function activateDoctorChat(ConsultationRequest $item): void
+    {
+        if (! app(ConsultationStateMachine::class)->readyForDoctor($item) || $item->conclusion_sent_at) {
+            return;
+        }
+
+        $conversation = Conversation::where('consultation_request_id', $item->id)->first();
+
+        if (! $conversation || $conversation->status === 'open') {
+            return;
+        }
+
+        $conversation->forceFill([
+            'doctor_id' => $conversation->doctor_id ?: $item->doctor_id,
+            'operator_id' => $conversation->operator_id ?: $item->operator_id,
+            'status' => 'open',
+            'starts_at' => $conversation->starts_at ?: now(),
+        ])->save();
+
+        ConversationUpdated::dispatch($conversation->refresh()->load(['patient', 'doctor', 'operator', 'messages.sender']));
+    }
+
     private function notifyDoctorReady(ConsultationRequest $item): void
     {
         if (! app(ConsultationStateMachine::class)->readyForDoctor($item)) {

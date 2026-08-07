@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Edit3, Image, Newspaper, Plus, Trash2 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
@@ -67,8 +67,8 @@ export function AdminBlogPage() {
     <div className="max-w-6xl space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Blog</h1>
-          <p className="mt-2 text-slate-500">Articolele publice și ciornele sunt afișate într-un singur tabel.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Noutăți</h1>
+          <p className="mt-2 text-slate-500">Articolele publicate și ciornele sunt afișate într-un singur tabel. Cele publicate apar pe site și în aplicație, pentru utilizatorii logați.</p>
         </div>
         <Button className="h-11 rounded-xl px-5" onClick={() => navigate('/admin/blog/new')}>
           <Plus className="mr-2 h-4 w-4" />

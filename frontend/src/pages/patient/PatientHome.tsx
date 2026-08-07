@@ -5,7 +5,9 @@ import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { useAuth } from '../../contexts/AuthContext';
+import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 import { apiRequest } from '../../lib/api';
+import { dateTime } from '../../lib/format';
 
 interface WalletData {
   wallet: {
@@ -52,6 +54,7 @@ const activeStatuses = ['new', 'accepted', 'rescheduled'];
 
 export function PatientHome() {
   const { user } = useAuth();
+  const { isEnabled } = useFeatureFlags();
   const navigate = useNavigate();
   const [wallet, setWallet] = useState<WalletData['wallet'] | null>(null);
   const [requests, setRequests] = useState<ConsultationRequest[]>([]);
@@ -87,8 +90,13 @@ export function PatientHome() {
   const balance = wallet?.balance ?? 0;
   const currency = wallet?.currency ?? 'MDL';
   const hasRequestablePatient = patientProfiles.some((profile) => profile.can_request_consultation);
+  const doctorsEnabled = isEnabled('doctors');
+  const operatorsEnabled = isEnabled('operators');
+  const paymentsEnabled = isEnabled('payments');
+  const affiliateEnabled = isEnabled('affiliate_program');
   const medicalStartPath = hasRequestablePatient ? '/patient/doctors' : '/patient/profile';
   const operatorStartPath = hasRequestablePatient ? '/patient/operators' : '/patient/profile';
+  const assistanceStartPath = doctorsEnabled ? medicalStartPath : operatorsEnabled ? operatorStartPath : '/patient/profile';
 
   const acceptProposal = async (requestId: string) => {
     await apiRequest(`/requests/${requestId}/accept-proposed-time`, { method: 'POST' });
@@ -111,25 +119,25 @@ export function PatientHome() {
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row md:flex-col lg:flex-row">
-              <Button size="lg" className="h-11 rounded-xl px-4" onClick={() => navigate(medicalStartPath)}>
+              {doctorsEnabled && <Button size="lg" className="h-11 rounded-xl px-4" onClick={() => navigate(medicalStartPath)}>
                 <Stethoscope className="mr-2 h-4 w-4" />
                 Medic
-              </Button>
-              <Button size="lg" variant="outline" className="h-11 rounded-xl px-4 bg-white" onClick={() => navigate(operatorStartPath)}>
+              </Button>}
+              {operatorsEnabled && <Button size="lg" variant="outline" className="h-11 rounded-xl px-4 bg-white" onClick={() => navigate(operatorStartPath)}>
                 <Users className="mr-2 h-4 w-4" />
                 Operator
-              </Button>
+              </Button>}
             </div>
           </div>
 
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            <MetricCard
+          <div className={`mt-6 grid gap-3 ${paymentsEnabled ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
+            {paymentsEnabled && <MetricCard
               label="Balanță"
               value={isLoading ? '...' : `${balance.toFixed(2)} ${currency}`}
               detail={balance >= 450 ? 'Disponibil pentru consultații' : 'Necesită alimentare'}
               icon={Wallet}
               tone="bg-blue-50 text-blue-700"
-            />
+            />}
             <MetricCard
               label="Solicitări active"
               value={isLoading ? '...' : String(activeRequests.length)}
@@ -162,15 +170,21 @@ export function PatientHome() {
               {nextRequest
                 ? `${nextRequest.type === 'operator' ? 'Examinare la domiciliu' : 'Consultație medicală'}: ${nextRequest.symptoms}`
                 : hasRequestablePatient
-                  ? 'Nu ai nicio consultație activă. Poți porni direct cu un medic sau poți cere o examinare la domiciliu.'
+                  ? doctorsEnabled && operatorsEnabled
+                    ? 'Nu ai nicio consultație activă. Poți porni direct cu un medic sau poți cere o examinare la domiciliu.'
+                    : doctorsEnabled
+                      ? 'Nu ai nicio consultație activă. Poți alege un medic disponibil.'
+                      : operatorsEnabled
+                        ? 'Nu ai nicio solicitare activă. Poți cere o examinare la domiciliu.'
+                        : 'Serviciile medicale noi sunt momentan indisponibile.'
                   : 'Nu poți solicita medic sau operator încă. Cumpără un pachet în Pacienții mei, apoi adaugă primul profil de pacient.'}
             </p>
             <Button
               className="mt-6 h-11 rounded-xl bg-white text-slate-950 hover:bg-slate-100"
-              onClick={() => navigate(nextRequest ? '/patient/chat' : medicalStartPath)}
+              onClick={() => navigate(nextRequest ? '/patient/chat' : assistanceStartPath)}
             >
               {nextRequest ? <MessageSquare className="mr-2 h-4 w-4" /> : <Stethoscope className="mr-2 h-4 w-4" />}
-              {nextRequest ? 'Deschide chat' : hasRequestablePatient ? 'Alege medic' : 'Deschide Pacienții mei'}
+              {nextRequest ? 'Deschide chat' : hasRequestablePatient ? doctorsEnabled ? 'Alege medic' : operatorsEnabled ? 'Alege operator' : 'Vezi pacienții' : 'Deschide Pacienții mei'}
             </Button>
           </CardContent>
         </Card>
@@ -184,10 +198,10 @@ export function PatientHome() {
                 <h2 className="text-lg font-bold text-slate-950">Acțiuni rapide</h2>
                 <p className="text-sm text-slate-500">Cele mai folosite fluxuri pentru pacient.</p>
               </div>
-              <Button variant="ghost" size="sm" className="rounded-lg" onClick={() => navigate('/patient/wallet')}>
+              {paymentsEnabled && <Button variant="ghost" size="sm" className="rounded-lg" onClick={() => navigate('/patient/wallet')}>
                 Portofel
                 <ArrowRight className="ml-1 h-4 w-4" />
-              </Button>
+              </Button>}
             </div>
 
             <div className="mt-5 grid gap-3">
@@ -197,24 +211,24 @@ export function PatientHome() {
                 icon={User}
                 onClick={() => navigate('/patient/profile')}
               />
-              <ActionRow
+              {affiliateEnabled && <ActionRow
                 title="Program de afiliere"
                 description="Copiază linkul personal, invită pacienți și urmărește bonusurile din portofel."
                 icon={Gift}
                 onClick={() => navigate('/patient/profile?tab=referrals')}
-              />
-              <ActionRow
+              />}
+              {doctorsEnabled && <ActionRow
                 title="Consultație online"
                 description="Alege medicul, specializarea și descrie simptomele."
                 icon={Stethoscope}
                 onClick={() => navigate(medicalStartPath)}
-              />
-              <ActionRow
+              />}
+              {operatorsEnabled && <ActionRow
                 title="Examinare la domiciliu"
                 description="Trimite o cerere către operatorii disponibili."
                 icon={Users}
                 onClick={() => navigate(operatorStartPath)}
-              />
+              />}
               <ActionRow
                 title="Chat medical"
                 description="Continuă conversațiile deschise cu medicul sau operatorul."
@@ -263,7 +277,7 @@ export function PatientHome() {
                     <p className="mt-1 line-clamp-1 text-sm text-slate-500">{request.symptoms}</p>
                     {request.proposed_scheduled_at && (
                       <p className="mt-1 text-xs font-medium text-amber-700">
-                        Propus: {new Date(request.proposed_scheduled_at).toLocaleString()}
+                        Propus: {dateTime(request.proposed_scheduled_at)}
                       </p>
                     )}
                   </div>

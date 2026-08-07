@@ -6,6 +6,7 @@ use App\Models\HigoSyncLog;
 use Illuminate\Cache\Repository;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
@@ -229,8 +230,15 @@ class HigoClient
             return;
         }
 
+        // Mesajul excepției trunchiază corpul răspunsului, iar tocmai acolo stă
+        // motivul refuzului (OperationOutcome). Fără el, o eroare de la ei e
+        // imposibil de diagnosticat.
+        $response = $exception instanceof RequestException ? $exception->response : null;
+
         $log->update([
             'status' => 'failed',
+            'http_status' => $response?->status(),
+            'response_payload' => $response ? HigoSyncLog::redactPayload($response->json()) : null,
             'error_message' => $exception->getMessage(),
             'finished_at' => now(),
         ]);

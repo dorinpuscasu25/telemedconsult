@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { AlertCircle, CheckCircle2, Clock, FileText, MessageSquare, Microscope, Video } from 'lucide-react';
+import { Activity, AlertCircle, CheckCircle2, Clock, FileText, MessageSquare, Microscope, Stethoscope, Video } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Avatar, AvatarFallback } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
@@ -19,6 +19,14 @@ import { Label } from '../../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Textarea } from '../../components/ui/textarea';
 import { apiRequest } from '../../lib/api';
+import { dateTime } from '../../lib/format';
+import {
+  PatientChart,
+  type ExamMediaItem,
+  type InvestigationSummary,
+  type ObjectiveDataEntry,
+  type PatientProfileSummary
+} from '../../components/PatientChart';
 
 interface ConsultationRequest {
   id: string;
@@ -39,6 +47,14 @@ interface ConsultationRequest {
   scheduled_at?: string | null;
   proposed_scheduled_at?: string | null;
   consultation_kind?: string;
+  patient_profile?: PatientProfileSummary | null;
+  objective_data?: ObjectiveDataEntry[];
+  exam_media?: ExamMediaItem[];
+  investigations?: InvestigationSummary[];
+  anamnesis_completed_at?: string | null;
+  objective_data_completed_at?: string | null;
+  ready_for_doctor?: boolean;
+  doctor_started_at?: string | null;
   }
 
 export function ConsultationsPage() {
@@ -46,7 +62,9 @@ export function ConsultationsPage() {
   const [requests, setRequests] = useState<ConsultationRequest[]>([]);
   const [selectedRequest, setSelectedRequest] = useState<ConsultationRequest | null>(null);
   const [isExamModalOpen, setIsExamModalOpen] = useState(false);
+  const [chartRequest, setChartRequest] = useState<ConsultationRequest | null>(null);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [examData, setExamData] = useState({
     diagnosis: '',
@@ -77,28 +95,60 @@ export function ConsultationsPage() {
     setIsExamModalOpen(true);
   };
 
+  /**
+   * Ca și la operator: erorile serverului trebuie să ajungă la utilizator, iar
+   * lista să se reîmprospăteze după fiecare acțiune. Fără asta, un refuz al
+   * backendului părea că butonul pur și simplu nu face nimic.
+   */
+  const runAction = async (action: () => Promise<unknown>, successMessage: string) => {
+    setError('');
+    setMessage('');
+
+    try {
+      await action();
+      setMessage(successMessage);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Acțiunea nu a putut fi finalizată.');
+    } finally {
+      loadRequests();
+    }
+  };
+
+  const startConsultation = async (request: ConsultationRequest) => {
+    await runAction(
+      () => apiRequest(`/requests/${request.id}/start`, { method: 'POST' }),
+      'Consultație pornită. Chatul cu pacientul este deschis.'
+    );
+  };
+
   const acceptRequest = async (request: ConsultationRequest) => {
-    await apiRequest(`/requests/${request.id}/accept`, { method: 'POST' });
-    loadRequests();
+    await runAction(
+      () => apiRequest(`/requests/${request.id}/accept`, { method: 'POST' }),
+      'Solicitare acceptată.'
+    );
   };
 
   const rejectRequest = async (request: ConsultationRequest) => {
     if (!window.confirm('Respingi solicitarea și returnezi banii pacientului?')) return;
-    await apiRequest(`/requests/${request.id}/reject`, {
-      method: 'POST',
-      body: JSON.stringify({ reason: 'Solicitare respinsă de medic.' })
-    });
-    loadRequests();
+    await runAction(
+      () => apiRequest(`/requests/${request.id}/reject`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: 'Solicitare respinsă de medic.' })
+      }),
+      'Solicitare respinsă, banii au fost returnați.'
+    );
   };
 
   const proposeTime = async (request: ConsultationRequest) => {
     const value = window.prompt('Propune o dată/oră nouă (format: YYYY-MM-DD HH:mm)');
     if (!value) return;
-    await apiRequest(`/requests/${request.id}/propose-time`, {
-      method: 'POST',
-      body: JSON.stringify({ scheduled_at: value.replace(' ', 'T') })
-    });
-    loadRequests();
+    await runAction(
+      () => apiRequest(`/requests/${request.id}/propose-time`, {
+        method: 'POST',
+        body: JSON.stringify({ scheduled_at: value.replace(' ', 'T') })
+      }),
+      'Oră nouă propusă pacientului.'
+    );
   };
 
   const completeRequest = async () => {
@@ -122,28 +172,28 @@ export function ConsultationsPage() {
   const addMeetLink = async (request: ConsultationRequest) => {
     const meetLink = window.prompt('Lipește linkul Google Meet');
     if (!meetLink) return;
-    await apiRequest(`/requests/${request.id}/meet-link`, {
+    await runAction(() => apiRequest(`/requests/${request.id}/meet-link`, {
       method: 'POST',
       body: JSON.stringify({ meet_link: meetLink, scheduled_at: request.scheduled_at || null })
-    });
-    loadRequests();
+    }), 'Link Meet adăugat.');
   };
 
   const requestInvestigation = async (request: ConsultationRequest) => {
     const title = window.prompt('Ce investigație suplimentară soliciți?');
     if (!title) return;
     const notes = window.prompt('Note pentru pacient/operator (opțional)') || '';
-    await apiRequest(`/requests/${request.id}/additional-investigation`, {
+    await runAction(() => apiRequest(`/requests/${request.id}/additional-investigation`, {
       method: 'POST',
       body: JSON.stringify({ title, notes })
-    });
-    loadRequests();
+    }), 'Investigație suplimentară solicitată.');
   };
 
   const requestsByStatus = (status: string) => requests.filter((request) => status === 'new' ? ['new', 'rescheduled'].includes(request.status) : request.status === status);
 
   const RequestCard = ({ request, index, variant }: { request: ConsultationRequest; index: number; variant: 'new' | 'accepted' | 'completed' }) => {
-    const patientName = request.patient?.name || 'Pacient';
+    // Titularul contului nu e pacientul: consultația e pentru profilul ales la
+    // programare, iar numele lui e cel pe care îl caută și operatorul în HIGO.
+    const patientName = request.patient_profile?.name || request.patient?.name || 'Pacient';
     const border = variant === 'new' ? 'border-l-amber-500' : variant === 'accepted' ? 'border-l-green-500' : 'border-l-slate-300';
     return (
       <motion.div
@@ -165,16 +215,16 @@ export function ConsultationsPage() {
                   {variant === 'completed' && <Badge variant="secondary" className="bg-slate-100 text-slate-500"><CheckCircle2 className="w-3 h-3 mr-1" /> Finalizat</Badge>}
                 </div>
                 <p className="text-sm text-slate-500 mb-2">
-                  {request.specialty || 'Consultație'} • {new Date(request.created_at).toLocaleString()}
+                  {request.specialty || 'Consultație'} • {dateTime(request.created_at)}
                 </p>
                 {request.scheduled_at && (
                   <p className="mb-2 text-sm font-medium text-slate-700">
-                    Programat: {new Date(request.scheduled_at).toLocaleString()}
+                    Programat: {dateTime(request.scheduled_at)}
                   </p>
                 )}
                 {request.proposed_scheduled_at && (
                   <p className="mb-2 text-sm font-medium text-amber-700">
-                    Propus: {new Date(request.proposed_scheduled_at).toLocaleString()}
+                    Propus: {dateTime(request.proposed_scheduled_at)}
                   </p>
                 )}
                 <div className="mb-2 flex flex-wrap gap-2 text-xs">
@@ -195,9 +245,27 @@ export function ConsultationsPage() {
                 <p className="text-slate-700 bg-slate-50 p-3 rounded-lg text-sm border border-slate-100 whitespace-pre-wrap">
                   {request.symptoms || request.triage_notes || 'Fără detalii.'}
                 </p>
+                {request.consultation_kind === 'with_exam' && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                    <Badge
+                      variant="outline"
+                      className={`rounded-full ${request.objective_data_completed_at ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                      <Activity className="mr-1 h-3 w-3" />
+                      Date obiective {request.objective_data_completed_at ? '✓' : 'în așteptare'}
+                    </Badge>
+                    {(request.objective_data ?? []).some((entry) => entry.from_device) && (
+                      <Badge variant="outline" className="rounded-full border-sky-200 bg-sky-50 text-sky-700">
+                        Aparat HIGO
+                      </Badge>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex flex-col gap-2 w-full md:w-auto shrink-0">
+              <Button onClick={() => setChartRequest(request)} variant="outline" className="rounded-xl">
+                <Stethoscope className="mr-2 h-4 w-4" /> Fișa pacientului
+              </Button>
               {variant === 'new' && (
                 <>
                   <Button onClick={() => acceptRequest(request)} className="rounded-xl bg-gradient-to-r from-primary to-purple-600 border-0">
@@ -216,6 +284,13 @@ export function ConsultationsPage() {
               )}
               {variant === 'accepted' && (
                 <>
+                  {request.ready_for_doctor && !request.doctor_started_at && (
+                    <Button
+                      onClick={() => startConsultation(request)}
+                      className="rounded-xl bg-gradient-to-r from-primary to-purple-600 border-0">
+                      <Stethoscope className="mr-2 h-4 w-4" /> Începe consultația
+                    </Button>
+                  )}
                   <Button asChild variant="outline" className="rounded-xl border-primary text-primary hover:bg-primary/5">
                     <Link to="/doctor/chat"><MessageSquare className="mr-2 h-4 w-4" /> Chat</Link>
                   </Button>
@@ -253,6 +328,13 @@ export function ConsultationsPage() {
         <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">Consultații</h1>
         <p className="text-slate-500">Gestionează solicitările reale de la pacienți.</p>
       </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      )}
+      {message && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div>
+      )}
 
       <Tabs defaultValue="new" className="w-full">
         <TabsList className="grid w-full max-w-md grid-cols-3 bg-white/50 backdrop-blur-sm p-1 rounded-xl mb-6">
@@ -294,13 +376,16 @@ export function ConsultationsPage() {
           {selectedRequest && (
             <div className="py-4 space-y-6">
               {error && <div className="flex items-center rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"><AlertCircle className="mr-2 h-4 w-4" /> {error}</div>}
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className="font-bold text-slate-900">{selectedRequest.patient?.name}</h4>
-                  <span className="text-xs text-slate-500">{selectedRequest.specialty}</span>
-                </div>
-                <p className="text-sm text-slate-700 italic whitespace-pre-wrap">"{selectedRequest.symptoms}"</p>
-              </div>
+              <PatientChart
+                profile={selectedRequest.patient_profile}
+                symptoms={selectedRequest.symptoms}
+                triageNotes={selectedRequest.triage_notes}
+                objectiveData={selectedRequest.objective_data}
+                examMedia={selectedRequest.exam_media}
+                investigations={selectedRequest.investigations}
+                anamnesisCompletedAt={selectedRequest.anamnesis_completed_at}
+                objectiveDataCompletedAt={selectedRequest.objective_data_completed_at}
+              />
 
               <div className="space-y-4">
                 <div className="space-y-2">
@@ -357,6 +442,51 @@ export function ConsultationsPage() {
                 {isSaving ? 'Se salvează...' : 'Finalizează'}
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(chartRequest)} onOpenChange={(open) => !open && setChartRequest(null)}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-2xl">Fișa pacientului</DialogTitle>
+            <DialogDescription>
+              Ce a declarat pacientul și ce a măsurat operatorul la domiciliu.
+            </DialogDescription>
+          </DialogHeader>
+
+          {chartRequest && (
+            <div className="py-2">
+              <PatientChart
+                profile={chartRequest.patient_profile}
+                symptoms={chartRequest.symptoms}
+                triageNotes={chartRequest.triage_notes}
+                objectiveData={chartRequest.objective_data}
+                examMedia={chartRequest.exam_media}
+                investigations={chartRequest.investigations}
+                anamnesisCompletedAt={chartRequest.anamnesis_completed_at}
+                objectiveDataCompletedAt={chartRequest.objective_data_completed_at}
+              />
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button asChild variant="outline" className="rounded-xl">
+              <Link to="/doctor/chat">
+                <MessageSquare className="mr-2 h-4 w-4" /> Întreabă pacientul
+              </Link>
+            </Button>
+            {chartRequest?.ready_for_doctor && (
+              <Button
+                onClick={() => {
+                  const request = chartRequest;
+                  setChartRequest(null);
+                  openExam(request);
+                }}
+                className="rounded-xl bg-slate-900 text-white">
+                <FileText className="mr-2 h-4 w-4" /> Finalizează
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

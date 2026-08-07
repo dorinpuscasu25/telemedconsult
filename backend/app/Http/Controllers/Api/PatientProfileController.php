@@ -3,21 +3,23 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\SyncHigoEntity;
 use App\Models\Consultation;
 use App\Models\ConsultationRequest;
 use App\Models\Locality;
 use App\Models\MedicalDocument;
 use App\Models\PatientCardPackage;
-use App\Models\Region;
 use App\Models\PatientCardPurchase;
 use App\Models\PatientFamilyMember;
 use App\Models\PatientInvestigation;
 use App\Models\PatientProfile;
+use App\Models\Region;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use App\Rules\ValidPhoneNumber;
 use App\Services\FeatureFlags;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -71,9 +73,7 @@ class PatientProfileController extends Controller
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:50'],
-            'telegram_chat_id' => ['nullable', 'string', 'max:100'],
-            'identity_number' => ['nullable', 'string', 'max:32'],
+            'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber],
             'birth_date' => ['nullable', 'date'],
             'gender' => ['nullable', Rule::in(['M', 'F', 'Altul'])],
             'address' => ['nullable', 'string', 'max:255'],
@@ -81,16 +81,16 @@ class PatientProfileController extends Controller
             'medical_summary' => ['nullable', 'string', 'max:4000'],
         ]);
 
+        // Legătura cu Telegram se face din pagina dedicată (deep-link + bot), nu
+        // din acest formular: altfel fiecare salvare de cont ar deconecta botul.
         $user->forceFill([
             'name' => $validated['name'],
             'phone' => $validated['phone'] ?? null,
-            'telegram_chat_id' => $validated['telegram_chat_id'] ?? null,
         ])->save();
 
         $profile = $user->patientProfile;
         if ($profile) {
             $profile->update([
-                'identity_number' => $validated['identity_number'] ?? null,
                 'birth_date' => $validated['birth_date'] ?? null,
                 'gender' => $validated['gender'] ?? null,
                 'address' => $validated['address'] ?? null,
@@ -134,6 +134,8 @@ class PatientProfileController extends Controller
             ]);
         });
 
+        dispatch(SyncHigoEntity::forEntity($profile));
+
         return response()->json([
             'message' => 'Profil pacient creat.',
             'patient_profile' => $profile,
@@ -145,6 +147,8 @@ class PatientProfileController extends Controller
         abort_unless($patientProfile->user_id === $request->user()->id || $request->user()->hasRole('admin'), 403);
 
         $patientProfile->update($this->validatePatientProfile($request, false));
+
+        dispatch(SyncHigoEntity::forEntity($patientProfile->refresh()));
 
         return response()->json([
             'message' => 'Profil pacient actualizat.',
@@ -342,7 +346,6 @@ class PatientProfileController extends Controller
             'type' => ['required', 'string', 'max:50'],
             'age' => ['nullable', 'integer', 'min:0', 'max:120'],
             'relation' => ['nullable', 'string', 'max:100'],
-            'identity_number' => ['nullable', 'string', 'max:32'],
         ]);
     }
 
@@ -353,7 +356,6 @@ class PatientProfileController extends Controller
         $validated = $request->validate([
             'first_name' => [$required, 'string', 'max:255'],
             'last_name' => [$required, 'string', 'max:255'],
-            'identity_number' => [$required, 'string', 'max:32'],
             'birth_date' => ['nullable', 'date'],
             'gender' => ['nullable', Rule::in(['M', 'F', 'Altul'])],
             'country' => [$required, 'string', 'max:100'],
@@ -403,8 +405,7 @@ class PatientProfileController extends Controller
         return $profile->status === 'active'
             && ($profile->active_until === null || $profile->active_until->isFuture())
             && filled($profile->first_name)
-            && filled($profile->last_name)
-            && filled($profile->identity_number);
+            && filled($profile->last_name);
     }
 
     private function requestUnavailableReason(PatientProfile $profile): ?string
@@ -417,7 +418,7 @@ class PatientProfileController extends Controller
             return 'Cartela profilului a expirat.';
         }
 
-        if (! filled($profile->first_name) || ! filled($profile->last_name) || ! filled($profile->identity_number)) {
+        if (! filled($profile->first_name) || ! filled($profile->last_name)) {
             return 'Profilul este incomplet.';
         }
 

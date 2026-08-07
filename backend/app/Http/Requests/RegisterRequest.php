@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Rules\ValidPhoneNumber;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -17,7 +18,14 @@ class RegisterRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'phone' => ['nullable', 'string', 'max:50'],
+            'phone' => [
+                'nullable',
+                'required_if:account_type,doctor',
+                'required_if:account_type,operator',
+                'string',
+                'max:50',
+                new ValidPhoneNumber,
+            ],
             'telegram_chat_id' => ['nullable', 'string', 'max:100'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'account_type' => ['required', Rule::in(['patient', 'doctor', 'operator'])],
@@ -50,6 +58,7 @@ class RegisterRequest extends FormRequest
             'password.min' => 'Parola trebuie să aibă minim 8 caractere.',
             'password.confirmed' => 'Parolele introduse nu coincid.',
             'specialty_id.required_if' => 'Alegeți specialitatea.',
+            'phone.required_if' => 'Introduceți numărul de telefon.',
             'region.required_if' => 'Alegeți regiunea din catalog.',
             'region.exists' => 'Regiunea selectată nu există în catalog.',
             'referral_code.exists' => 'Linkul de afiliere este invalid sau nu mai este disponibil.',

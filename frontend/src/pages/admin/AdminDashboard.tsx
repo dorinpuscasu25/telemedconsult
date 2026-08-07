@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Activity, ShieldCheck, Stethoscope, UserCog, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -23,8 +23,10 @@ export function AdminDashboard() {
   const [integrations, setIntegrations] = useState<IntegrationStatus | null>(null);
 
   useEffect(() => {
-    apiRequest<Summary>('/admin/summary').then(setSummary);
-    apiRequest<IntegrationStatus>('/integrations/status', { auth: false }).then(setIntegrations);
+    apiRequest<Summary>('/admin/summary').then(setSummary).catch(() => setSummary(null));
+    apiRequest<IntegrationStatus>('/integrations/status', { auth: false })
+      .then(setIntegrations)
+      .catch(() => setIntegrations(null));
   }, []);
 
   const stats = [

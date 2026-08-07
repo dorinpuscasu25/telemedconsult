@@ -53,6 +53,7 @@ class OperatorProfile extends Model
     protected function casts(): array
     {
         return [
+            'higo_password' => 'encrypted',
             'equipment' => 'array',
             'served_areas' => 'array',
             'travel_fees' => 'array',

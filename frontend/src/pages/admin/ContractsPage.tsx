@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Bold, Download, Edit, FileText, Italic, Plus, Underline } from 'lucide-react';
 import { Button } from '../../components/ui/button';
@@ -14,6 +14,7 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
 import { apiRequest } from '../../lib/api';
+import { dateTime } from '../../lib/format';
 
 interface Contract {
   id: number;
@@ -33,7 +34,9 @@ export function ContractsPage() {
   const [editType, setEditType] = useState('general');
 
   const loadContracts = () => {
-    apiRequest<{data: Contract[]}>('/admin/contracts').then((response) => setContracts(response.data));
+    apiRequest<{data: Contract[]}>('/admin/contracts')
+      .then((response) => setContracts(response.data ?? []))
+      .catch(() => setContracts([]));
   };
 
   useEffect(() => {
@@ -116,7 +119,7 @@ export function ContractsPage() {
                   </div>
                   <div>
                     <CardTitle className="text-lg leading-tight">{contract.title}</CardTitle>
-                    <CardDescription>Actualizat: {new Date(contract.lastUpdated).toLocaleString()}</CardDescription>
+                    <CardDescription>Actualizat: {dateTime(contract.lastUpdated)}</CardDescription>
                   </div>
                 </div>
               </CardHeader>

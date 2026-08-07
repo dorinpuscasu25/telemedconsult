@@ -14,10 +14,20 @@ use App\Models\PlatformSetting;
 use App\Models\Region;
 use App\Models\Specialty;
 use App\Services\FeatureFlags;
+use App\Services\ObjectiveDataSchema;
 use Illuminate\Http\JsonResponse;
 
 class CatalogController extends Controller
 {
+    /**
+     * Vocabularul datelor obiective, ca formularul operatorului să se genereze
+     * din aceeași definiție folosită la validare și la maparea payload-urilor HIGO.
+     */
+    public function objectiveFields(): JsonResponse
+    {
+        return response()->json(['data' => ObjectiveDataSchema::catalog()]);
+    }
+
     public function specialties(): JsonResponse
     {
         return response()->json(['data' => Specialty::orderBy('name')->get()]);
@@ -69,6 +79,10 @@ class CatalogController extends Controller
 
     public function operators(): JsonResponse
     {
+        if (! app(FeatureFlags::class)->enabled('operators')) {
+            return response()->json(['data' => []]);
+        }
+
         $examPrice = $this->settingNumber('operator_exam_price', 250);
         $operators = OperatorProfile::with('user')
             ->where('is_approved', true)

@@ -16,6 +16,7 @@ use App\Models\Specialty;
 use App\Models\User;
 use App\Models\WithdrawalRequest;
 use App\Notifications\AppEventNotification;
+use App\Rules\ValidPhoneNumber;
 use App\Services\PlatformConfig;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -60,7 +61,7 @@ class DoctorOperationsController extends Controller
             ->avg();
 
         $pendingRequests = ConsultationRequest::query()
-            ->with(['patient', 'specialty'])
+            ->with(['patient', 'patientProfile', 'specialty'])
             ->where('type', 'doctor')
             ->where('status', 'new')
             ->where(function ($query) use ($doctor) {
@@ -88,6 +89,13 @@ class DoctorOperationsController extends Controller
                     'id' => (string) $item->patient->id,
                     'name' => $item->patient->name,
                     'email' => $item->patient->email,
+                ] : null,
+                // Titularul contului nu e pacientul: consultația e pentru
+                // profilul ales la programare, deci el dă numele afișat.
+                'patient_profile' => $item->patientProfile ? [
+                    'id' => (string) $item->patientProfile->id,
+                    'name' => $item->patientProfile->display_name,
+                    'patient_code' => $item->patientProfile->patient_code,
                 ] : null,
                 'specialty' => $item->specialty?->name,
                 'symptoms' => $item->symptoms,
@@ -128,7 +136,7 @@ class DoctorOperationsController extends Controller
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:50'],
+            'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber],
             'specialty_id' => ['nullable', Rule::exists('specialties', 'id')],
             'license_number' => ['nullable', 'string', 'max:255'],
             'bio' => ['nullable', 'string', 'max:4000'],

@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Referral;
-use App\Services\PlatformConfig;
+use App\Models\ReferralCommission;
 use App\Services\ReferralProgram;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,29 +23,49 @@ class ReferralController extends Controller
             ->latest()
             ->get();
 
-        $rewarded = $referrals->where('status', Referral::STATUS_REWARDED);
+        $commissions = ReferralCommission::where('referrer_id', $user->id)->get();
         $frontendUrl = rtrim((string) config('app.frontend_url', config('app.url')), '/');
+
+        // Un invitat devine "activ" din momentul în care a generat cel puțin un
+        // comision, adică a făcut cel puțin o alimentare confirmată.
+        $earningReferralIds = $commissions->pluck('referral_id')->unique();
 
         return response()->json([
             'enabled' => $program->enabled(),
             'code' => $code,
             'referral_link' => $frontendUrl.'/register?ref='.$code,
-            'reward_amount' => max(0, app(PlatformConfig::class)->number(ReferralProgram::REWARD_SETTING, 0)),
+            'commission_rate' => $program->ratePercent(),
+            'minimum_topup' => $program->minimumAmount(),
+            'first_deposit_only' => $program->firstDepositOnly(),
             'currency' => 'MDL',
-            'rules' => app(PlatformConfig::class)->get(ReferralProgram::RULES_SETTING),
+            'rules' => $program->rules(),
             'stats' => [
                 'invited_count' => $referrals->count(),
-                'rewarded_count' => $rewarded->count(),
-                'pending_count' => $referrals->where('status', Referral::STATUS_PENDING)->count(),
-                'earned_total' => $rewarded->sum('reward_amount_minor') / 100,
+                'active_count' => $earningReferralIds->count(),
+                'pending_count' => $referrals->whereNotIn('id', $earningReferralIds->all())->count(),
+                'earned_total' => $commissions->sum('commission_amount_minor') / 100,
+                'commission_count' => $commissions->count(),
             ],
-            'latest_referrals' => $referrals->take(10)->map(fn (Referral $referral) => [
-                'id' => $referral->id,
-                'name' => $this->maskedName($referral->referredUser?->name),
-                'email' => $this->maskedEmail($referral->referredUser?->email),
-                'status' => $referral->status,
-                'reward_amount' => $referral->status === Referral::STATUS_REWARDED ? $referral->reward_amount_minor / 100 : 0,
-                'created_at' => $referral->created_at,
+            'latest_referrals' => $referrals->take(10)->map(function (Referral $referral) use ($commissions) {
+                $own = $commissions->where('referral_id', $referral->id);
+
+                return [
+                    'id' => $referral->id,
+                    'name' => $this->maskedName($referral->referredUser?->name),
+                    'email' => $this->maskedEmail($referral->referredUser?->email),
+                    'status' => $own->isNotEmpty() ? 'earning' : 'waiting_topup',
+                    'earned_total' => $own->sum('commission_amount_minor') / 100,
+                    'commission_count' => $own->count(),
+                    'created_at' => $referral->created_at,
+                ];
+            })->values(),
+            'latest_commissions' => $commissions->sortByDesc('created_at')->take(10)->map(fn (ReferralCommission $commission) => [
+                'id' => $commission->id,
+                'deposit_amount' => $commission->deposit_amount_minor / 100,
+                'commission_amount' => $commission->commission_amount_minor / 100,
+                'rate_percent' => $commission->rate_percent,
+                'currency' => $commission->currency,
+                'created_at' => $commission->created_at,
             ])->values(),
         ]);
     }

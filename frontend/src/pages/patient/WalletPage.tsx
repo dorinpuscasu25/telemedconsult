@@ -28,6 +28,7 @@ import {
   TableRow
 } from '../../components/ui/table';
 import { apiRequest } from '../../lib/api';
+import { dateTime, money, num } from '../../lib/format';
 
 interface WalletData {
   wallet: {
@@ -58,7 +59,7 @@ export function WalletPage() {
   const [error, setError] = useState('');
 
   const loadWallet = () => {
-    apiRequest<WalletData>('/wallet').then(setWalletData);
+    apiRequest<WalletData>('/wallet').then(setWalletData).catch(() => setWalletData(null));
   };
 
   useEffect(() => {
@@ -197,15 +198,15 @@ export function WalletPage() {
                 )}
                 {transactions.map((tx) => (
                   <TableRow key={tx.id} className="border-slate-200/50 hover:bg-slate-50/50">
-                    <TableCell className="text-slate-500">{new Date(tx.date).toLocaleString()}</TableCell>
+                    <TableCell className="text-slate-500">{dateTime(tx.date)}</TableCell>
                     <TableCell className="font-medium text-slate-900 flex items-center">
                       <div className={`h-8 w-8 rounded-full flex items-center justify-center mr-3 ${tx.amount > 0 ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-600'}`}>
                         {tx.amount > 0 ? <ArrowDownRight className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
                       </div>
                       {displayTransactionType(tx.type)}
                     </TableCell>
-                    <TableCell className={`text-right font-bold ${tx.amount > 0 ? 'text-green-600' : 'text-slate-900'}`}>
-                      {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)} MDL
+                    <TableCell className={`text-right font-bold ${num(tx.amount) > 0 ? 'text-green-600' : 'text-slate-900'}`}>
+                      {num(tx.amount) > 0 ? '+' : ''}{money(tx.amount)} MDL
                     </TableCell>
                   </TableRow>
                 ))}

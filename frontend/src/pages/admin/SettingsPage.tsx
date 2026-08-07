@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { BarChart3, Gift, Settings } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { BarChart3, Gift, Settings, Wallet } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
@@ -29,8 +29,12 @@ const defaultSettings: SettingsMap = {
   'rate.bank_transaction': 3.2,
   'rate.affiliate_doctor_topup': 5,
   'rate.affiliate_operator': 6,
-  'affiliate.patient_registration_reward': 0,
-  'affiliate.patient_registration_rules': 'Invită o persoană folosind linkul tău personal. Bonusul afișat se rezervă la înregistrare și intră în portofelul tău după ce noul pacient își confirmă emailul. Se acordă un singur bonus pentru fiecare pacient nou. Conturile proprii, duplicate sau frauduloase nu sunt eligibile. Bonusul este credit de platformă și poate fi folosit pentru serviciile disponibile pe telemedconsult.md.',
+  'rate.affiliate_patient_topup': 10,
+  'affiliate.patient_topup_min_amount': 0,
+  'affiliate.patient_topup_first_only': false,
+  'affiliate.patient_registration_rules': 'Invită o persoană folosind linkul tău personal. Când persoana invitată alimentează portofelul, primești automat procentul afișat mai sus din suma alimentată, direct în portofelul tău. Comisionul se acordă doar pentru plăți confirmate, nu la simpla înregistrare. Conturile proprii, duplicate sau frauduloase nu sunt eligibile. Comisionul este credit de platformă și poate fi folosit pentru serviciile disponibile pe telemedconsult.md.',
+  'wallet.registration_bonus_enabled': false,
+  'wallet.registration_bonus': 0,
   minimum_consultation_price: 500,
   operator_exam_price: 250,
   'chat.free_days': 3,
@@ -54,7 +58,11 @@ const settingLabels: Record<string, string> = {
   'rate.bank_transaction': 'Comision tranzacție bancară (%)',
   'rate.affiliate_doctor_topup': 'Afiliere medic la alimentare (%)',
   'rate.affiliate_operator': 'Afiliere operator (%)',
-  'affiliate.patient_registration_reward': 'Bonus fix pentru pacient verificat (MDL)',
+  'rate.affiliate_patient_topup': 'Comision afiliere pacient la alimentare (%)',
+  'wallet.registration_bonus': 'Bonus de bun-venit (MDL)',
+  'wallet.registration_bonus_enabled': 'Acordă bonus la înregistrare',
+  'affiliate.patient_topup_min_amount': 'Alimentare minimă eligibilă (MDL)',
+  'affiliate.patient_topup_first_only': 'Comision doar la prima alimentare',
   'chat.free_days': 'Zile chat gratuit',
   'chat.reactivation_price': 'Preț reactivare chat',
   'chat.reactivation_hours': 'Ore reactivare chat',
@@ -75,7 +83,8 @@ const commissionSettingKeys = [
   'rate.bank_guarantee',
   'rate.bank_transaction',
   'rate.affiliate_doctor_topup',
-  'rate.affiliate_operator'
+  'rate.affiliate_operator',
+  'rate.affiliate_patient_topup'
 ];
 
 const workflowSettingKeys = [
@@ -104,13 +113,17 @@ export function SettingsPage() {
   const [settings, setSettings] = useState<SettingsMap>(defaultSettings);
   const [topDoctors, setTopDoctors] = useState<TopDoctor[]>([]);
   const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   const loadAll = () => {
-    apiRequest<{data: SettingsMap}>('/admin/settings').then((response) => {
-      setSettings({ ...defaultSettings, ...response.data });
-    });
-    apiRequest<{data: TopDoctor[]}>('/admin/top-doctors').then((response) => setTopDoctors(response.data ?? []));
+    setError('');
+    apiRequest<{data: SettingsMap}>('/admin/settings')
+      .then((response) => setSettings({ ...defaultSettings, ...(response.data ?? {}) }))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Nu am putut încărca setările.'));
+    apiRequest<{data: TopDoctor[]}>('/admin/top-doctors')
+      .then((response) => setTopDoctors(response.data ?? []))
+      .catch(() => setTopDoctors([]));
   };
 
   useEffect(() => {
@@ -123,6 +136,7 @@ export function SettingsPage() {
 
   const saveSettings = async () => {
     setMessage('');
+    setError('');
     setIsSaving(true);
     try {
       await apiRequest('/admin/settings', {
@@ -131,12 +145,26 @@ export function SettingsPage() {
           settings: Object.entries(settings).map(([key, value]) => ({
             key,
             value,
-            type: typeof value === 'boolean' ? 'boolean' : typeof value === 'number' ? 'number' : 'string'
+            // Setările structurate (de ex. regulile de mapare HIGO, editate din
+            // alt panou) trec pe aici la fiecare salvare: fără `json` și-ar
+            // pierde tipul și ar apărea ca text.
+            type:
+              typeof value === 'boolean'
+                ? 'boolean'
+                : typeof value === 'number'
+                  ? 'number'
+                  : value !== null && typeof value === 'object'
+                    ? 'json'
+                    : 'string'
           }))
         })
       });
       setMessage('Setări salvate.');
       loadAll();
+    } catch (err) {
+      // Fără acest catch, un 422 de validare (de ex. procent peste 100) dispărea
+      // în silence: mesajul de succes nu apărea și nimic nu explica de ce.
+      setError(err instanceof Error ? err.message : 'Nu am putut salva setările.');
     } finally {
       setIsSaving(false);
     }
@@ -176,15 +204,67 @@ export function SettingsPage() {
 
         <Card className="glass-card border-0 lg:col-span-2">
           <CardHeader>
+            <CardTitle className="flex items-center"><Wallet className="mr-2 h-5 w-5 text-primary" /> Bonus de bun-venit</CardTitle>
+            <CardDescription>
+              Suma se creditează automat în portofelul utilizatorului nou, o singură dată, la confirmarea emailului —
+              nu la crearea contului, ca să nu se poată acumula bonusuri cu adrese inventate. Se acordă doar conturilor
+              de utilizator; medicii și operatorii nu primesc.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-white/50 p-4">
+              <Label className="pr-3 text-sm leading-5">
+                {settingLabel('wallet.registration_bonus_enabled')}
+                <span className="mt-1 block text-xs font-normal text-slate-500">
+                  Dezactivat = niciun bonus, indiferent de sumă.
+                </span>
+              </Label>
+              <Switch
+                checked={Boolean(settings['wallet.registration_bonus_enabled'])}
+                onCheckedChange={(value) => update('wallet.registration_bonus_enabled', value)}
+              />
+            </div>
+            <NumberField
+              label={settingLabel('wallet.registration_bonus')}
+              value={Number(settings['wallet.registration_bonus'])}
+              onChange={(value) => update('wallet.registration_bonus', value)}
+            />
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card border-0 lg:col-span-2">
+          <CardHeader>
             <CardTitle className="flex items-center"><Gift className="mr-2 h-5 w-5 text-primary" /> Program de afiliere pacienți</CardTitle>
-            <CardDescription>Suma este rezervată când pacientul se înregistrează și intră în portofelul celui care l-a invitat după confirmarea emailului.</CardDescription>
+            <CardDescription>
+              Cel care invită primește procentul de mai jos din fiecare sumă alimentată în portofel de persoana invitată.
+              Comisionul se acordă doar la plăți confirmate, iar cota folosită se salvează ca snapshot pe fiecare comision.
+            </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-5 lg:grid-cols-[280px_1fr]">
-            <NumberField
-              label={settingLabel('affiliate.patient_registration_reward')}
-              value={Number(settings['affiliate.patient_registration_reward'])}
-              onChange={(value) => update('affiliate.patient_registration_reward', value)}
-            />
+            <div className="space-y-4">
+              <NumberField
+                label={settingLabel('rate.affiliate_patient_topup')}
+                value={Number(settings['rate.affiliate_patient_topup'])}
+                onChange={(value) => update('rate.affiliate_patient_topup', value)}
+              />
+              <NumberField
+                label={settingLabel('affiliate.patient_topup_min_amount')}
+                value={Number(settings['affiliate.patient_topup_min_amount'])}
+                onChange={(value) => update('affiliate.patient_topup_min_amount', value)}
+              />
+              <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-white/50 p-4">
+                <Label className="pr-3 text-sm leading-5">
+                  {settingLabel('affiliate.patient_topup_first_only')}
+                  <span className="mt-1 block text-xs font-normal text-slate-500">
+                    Dezactivat = comision la fiecare alimentare.
+                  </span>
+                </Label>
+                <Switch
+                  checked={Boolean(settings['affiliate.patient_topup_first_only'])}
+                  onCheckedChange={(value) => update('affiliate.patient_topup_first_only', value)}
+                />
+              </div>
+            </div>
             <div className="space-y-2">
               <Label>Regulament afișat pacientului</Label>
               <Textarea
@@ -244,6 +324,7 @@ export function SettingsPage() {
 
       <div className="flex items-center justify-end gap-4">
         {message && <span className="text-sm text-green-700">{message}</span>}
+        {error && <span className="text-sm font-medium text-red-600">{error}</span>}
         <Button disabled={isSaving} onClick={saveSettings} className="rounded-xl bg-gradient-to-r from-primary to-purple-600 px-8">
           {isSaving ? 'Se salvează...' : 'Salvează toate'}
         </Button>

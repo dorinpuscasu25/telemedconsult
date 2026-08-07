@@ -105,7 +105,7 @@ class ConsultationNotificationsTest extends TestCase
         $patientUser = $this->userWithRole('patient');
         $patient = PatientProfile::create([
             'user_id' => $patientUser->id,
-            'first_name' => 'Ana', 'last_name' => 'Pop', 'identity_number' => '2000000000001',
+            'first_name' => 'Ana', 'last_name' => 'Pop',
             'region' => $region->name, 'region_id' => $region->id,
             'locality' => $locality->name, 'locality_id' => $locality->id,
             'address' => 'Str. Test 1', 'status' => 'active', 'active_until' => now()->addYear(),

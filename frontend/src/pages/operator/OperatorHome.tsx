@@ -5,6 +5,7 @@ import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiRequest } from '../../lib/api';
+import { dateTime } from '../../lib/format';
 
 interface OperatorRequest {
   id: string;
@@ -15,7 +16,9 @@ interface OperatorRequest {
   created_at: string;
   accepted_at?: string | null;
   completed_at?: string | null;
+  objective_data_completed_at?: string | null;
   patient?: { name: string; email: string } | null;
+  patient_profile?: { name?: string } | null;
 }
 
 const today = new Date().toDateString();
@@ -28,7 +31,8 @@ export function OperatorHome() {
 
   const loadRequests = () => {
     apiRequest<{data: OperatorRequest[]}>('/requests')
-      .then((response) => setRequests(response.data))
+      .then((response) => setRequests(response.data ?? []))
+      .catch(() => setRequests([]))
       .finally(() => setIsLoading(false));
   };
 
@@ -37,14 +41,18 @@ export function OperatorHome() {
   }, []);
 
   const pendingRequests = useMemo(
-    () => requests.filter((request) => request.type === 'operator' && request.status === 'new'),
+    () => requests.filter((request) => ['new', 'rescheduled'].includes(request.status)),
     [requests]
   );
   const todayAccepted = requests.filter(
     (request) => request.accepted_at && new Date(request.accepted_at).toDateString() === today
   ).length;
+  // „Finalizate” înseamnă examinări încheiate de operator, nu consultații
+  // închise de medic — altfel contorul ar rămâne zero deși el și-a făcut treaba.
   const completedToday = requests.filter(
-    (request) => request.completed_at && new Date(request.completed_at).toDateString() === today
+    (request) =>
+      request.objective_data_completed_at &&
+      new Date(request.objective_data_completed_at).toDateString() === today
   ).length;
 
   const acceptRequest = async (requestId: string) => {
@@ -92,10 +100,10 @@ export function OperatorHome() {
                     <MapPin className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
-                    <h4 className="font-semibold text-slate-950">{request.patient?.name || 'Pacient'}</h4>
+                    <h4 className="font-semibold text-slate-950">{request.patient_profile?.name || request.patient?.name || 'Pacient'}</h4>
                     <p className="mt-1 line-clamp-2 text-sm text-slate-500">{request.symptoms}</p>
                     <p className="mt-1 text-xs text-slate-400">
-                      Creată: {new Date(request.created_at).toLocaleString()}
+                      Creată: {dateTime(request.created_at)}
                     </p>
                   </div>
                 </div>

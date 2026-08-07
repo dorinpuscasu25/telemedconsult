@@ -30,7 +30,17 @@ return [
 
     'connections' => [
 
+        /*
+         * Livrarea evenimentelor trece printr-un strat care înghite erorile de
+         * transmitere: un server de broadcasting picat nu trebuie să anuleze
+         * operațiunea de business care tocmai a produs evenimentul.
+         */
         'reverb' => [
+            'driver' => 'resilient',
+            'inner' => 'reverb_raw',
+        ],
+
+        'reverb_raw' => [
             'driver' => 'reverb',
             'key' => env('REVERB_APP_KEY'),
             'secret' => env('REVERB_APP_SECRET'),

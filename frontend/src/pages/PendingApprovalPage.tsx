@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, RefreshCw, LogOut, ShieldCheck } from 'lucide-react';
 import { Button } from '../components/ui/button';

@@ -17,7 +17,7 @@ class CoordinatorController extends Controller
         $coordinator = $request->user()->loadMissing('roles', 'coordinatorProfile');
         abort_unless($coordinator->hasRole('coordinator') || $coordinator->hasRole('admin'), 403, 'Ai nevoie de rol coordonator.');
 
-        $requests = ConsultationRequest::with(['patient', 'doctor', 'operator', 'coordinator', 'specialty'])
+        $requests = ConsultationRequest::with(['patient', 'patientProfile', 'doctor', 'operator', 'coordinator', 'specialty'])
             ->whereIn('status', ['new', 'accepted', 'rescheduled'])
             ->latest()
             ->limit(100)
@@ -121,6 +121,13 @@ class CoordinatorController extends Controller
             'scheduled_at' => $item->scheduled_at,
             'created_at' => $item->created_at,
             'patient' => $item->patient ? ['id' => (string) $item->patient->id, 'name' => $item->patient->name, 'email' => $item->patient->email] : null,
+            // Titularul contului nu e pacientul: consultația e pentru profilul
+            // ales la programare, deci el dă numele afișat.
+            'patient_profile' => $item->patientProfile ? [
+                'id' => (string) $item->patientProfile->id,
+                'name' => $item->patientProfile->display_name,
+                'patient_code' => $item->patientProfile->patient_code,
+            ] : null,
             'doctor' => $item->doctor ? ['id' => (string) $item->doctor->id, 'name' => $item->doctor->name] : null,
             'operator' => $item->operator ? ['id' => (string) $item->operator->id, 'name' => $item->operator->name] : null,
             'coordinator' => $item->coordinator ? ['id' => (string) $item->coordinator->id, 'name' => $item->coordinator->name] : null,

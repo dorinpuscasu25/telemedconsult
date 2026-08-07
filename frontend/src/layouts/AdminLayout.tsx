@@ -15,7 +15,9 @@ import {
   Newspaper,
   Handshake,
   Settings,
+  Type,
   LogOut,
+  Send,
   Activity,
   Menu } from
 'lucide-react';
@@ -23,10 +25,11 @@ import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Button } from '../components/ui/button';
 import { Sheet, SheetContent } from '../components/ui/sheet';
 import { NotificationBell } from '../components/NotificationBell';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 
 const ROLE_LABELS: Record<RoleName, string> = {
   admin: 'Admin',
-  patient: 'Pacient',
+  patient: 'Utilizator',
   doctor: 'Medic',
   operator: 'Operator',
   coordinator: 'Coordonator'
@@ -59,6 +62,11 @@ export function AdminLayout() {
     icon: Stethoscope,
     label: 'Medici',
     path: '/coordinator/doctors'
+  },
+  {
+    icon: Send,
+    label: 'Notificări Telegram',
+    path: '/coordinator/telegram'
   }] : [
   {
     icon: LayoutDashboard,
@@ -117,13 +125,28 @@ export function AdminLayout() {
   },
   {
     icon: Newspaper,
-    label: 'Blog',
+    label: 'Noutăți',
     path: '/admin/blog'
   },
   {
     icon: Handshake,
     label: 'Parteneri',
     path: '/admin/partners'
+  },
+  {
+    icon: Type,
+    label: 'Texte site',
+    path: '/admin/content'
+  },
+  {
+    icon: Activity,
+    label: 'Sincronizare HIGO',
+    path: '/admin/higo'
+  },
+  {
+    icon: Send,
+    label: 'Notificări Telegram',
+    path: '/admin/telegram'
   },
   {
     icon: Settings,
@@ -249,7 +272,11 @@ export function AdminLayout() {
 
         {/* Page Content */}
         <div className="flex-1 overflow-auto p-4 md:p-8">
-          <Outlet />
+          {/* Boundary per pagină: o pagină de admin care crapă nu mai lasă
+              ecranul alb, iar navigația rămâne funcțională. */}
+          <ErrorBoundary inline key={location.pathname} label={`admin:${location.pathname}`}>
+            <Outlet />
+          </ErrorBoundary>
         </div>
       </main>
     </div>);

@@ -25,6 +25,7 @@ import {
 } from '../../components/ui/select';
 import { Textarea } from '../../components/ui/textarea';
 import { apiRequest } from '../../lib/api';
+import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 
 interface Doctor {
   id: string;
@@ -82,7 +83,7 @@ interface PatientProfile {
   id: number;
   first_name?: string | null;
   last_name?: string | null;
-  identity_number?: string | null;
+  patient_code?: string | null;
   region?: string | null;
   locality?: string | null;
   status?: string | null;
@@ -100,6 +101,9 @@ interface DoctorReview {
 
 export function DoctorsList() {
   const navigate = useNavigate();
+  const { isEnabled } = useFeatureFlags();
+  const withExamEnabled = isEnabled('with_exam_consultations') && isEnabled('operators');
+  const videoEnabled = isEnabled('video_consultations');
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [patientProfiles, setPatientProfiles] = useState<PatientProfile[]>([]);
@@ -122,8 +126,12 @@ export function DoctorsList() {
   const [previewLoading, setPreviewLoading] = useState(false);
 
   useEffect(() => {
-    apiRequest<{data: Doctor[]}>('/catalog/doctors', { auth: false }).then((response) => setDoctors(response.data));
-    apiRequest<{data: Specialty[]}>('/catalog/specialties', { auth: false }).then((response) => setSpecialties(response.data));
+    apiRequest<{data: Doctor[]}>('/catalog/doctors', { auth: false })
+      .then((response) => setDoctors(response.data ?? []))
+      .catch(() => setDoctors([]));
+    apiRequest<{data: Specialty[]}>('/catalog/specialties', { auth: false })
+      .then((response) => setSpecialties(response.data ?? []))
+      .catch(() => setSpecialties([]));
     apiRequest<{patient_profiles: PatientProfile[]}>('/patient/profile')
       .then((response) => {
         const profiles = response.patient_profiles ?? [];
@@ -138,7 +146,7 @@ export function DoctorsList() {
     if (!detailDoctor || !isDetailOpen) return;
     apiRequest(`/catalog/doctors/${detailDoctor.id}/view`, { method: 'POST', auth: false }).catch(() => undefined);
     apiRequest<{data: DoctorReview[]}>(`/catalog/doctors/${detailDoctor.id}/reviews`, { auth: false })
-      .then((response) => setDoctorReviews(response.data))
+      .then((response) => setDoctorReviews(response.data ?? []))
       .catch(() => setDoctorReviews([]));
   }, [detailDoctor, isDetailOpen]);
 
@@ -149,9 +157,20 @@ export function DoctorsList() {
   }), [doctors, searchTerm, specFilter]);
 
   const openRequestDialog = (doctor: Doctor, kind: 'with_exam' | 'video' = 'with_exam') => {
+    const availableKind = kind === 'with_exam' && withExamEnabled
+      ? 'with_exam'
+      : kind === 'video' && videoEnabled
+        ? 'video'
+        : withExamEnabled
+          ? 'with_exam'
+          : videoEnabled
+            ? 'video'
+            : null;
+    if (!availableKind) return;
+
     const requestableProfiles = patientProfiles.filter(canRequestConsultation);
     setSelectedDoctor(doctor);
-    setConsultationKind(kind);
+    setConsultationKind(availableKind);
     setSymptoms('');
     setScheduledAt('');
     setError('');
@@ -295,19 +314,21 @@ export function DoctorsList() {
                     <span className="ml-1 font-normal text-slate-400">({doctor.reviews_count})</span>
                   </div>
                   <div className="text-right font-bold text-slate-900">
-                    {doctor.consultation_price} MDL
-                    <div className="text-xs font-medium text-slate-500">Video {doctor.video_price || 300} MDL</div>
+                    {withExamEnabled ? `${doctor.consultation_price} MDL` : videoEnabled ? `${doctor.video_price || 300} MDL` : 'Indisponibil'}
+                    {withExamEnabled && videoEnabled && <div className="text-xs font-medium text-slate-500">Video {doctor.video_price || 300} MDL</div>}
                   </div>
                 </div>
               </CardContent>
               <CardFooter className="flex gap-2 pt-0">
-                <Button className="flex-1 rounded-xl bg-gradient-to-r from-primary to-purple-600" onClick={(event) => { event.stopPropagation(); openRequestDialog(doctor, 'with_exam'); }}>
+                {withExamEnabled && <Button className="flex-1 rounded-xl bg-gradient-to-r from-primary to-purple-600" onClick={(event) => { event.stopPropagation(); openRequestDialog(doctor, 'with_exam'); }}>
                   <MessageSquare className="mr-2 h-4 w-4" />
                   Consultație
-                </Button>
-                <Button variant="outline" size="icon" className="rounded-xl" onClick={(event) => { event.stopPropagation(); openRequestDialog(doctor, 'video'); }}>
+                </Button>}
+                {videoEnabled && <Button variant="outline" className={withExamEnabled ? 'rounded-xl px-3' : 'flex-1 rounded-xl'} onClick={(event) => { event.stopPropagation(); openRequestDialog(doctor, 'video'); }}>
                   <Video className="h-4 w-4" />
-                </Button>
+                  {!withExamEnabled && 'Consultație video'}
+                </Button>}
+                {!withExamEnabled && !videoEnabled && <p className="w-full py-2 text-center text-sm text-slate-500">Consultațiile sunt momentan dezactivate.</p>}
               </CardFooter>
             </Card>
           </motion.div>
@@ -326,20 +347,21 @@ export function DoctorsList() {
                 <InfoList title="Investigații obligatorii" items={normalizeList(detailDoctor.required_investigations)} empty="Nu sunt setate." />
                 <InfoList title="Servicii oferite" items={normalizeList(detailDoctor.service_catalog)} empty="Nu sunt setate." />
                 <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                  <div className="flex justify-between text-sm">
+                  {withExamEnabled && <div className="flex justify-between text-sm">
                     <span>Consultație cu examinare</span>
                     <strong>{detailDoctor.consultation_price} MDL</strong>
-                  </div>
-                  <div className="mt-2 flex justify-between text-sm">
+                  </div>}
+                  {videoEnabled && <div className={`${withExamEnabled ? 'mt-2' : ''} flex justify-between text-sm`}>
                     <span>Video / preliminară</span>
                     <strong>{detailDoctor.video_price || 300} MDL</strong>
-                  </div>
+                  </div>}
+                  {!withExamEnabled && !videoEnabled && <p className="text-sm text-slate-500">Consultațiile sunt momentan dezactivate.</p>}
                 </div>
                 <InfoList title="Recenzii recente" items={doctorReviews.map((review) => `${review.rating}/5 ${review.comment || ''}`)} empty="Nu există recenzii încă." />
               </div>
               <DialogFooter>
                 <Button variant="outline" className="rounded-xl" onClick={() => setIsDetailOpen(false)}>Închide</Button>
-                <Button className="rounded-xl" onClick={() => { setIsDetailOpen(false); openRequestDialog(detailDoctor); }}>Solicită consultație</Button>
+                {(withExamEnabled || videoEnabled) && <Button className="rounded-xl" onClick={() => { setIsDetailOpen(false); openRequestDialog(detailDoctor); }}>Solicită consultație</Button>}
               </DialogFooter>
             </>
           )}
@@ -379,13 +401,15 @@ export function DoctorsList() {
                   )}
                 </Field>
                 <Field label="Tip consultație">
-                  <Select value={consultationKind} onValueChange={(value) => setConsultationKind(value as 'with_exam' | 'video')}>
+                  {withExamEnabled && videoEnabled ? <Select value={consultationKind} onValueChange={(value) => setConsultationKind(value as 'with_exam' | 'video')}>
                     <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="with_exam">Cu examinare la domiciliu</SelectItem>
                       <SelectItem value="video">Video / preliminară</SelectItem>
                     </SelectContent>
-                  </Select>
+                  </Select> : <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-700">
+                    {withExamEnabled ? 'Cu examinare la domiciliu' : 'Video / preliminară'}
+                  </div>}
                 </Field>
                 <Field label="Descrie problema">
                   <Textarea value={symptoms} onChange={(event) => setSymptoms(event.target.value)} required className="min-h-[120px] rounded-xl" />
@@ -517,5 +541,5 @@ function canRequestConsultation(profile: PatientProfile) {
   if (profile.status && profile.status !== 'active') return false;
   if (profile.active_until && new Date(profile.active_until).getTime() <= Date.now()) return false;
 
-  return Boolean(profile.first_name && profile.last_name && profile.identity_number);
+  return Boolean(profile.first_name && profile.last_name);
 }

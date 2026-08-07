@@ -6,6 +6,8 @@ import {
   Navigate } from
 'react-router-dom';
 import { AuthProvider, useAuth, Role } from './contexts/AuthContext';
+import { FeatureFlagsProvider, useFeatureFlags, type FeatureKey } from './contexts/FeatureFlagsContext';
+import { SiteContentProvider } from './contexts/SiteContentContext';
 // Layouts
 import { AdminLayout } from './layouts/AdminLayout';
 import { AppLayout } from './layouts/AppLayout';
@@ -55,6 +57,12 @@ import { AdminBlogEditorPage } from './pages/admin/BlogEditorPage';
 import { AdminPartnersPage } from './pages/admin/PartnersPage';
 import { RegistrationsPage } from './pages/admin/RegistrationsPage';
 import { CoordinatorDashboard } from './pages/coordinator/CoordinatorDashboard';
+// Noutăți (fost Blog) — publice și în interiorul aplicației
+import { AppNewsListPage, AppNewsPostPage, LegacyBlogPostRedirect } from './pages/NewsRoutes';
+import { SiteContentPage } from './pages/admin/SiteContentPage';
+import { HigoSyncPage } from './pages/admin/HigoSyncPage';
+// Conectarea contului la botul de notificări — aceeași pagină pentru toate rolurile
+import { TelegramPage } from './pages/TelegramPage';
 // Protected Route Wrapper
 function ProtectedRoute({
   children,
@@ -78,6 +86,24 @@ function ProtectedRoute({
   }
   return <>{children}</>;
 }
+function FeatureRoute({ feature, children }: { feature: FeatureKey; children: React.ReactNode }) {
+  const { isEnabled, isLoading } = useFeatureFlags();
+
+  if (isLoading) {
+    return <div className="grid min-h-64 place-items-center text-slate-500">Se încarcă...</div>;
+  }
+
+  if (!isEnabled(feature)) {
+    return (
+      <div className="mx-auto max-w-xl rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+        <h1 className="text-2xl font-bold text-slate-950">Funcționalitate indisponibilă</h1>
+        <p className="mt-2 text-sm leading-6 text-slate-600">Această secțiune este momentan dezactivată de administrator.</p>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
 function AppRoutes() {
   const { isAuthenticated, role, user, isLoading } = useAuth();
   if (isLoading) {
@@ -92,8 +118,12 @@ function AppRoutes() {
       {/* Public site (accessible to everyone) */}
       <Route element={<PublicLayout />}>
         <Route path="/" element={<HomePage />} />
-        <Route path="/blog" element={<BlogListPage />} />
-        <Route path="/blog/:slug" element={<BlogPostPage />} />
+        <Route path="/noutati" element={<BlogListPage />} />
+        <Route path="/noutati/:slug" element={<BlogPostPage />} />
+        {/* Rutele vechi /blog rămân funcționale ca să nu se strice linkurile
+            deja trimise; redirecționează spre noile adrese. */}
+        <Route path="/blog" element={<Navigate to="/noutati" replace />} />
+        <Route path="/blog/:slug" element={<LegacyBlogPostRedirect />} />
         <Route path="/parteneri" element={<PublicPartnersPage />} />
       </Route>
 
@@ -136,10 +166,15 @@ function AppRoutes() {
         <Route path="regions" element={<RegionsPage />} />
         <Route path="investigations" element={<InvestigationsPage />} />
         <Route path="features" element={<FeatureFlagsPage />} />
+        <Route path="higo" element={<HigoSyncPage />} />
         <Route path="blog" element={<AdminBlogPage />} />
         <Route path="blog/new" element={<AdminBlogEditorPage />} />
         <Route path="blog/:id/edit" element={<AdminBlogEditorPage />} />
         <Route path="partners" element={<AdminPartnersPage />} />
+        <Route path="content" element={<SiteContentPage />} />
+        <Route path="noutati" element={<AppNewsListPage />} />
+        <Route path="noutati/:slug" element={<AppNewsPostPage />} />
+        <Route path="telegram" element={<TelegramPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
 
@@ -153,12 +188,15 @@ function AppRoutes() {
         }>
         
         <Route index element={<PatientHome />} />
-        <Route path="doctors" element={<DoctorsList />} />
-        <Route path="operators" element={<OperatorsList />} />
-        <Route path="wallet" element={<WalletPage />} />
+        <Route path="doctors" element={<FeatureRoute feature="doctors"><DoctorsList /></FeatureRoute>} />
+        <Route path="operators" element={<FeatureRoute feature="operators"><OperatorsList /></FeatureRoute>} />
+        <Route path="wallet" element={<FeatureRoute feature="payments"><WalletPage /></FeatureRoute>} />
         <Route path="chat" element={<ChatPage />} />
         <Route path="complaints" element={<PatientComplaintsPage />} />
         <Route path="profile" element={<ProfilePage />} />
+        <Route path="noutati" element={<AppNewsListPage />} />
+        <Route path="noutati/:slug" element={<AppNewsPostPage />} />
+        <Route path="telegram" element={<TelegramPage />} />
       </Route>
 
       {/* Doctor Routes */}
@@ -175,6 +213,9 @@ function AppRoutes() {
         <Route path="chat" element={<DoctorChatPage />} />
         <Route path="stats" element={<StatsPage />} />
         <Route path="profile" element={<DoctorProfilePage />} />
+        <Route path="noutati" element={<AppNewsListPage />} />
+        <Route path="noutati/:slug" element={<AppNewsPostPage />} />
+        <Route path="telegram" element={<TelegramPage />} />
       </Route>
 
       {/* Operator Routes */}
@@ -190,6 +231,9 @@ function AppRoutes() {
         <Route path="patients" element={<RequestsPage />} />
         <Route path="chat" element={<OperatorChatPage />} />
         <Route path="profile" element={<div>Profile</div>} />
+        <Route path="noutati" element={<AppNewsListPage />} />
+        <Route path="noutati/:slug" element={<AppNewsPostPage />} />
+        <Route path="telegram" element={<TelegramPage />} />
       </Route>
 
       {/* Coordinator Routes */}
@@ -203,6 +247,9 @@ function AppRoutes() {
         <Route index element={<CoordinatorDashboard />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="doctors" element={<DoctorsPage />} />
+        <Route path="noutati" element={<AppNewsListPage />} />
+        <Route path="noutati/:slug" element={<AppNewsPostPage />} />
+        <Route path="telegram" element={<TelegramPage />} />
       </Route>
 
       {/* Fallback */}
@@ -211,11 +258,17 @@ function AppRoutes() {
 
 }
 export function App() {
+  // Router-ul este cel mai în exterior ca providerele să poată folosi hook-urile
+  // de navigare (necesar pentru redirect-ul pe sesiune expirată).
   return (
-    <AuthProvider>
-      <Router>
-        <AppRoutes />
-      </Router>
-    </AuthProvider>);
+    <Router>
+      <AuthProvider>
+        <FeatureFlagsProvider>
+          <SiteContentProvider>
+            <AppRoutes />
+          </SiteContentProvider>
+        </FeatureFlagsProvider>
+      </AuthProvider>
+    </Router>);
 
 }

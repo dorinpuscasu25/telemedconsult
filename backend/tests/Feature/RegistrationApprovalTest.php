@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\DoctorProfile;
-use App\Models\OperatorProfile;
 use App\Models\Region;
 use App\Models\Role;
 use App\Models\Specialty;
@@ -62,6 +61,7 @@ class RegistrationApprovalTest extends TestCase
             'password' => 'password123',
             'password_confirmation' => 'password123',
             'account_type' => 'doctor',
+            'phone' => '069484967',
             'specialty_id' => $specialtyId,
             'license_number' => 'LIC-123',
         ])
@@ -89,6 +89,7 @@ class RegistrationApprovalTest extends TestCase
             'password' => 'password123',
             'password_confirmation' => 'password123',
             'account_type' => 'doctor',
+            'phone' => '069484967',
         ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('specialty_id');
@@ -104,6 +105,7 @@ class RegistrationApprovalTest extends TestCase
             'password' => 'password123',
             'password_confirmation' => 'password123',
             'account_type' => 'operator',
+            'phone' => '069484967',
         ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('region');
@@ -114,6 +116,7 @@ class RegistrationApprovalTest extends TestCase
             'password' => 'password123',
             'password_confirmation' => 'password123',
             'account_type' => 'operator',
+            'phone' => '069484967',
             'region' => 'Chișinău',
         ])->assertCreated();
 

@@ -22,7 +22,7 @@ type Specialty = { id: number; name: string };
 type Region = { id: number; name: string };
 
 const ACCOUNT_TYPES: { value: AccountType; label: string; hint: string; icon: React.ElementType }[] = [
-  { value: 'patient', label: 'Pacient', hint: 'Consultații și îngrijire', icon: HeartPulse },
+  { value: 'patient', label: 'Utilizator', hint: 'Adaugi pacienți și soliciți consultații', icon: HeartPulse },
   { value: 'doctor', label: 'Medic', hint: 'Oferă consultații', icon: Stethoscope },
   { value: 'operator', label: 'Operator', hint: 'Examinări la domiciliu', icon: Users }
 ];
@@ -181,7 +181,7 @@ export function RegisterPage() {
                   <CardTitle className="text-2xl font-bold tracking-tight">Creare cont</CardTitle>
                   <CardDescription>
                     {accountType === 'patient'
-                      ? 'Contul de pacient se activează imediat după confirmarea emailului.'
+                      ? 'Contul de utilizator se activează imediat după confirmarea emailului. Pacienții îi adaugi după, din contul tău.'
                       : 'Contul se activează după confirmarea emailului și aprobarea unui administrator.'}
                   </CardDescription>
                 </CardHeader>
@@ -251,15 +251,21 @@ export function RegisterPage() {
                       className="h-11 rounded-xl border-slate-200 bg-white" />
                   </Field>
 
-                  <Field label="Telefon" htmlFor="phone">
+                  <Field label={accountType === 'patient' ? 'Telefon' : 'Telefon *'} htmlFor="phone">
                     <Input
                       id="phone"
                       type="tel"
                       autoComplete="tel"
-                      placeholder="+373 600 00 000"
+                      placeholder="069 123 456"
+                      required={accountType !== 'patient'}
                       value={phone}
                       onChange={(event) => setPhone(event.target.value)}
                       className="h-11 rounded-xl border-slate-200 bg-white" />
+                    {accountType !== 'patient' && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Obligatoriu — pacienții te contactează la acest număr.
+                      </p>
+                    )}
                   </Field>
 
                   {accountType === 'doctor' && (

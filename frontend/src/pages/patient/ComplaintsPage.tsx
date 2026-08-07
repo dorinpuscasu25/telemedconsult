@@ -14,6 +14,7 @@ import {
   SelectValue
 } from '../../components/ui/select';
 import { apiRequest } from '../../lib/api';
+import { dateTime } from '../../lib/format';
 
 interface Complaint {
   id: number;
@@ -232,7 +233,7 @@ export function ComplaintsPage() {
                     <AlertTriangle className="h-4 w-4 text-slate-400" />
                     <h3 className="font-semibold text-slate-900">{complaint.subject}</h3>
                   </div>
-                  <p className="mt-1 text-sm text-slate-500">Reclamat: {complaint.reportedUser || 'Nespecificat'} • {new Date(complaint.date).toLocaleString()}</p>
+                  <p className="mt-1 text-sm text-slate-500">Reclamat: {complaint.reportedUser || 'Nespecificat'} • {dateTime(complaint.date)}</p>
                 </div>
                 <Badge variant={complaint.status === 'new' ? 'destructive' : 'secondary'}>{complaint.status === 'new' ? 'Nouă' : 'Rezolvată'}</Badge>
               </div>

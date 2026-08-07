@@ -74,6 +74,24 @@ class FeatureFlagsTest extends TestCase
             ->assertJsonPath('message', 'Modulul de cartele este momentan dezactivat.');
     }
 
+    public function test_disabling_doctors_hides_public_catalog(): void
+    {
+        app(PlatformConfig::class)->upsert('feature.doctors', false, FeatureFlags::GROUP, 'boolean');
+
+        $this->getJson('/api/v1/catalog/doctors')
+            ->assertOk()
+            ->assertExactJson(['data' => []]);
+    }
+
+    public function test_disabling_operators_hides_public_catalog(): void
+    {
+        app(PlatformConfig::class)->upsert('feature.operators', false, FeatureFlags::GROUP, 'boolean');
+
+        $this->getJson('/api/v1/catalog/operators')
+            ->assertOk()
+            ->assertExactJson(['data' => []]);
+    }
+
     public function test_feature_management_requires_admin(): void
     {
         Sanctum::actingAs($this->userWithRole('patient'));

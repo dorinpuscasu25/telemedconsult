@@ -100,9 +100,7 @@ class ConsultationStateMachine
             in_array($request->status, ['cancelled', 'rejected', 'expired'], true) => self::CANCELLED,
             $request->closed_at !== null => self::CLOSED,
             $request->conclusion_sent_at !== null => self::CONCLUDED,
-            $request->objective_data_completed_at !== null && $request->anamnesis_completed_at !== null => self::AWAITING_DOCTOR,
-            $request->objective_data_completed_at !== null => self::AWAITING_PATIENT_INPUT,
-            $request->anamnesis_completed_at !== null => self::IN_PROGRESS,
+            $request->objective_data_completed_at !== null => self::AWAITING_DOCTOR,
             $request->status === 'rescheduled' => self::OPERATOR_ACCEPTED,
             $request->status === 'accepted' && $request->scheduled_at !== null => self::SCHEDULED,
             $request->status === 'accepted' => self::OPERATOR_ACCEPTED,
@@ -112,8 +110,11 @@ class ConsultationStateMachine
     }
 
     /**
-     * FSM1 gate: a with_exam consultation reaches the doctor only when BOTH the
-     * objective data and the anamnesis are complete.
+     * O consultație cu examinare ajunge la medic când operatorul a terminat
+     * examinarea la domiciliu.
+     *
+     * Acuzele pacientului sunt deja culese la crearea solicitării, deci nu mai
+     * există un pas separat de anamneză care să blocheze fluxul.
      */
     public function readyForDoctor(ConsultationRequest $request): bool
     {
@@ -121,6 +122,6 @@ class ConsultationStateMachine
             return true;
         }
 
-        return $request->objective_data_completed_at !== null && $request->anamnesis_completed_at !== null;
+        return $request->objective_data_completed_at !== null;
     }
 }

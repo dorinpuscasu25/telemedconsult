@@ -61,7 +61,9 @@ export function SpecialtiesPage() {
   const [error, setError] = useState('');
 
   const loadSpecialties = () => {
-    apiRequest<{data: Specialty[]}>('/admin/specialties').then((response) => setSpecialties(response.data));
+    apiRequest<{data: Specialty[]}>('/admin/specialties')
+      .then((response) => setSpecialties(response.data ?? []))
+      .catch(() => setSpecialties([]));
   };
 
   useEffect(() => {

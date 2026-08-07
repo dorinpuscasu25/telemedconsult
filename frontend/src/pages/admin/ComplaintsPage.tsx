@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { MessageSquareWarning, Ticket } from 'lucide-react';
 import { Badge } from '../../components/ui/badge';
@@ -16,6 +16,7 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
 import { apiRequest } from '../../lib/api';
+import { dateTime } from '../../lib/format';
 
 interface Complaint {
   id: number;
@@ -38,7 +39,9 @@ export function ComplaintsPage() {
   const [couponAmount, setCouponAmount] = useState('100');
 
   const loadComplaints = () => {
-    apiRequest<{data: Complaint[]}>('/admin/complaints').then((response) => setComplaints(response.data));
+    apiRequest<{data: Complaint[]}>('/admin/complaints')
+      .then((response) => setComplaints(response.data ?? []))
+      .catch(() => setComplaints([]));
   };
 
   useEffect(() => {
@@ -89,7 +92,7 @@ export function ComplaintsPage() {
                       )}
                     </div>
                     <p className="text-sm text-slate-500">
-                      Reclamat: {complaint.reportedUser || 'Nespecificat'} • {new Date(complaint.date).toLocaleString()}
+                      Reclamat: {complaint.reportedUser || 'Nespecificat'} • {dateTime(complaint.date)}
                     </p>
                     <p className="text-sm font-medium text-slate-800 mt-2">{complaint.subject}</p>
                   </div>

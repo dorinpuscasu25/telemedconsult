@@ -22,6 +22,7 @@ import {
   TableRow
 } from '../../components/ui/table';
 import { apiRequest } from '../../lib/api';
+import { dateTime, money } from '../../lib/format';
 
 interface DoctorStats {
   summary: {
@@ -59,7 +60,7 @@ export function StatsPage() {
   const [error, setError] = useState('');
 
   const loadStats = () => {
-    apiRequest<DoctorStats>('/doctor/stats').then(setData);
+    apiRequest<DoctorStats>('/doctor/stats').then(setData).catch(() => setData(null));
   };
 
   useEffect(() => {
@@ -196,8 +197,8 @@ export function StatsPage() {
               )}
               {(data?.withdrawals ?? []).map((withdrawal) => (
                 <TableRow key={withdrawal.id}>
-                  <TableCell className="text-slate-500">{new Date(withdrawal.date).toLocaleString()}</TableCell>
-                  <TableCell className="font-semibold text-slate-950">{withdrawal.amount.toFixed(2)} MDL</TableCell>
+                  <TableCell className="text-slate-500">{dateTime(withdrawal.date)}</TableCell>
+                  <TableCell className="font-semibold text-slate-950">{money(withdrawal.amount)} MDL</TableCell>
                   <TableCell>
                     <span className={`inline-flex items-center text-sm font-medium ${withdrawal.status === 'approved' ? 'text-green-600' : withdrawal.status === 'rejected' ? 'text-red-600' : 'text-amber-600'}`}>
                       {withdrawal.status === 'approved' ? <CheckCircle2 className="mr-1 h-4 w-4" /> : <Clock3 className="mr-1 h-4 w-4" />}

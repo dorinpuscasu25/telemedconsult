@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Notifications\AppEventNotification;
 use App\Services\PlatformConfig;
 use App\Services\ReferralProgram;
+use App\Services\RegistrationBonus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -172,15 +173,31 @@ class AuthController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($user, $otp) {
+        // Confirmarea emailului NU acordă bonus de afiliere — comisionul se
+        // plătește ca procent din alimentările de portofel, în
+        // WalletController::markPaymentPaid(). Ce se acordă aici e bonusul de
+        // bun-venit, configurat de admin: aici, pentru că abia acum știm că
+        // adresa există.
+        $bonus = DB::transaction(function () use ($user, $otp) {
             $otp->forceFill(['verified_at' => now()])->save();
             $user->forceFill(['email_verified_at' => now()])->save();
-            app(ReferralProgram::class)->rewardVerifiedPatient($user);
+
+            return app(RegistrationBonus::class)->grant($user);
         });
 
         $this->forgetDemoOtp($user);
 
-        return $this->tokenResponse($user->refresh(), 'Email verificat cu succes.');
+        $response = $this->tokenResponse($user->refresh(), $bonus
+            ? 'Email verificat. Ai primit '.number_format($bonus->amount_minor / 100, 2, ',', '.').' MDL în portofel.'
+            : 'Email verificat cu succes.');
+
+        if ($bonus) {
+            $data = $response->getData(true);
+            $data['registration_bonus'] = $bonus->amount_minor / 100;
+            $response->setData($data);
+        }
+
+        return $response;
     }
 
     public function resendEmailOtp(Request $request): JsonResponse

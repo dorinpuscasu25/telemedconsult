@@ -5,6 +5,8 @@
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
+    /* Fără asta, `import.meta.env` dă erori TS2339 care ascund erorile reale. */
+    "types": ["vite/client"],
 
     /* Bundler mode */
     "moduleResolution": "bundler",

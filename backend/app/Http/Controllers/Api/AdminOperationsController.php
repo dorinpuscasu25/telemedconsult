@@ -274,19 +274,51 @@ class AdminOperationsController extends Controller
             'settings.*.type' => ['nullable', Rule::in(['string', 'number', 'boolean', 'json'])],
         ]);
 
-        collect($validated['settings'] ?? [])->each(function (array $setting) {
-            if (($setting['key'] ?? null) === 'affiliate.patient_registration_reward') {
-                $value = $setting['value'] ?? null;
+        // Toate cotele procentuale trebuie să rămână în intervalul 0–100,
+        // altfel un comision configurat greșit poate goli platforma.
+        $percentKeys = [
+            'rate.platform_commission' => 'Comisionul platformei',
+            'rate.admin_accounting' => 'Cota de administrare și contabilitate',
+            'rate.bank_guarantee' => 'Cota de garanție bancară',
+            'rate.bank_transaction' => 'Comisionul de tranzacție bancară',
+            'rate.affiliate_doctor_topup' => 'Cota de afiliere medic',
+            'rate.affiliate_operator' => 'Cota de afiliere operator',
+            'rate.affiliate_patient_topup' => 'Cota de afiliere pacient la alimentare',
+        ];
 
-                if (! is_numeric($value) || (float) $value < 0 || (float) $value > 10000) {
+        collect($validated['settings'] ?? [])->each(function (array $setting) use ($percentKeys) {
+            $key = $setting['key'] ?? null;
+            $value = $setting['value'] ?? null;
+
+            if ($key !== null && isset($percentKeys[$key])) {
+                if (! is_numeric($value) || (float) $value < 0 || (float) $value > 100) {
                     throw ValidationException::withMessages([
-                        'settings' => ['Bonusul de afiliere trebuie să fie între 0 și 10.000 MDL.'],
+                        'settings' => [$percentKeys[$key].' trebuie să fie un procent între 0 și 100.'],
                     ]);
                 }
             }
 
-            if (($setting['key'] ?? null) === 'affiliate.patient_registration_rules'
-                && mb_strlen((string) ($setting['value'] ?? '')) > 4000) {
+            if ($key === 'affiliate.patient_topup_min_amount') {
+                if (! is_numeric($value) || (float) $value < 0 || (float) $value > 100000) {
+                    throw ValidationException::withMessages([
+                        'settings' => ['Alimentarea minimă eligibilă trebuie să fie între 0 și 100.000 MDL.'],
+                    ]);
+                }
+            }
+
+            // Bonusul de bun-venit se creditează necondiționat la confirmarea
+            // emailului: o valoare greșită aici se plătește din banii
+            // platformei, deci limita e strânsă intenționat.
+            if ($key === 'wallet.registration_bonus') {
+                if (! is_numeric($value) || (float) $value < 0 || (float) $value > 10000) {
+                    throw ValidationException::withMessages([
+                        'settings' => ['Bonusul de înregistrare trebuie să fie între 0 și 10.000 MDL.'],
+                    ]);
+                }
+            }
+
+            if ($key === 'affiliate.patient_registration_rules'
+                && mb_strlen((string) ($value ?? '')) > 4000) {
                 throw ValidationException::withMessages([
                     'settings' => ['Regulamentul de afiliere poate avea maximum 4.000 de caractere.'],
                 ]);

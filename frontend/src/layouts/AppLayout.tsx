@@ -1,5 +1,7 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { RoleName, useAuth } from '../contexts/AuthContext';
+import { useFeatureFlags, type FeatureKey } from '../contexts/FeatureFlagsContext';
+import { useSiteContent } from '../contexts/SiteContentContext';
 import {
   Activity,
   Gift,
@@ -14,7 +16,9 @@ import {
   ChevronDown,
   MoreHorizontal,
   Plane,
-  MessageSquareWarning } from
+  MessageSquareWarning,
+  Newspaper,
+  Send } from
 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import {
@@ -26,10 +30,11 @@ import {
   DropdownMenuTrigger } from
 '../components/ui/dropdown-menu';
 import { NotificationBell } from '../components/NotificationBell';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 
 const ROLE_LABELS: Record<RoleName, string> = {
   admin: 'Admin',
-  patient: 'Pacient',
+  patient: 'Utilizator',
   doctor: 'Medic',
   operator: 'Operator',
   coordinator: 'Coordonator'
@@ -39,6 +44,8 @@ const roleHome = (role: RoleName) => role === 'admin' ? '/admin' : `/${role}`;
 
 export function AppLayout() {
   const { user, logout, role, roles, switchRole } = useAuth();
+  const { isEnabled } = useFeatureFlags();
+  const { text } = useSiteContent();
   const location = useLocation();
   const navigate = useNavigate();
   const handleSwitchRole = async (nextRole: RoleName) => {
@@ -92,6 +99,11 @@ export function AppLayout() {
           label: 'Reclamații',
           path: '/patient/complaints',
           icon: MessageSquareWarning
+        },
+        {
+          label: text('header.nav_news'),
+          path: '/patient/noutati',
+          icon: Newspaper
         }];
 
       case 'doctor':
@@ -115,6 +127,11 @@ export function AppLayout() {
           label: 'Statistici',
           path: '/doctor/stats',
           icon: BarChart2
+        },
+        {
+          label: text('header.nav_news'),
+          path: '/doctor/noutati',
+          icon: Newspaper
         }];
 
       case 'operator':
@@ -133,18 +150,35 @@ export function AppLayout() {
           label: 'Chat',
           path: '/operator/chat',
           icon: MessageSquare
+        },
+        {
+          label: text('header.nav_news'),
+          path: '/operator/noutati',
+          icon: Newspaper
         }];
 
       default:
         return [];
     }
   };
-  const navItems = getNavItems();
+  const patientFeatureByPath: Partial<Record<string, FeatureKey>> = {
+    '/patient/doctors': 'doctors',
+    '/patient/operators': 'operators',
+    '/patient/wallet': 'payments',
+    '/patient/profile?tab=referrals': 'affiliate_program'
+  };
+  const navItems = getNavItems().filter((item) => {
+    const requiredFeature = role === 'patient' ? patientFeatureByPath[item.path] : undefined;
+    return !requiredFeature || isEnabled(requiredFeature);
+  });
+  // Meniul pacientului este cel mai încărcat, așa că intrările secundare trec
+  // în dropdown-ul „Mai multe” pe ecrane late.
+  const secondaryPatientLabels = ['Operatori', 'Chat', 'Reclamații', text('header.nav_news')];
   const desktopPrimaryItems = role === 'patient'
-    ? navItems.filter((item) => !['Operatori', 'Chat', 'Reclamații'].includes(item.label))
+    ? navItems.filter((item) => !secondaryPatientLabels.includes(item.label))
     : navItems;
   const desktopMoreItems = role === 'patient'
-    ? navItems.filter((item) => ['Operatori', 'Chat', 'Reclamații'].includes(item.label))
+    ? navItems.filter((item) => secondaryPatientLabels.includes(item.label))
     : [];
   const isNavItemActive = (target: string) => {
     const [targetPath, targetQuery = ''] = target.split('?');
@@ -255,6 +289,10 @@ export function AppLayout() {
                       <span>Mod Concediu</span>
                     </DropdownMenuItem>
                   }
+                  <DropdownMenuItem onClick={() => navigate(`/${role}/telegram`)} className="cursor-pointer flex items-center">
+                      <Send className="mr-2 h-4 w-4" />
+                      <span>Notificări Telegram</span>
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={logout}
@@ -290,7 +328,11 @@ export function AppLayout() {
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Outlet />
+        {/* Boundary per pagină: o pagină care crapă nu mai omoară navigația.
+            `key` resetează boundary-ul la fiecare schimbare de rută. */}
+        <ErrorBoundary inline key={location.pathname} label={`app:${location.pathname}`}>
+          <Outlet />
+        </ErrorBoundary>
       </main>
     </div>);
 

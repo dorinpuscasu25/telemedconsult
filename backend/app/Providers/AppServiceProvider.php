@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Broadcasting\ResilientBroadcaster;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
@@ -23,6 +25,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Vezi App\Broadcasting\ResilientBroadcaster: erorile de livrare a
+        // evenimentelor nu au voie să propage în tranzacțiile de business.
+        Broadcast::extend('resilient', fn ($app, array $config) => new ResilientBroadcaster(
+            Broadcast::connection($config['inner'] ?? 'reverb_raw')
+        ));
+
         $this->configureDefaults();
     }
 

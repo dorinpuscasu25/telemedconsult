@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ToggleLeft, RefreshCw } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Switch } from '../../components/ui/switch';
 import { apiRequest } from '../../lib/api';
+import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 
 interface FeatureFlag {
   key: string;
@@ -13,17 +14,16 @@ interface FeatureFlag {
 }
 
 export function FeatureFlagsPage() {
+  const { refresh: refreshPublicFeatures } = useFeatureFlags();
   const [flags, setFlags] = useState<FeatureFlag[]>([]);
-  const [isSaving, setIsSaving] = useState(false);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [dirty, setDirty] = useState(false);
 
   const load = () => {
     apiRequest<{ data: FeatureFlag[] }>('/admin/feature-flags')
       .then((response) => {
         setFlags(response.data ?? []);
-        setDirty(false);
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Nu am putut încărca funcționalitățile.'));
   };
@@ -32,27 +32,28 @@ export function FeatureFlagsPage() {
     load();
   }, []);
 
-  const toggle = (key: string, enabled: boolean) => {
+  const toggle = async (key: string, enabled: boolean) => {
+    const previous = flags.find((flag) => flag.key === key);
     setFlags((current) => current.map((flag) => (flag.key === key ? { ...flag, enabled } : flag)));
-    setDirty(true);
+    setSavingKey(key);
     setMessage('');
-  };
-
-  const save = async () => {
     setError('');
-    setMessage('');
-    setIsSaving(true);
+
     try {
-      await apiRequest('/admin/feature-flags', {
+      const response = await apiRequest<{ data: FeatureFlag[] }>('/admin/feature-flags', {
         method: 'PUT',
-        body: JSON.stringify({ flags: flags.map((flag) => ({ key: flag.key, enabled: flag.enabled })) })
+        body: JSON.stringify({ flags: [{ key, enabled }] })
       });
-      setMessage('Funcționalități salvate.');
-      setDirty(false);
+      setFlags(response.data ?? []);
+      refreshPublicFeatures().catch(() => undefined);
+      setMessage(`${previous?.label ?? 'Funcționalitatea'} este acum ${enabled ? 'activă' : 'inactivă'}.`);
     } catch (err) {
+      if (previous) {
+        setFlags((current) => current.map((flag) => flag.key === key ? previous : flag));
+      }
       setError(err instanceof Error ? err.message : 'Nu am putut salva funcționalitățile.');
     } finally {
-      setIsSaving(false);
+      setSavingKey(null);
     }
   };
 
@@ -63,7 +64,7 @@ export function FeatureFlagsPage() {
           <h1 className="mb-2 text-3xl font-bold tracking-tight text-slate-900">Funcționalități</h1>
           <p className="max-w-3xl text-slate-500">
             Activează sau dezactivează module întregi ale platformei. Modulele dezactivate blochează acțiunile aferente
-            și pot fi ascunse din interfață. Modificările au efect imediat după salvare.
+            și sunt ascunse automat din interfață. Fiecare modificare se salvează imediat.
           </p>
         </div>
         <Button type="button" variant="outline" size="sm" className="h-9 rounded-lg" onClick={load}>
@@ -89,7 +90,12 @@ export function FeatureFlagsPage() {
                 <span className={`text-xs font-medium ${flag.enabled ? 'text-emerald-600' : 'text-slate-400'}`}>
                   {flag.enabled ? 'Activ' : 'Inactiv'}
                 </span>
-                <Switch checked={flag.enabled} onCheckedChange={(value) => toggle(flag.key, value)} />
+                <Switch
+                  checked={flag.enabled}
+                  disabled={savingKey !== null}
+                  aria-label={`${flag.enabled ? 'Dezactivează' : 'Activează'} ${flag.label}`}
+                  onCheckedChange={(value) => toggle(flag.key, value)}
+                />
               </div>
             </div>
           ))}
@@ -99,12 +105,11 @@ export function FeatureFlagsPage() {
         </CardContent>
       </Card>
 
-      <div className="flex items-center justify-end gap-4">
-        {message && <span className="text-sm text-green-700">{message}</span>}
-        <Button disabled={isSaving || !dirty} onClick={save} className="rounded-xl bg-gradient-to-r from-primary to-purple-600 px-8">
-          {isSaving ? 'Se salvează...' : 'Salvează'}
-        </Button>
-      </div>
+      {(message || savingKey) && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          {savingKey ? 'Se salvează modificarea...' : message}
+        </div>
+      )}
     </div>
   );
 }

@@ -24,3 +24,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Fișiere temporare generate de Vite la pornirea serverului de dev.
+vite.config.ts.timestamp-*

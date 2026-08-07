@@ -24,6 +24,8 @@ import {
 import { Textarea } from '../../components/ui/textarea';
 import { CheckCircle2, MapPin, MessageSquare, Phone, PlusCircle, Send, Stethoscope, XCircle } from 'lucide-react';
 import { apiRequest } from '../../lib/api';
+import { ObjectiveDataForm, toObjectivePayload } from '../../components/ObjectiveDataForm';
+import { dateTime } from '../../lib/format';
 
 interface CostLine {
   id: number;
@@ -39,8 +41,9 @@ interface RequestItem {
   consultation_kind?: string;
   symptoms?: string | null;
   triage_notes?: string | null;
+  objective_data_completed_at?: string | null;
   patient?: { id: string; name: string; email: string } | null;
-  patient_profile?: { name?: string; region?: string | null; locality?: string | null; address?: string | null } | null;
+  patient_profile?: { name?: string; patient_code?: string | null; region?: string | null; locality?: string | null; address?: string | null } | null;
   doctor?: { id: string; name: string } | null;
   operator?: { id: string; name: string } | null;
   amount?: number;
@@ -74,19 +77,27 @@ export function RequestsPage() {
     diagnosis: '',
     recommendations: ''
   });
-  const [objectiveText, setObjectiveText] = useState('');
+  const [objectiveValues, setObjectiveValues] = useState<Record<string, string>>({});
+  const [objectiveError, setObjectiveError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [actionMessage, setActionMessage] = useState('');
+  const hasObjectiveValues = Object.values(objectiveValues).some((entry) => (entry ?? '').trim() !== '');
   const [addonForm, setAddonForm] = useState({ name: '', amount: 50 });
   const [isSaving, setIsSaving] = useState(false);
 
   const loadRequests = () => {
-    apiRequest<{data: RequestItem[]}>('/requests').then((response) => {
-      setRequests(response.data.filter((item) => item.type === 'operator'));
-    });
+    apiRequest<{data: RequestItem[]}>('/requests')
+      .then((response) => {
+        setRequests(response.data ?? []);
+      })
+      .catch(() => setRequests([]));
   };
 
   useEffect(() => {
     loadRequests();
-    apiRequest<{data: Doctor[]}>('/catalog/doctors', { auth: false }).then((response) => setDoctors(response.data));
+    apiRequest<{data: Doctor[]}>('/catalog/doctors', { auth: false })
+      .then((response) => setDoctors(response.data ?? []))
+      .catch(() => setDoctors([]));
   }, []);
 
   const openAccept = (request: RequestItem) => {
@@ -110,7 +121,8 @@ export function RequestsPage() {
 
   const openObjective = (request: RequestItem) => {
     setSelectedRequest(request);
-    setObjectiveText('');
+    setObjectiveValues({});
+    setObjectiveError('');
     setIsObjectiveModalOpen(true);
   };
 
@@ -120,87 +132,115 @@ export function RequestsPage() {
     setIsAddonModalOpen(true);
   };
 
-  const acceptRequest = async () => {
-    if (!selectedRequest) return;
+  /**
+   * Toate acțiunile trec pe aici: erorile de la server devin vizibile, iar lista
+   * se reîmprospătează întotdeauna. Înainte, fiecare handler avea doar `finally`,
+   * așa că un refuz al backendului (de exemplu „examinarea nu e gata”) dispărea
+   * fără urmă și părea că butonul nu face nimic.
+   */
+  const runAction = async (action: () => Promise<unknown>, successMessage: string, onDone?: () => void) => {
+    setActionError('');
+    setActionMessage('');
     setIsSaving(true);
+
     try {
-      await apiRequest(`/requests/${selectedRequest.id}/accept`, { method: 'POST' });
-      setIsAcceptModalOpen(false);
-      loadRequests();
+      await action();
+      setActionMessage(successMessage);
+      onDone?.();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Acțiunea nu a putut fi finalizată.');
     } finally {
       setIsSaving(false);
+      loadRequests();
     }
   };
 
+  const acceptRequest = async () => {
+    if (!selectedRequest) return;
+    await runAction(
+      () => apiRequest(`/requests/${selectedRequest.id}/accept`, { method: 'POST' }),
+      'Examinare preluată. Pacientul a fost anunțat.',
+      () => setIsAcceptModalOpen(false)
+    );
+  };
+
   const rejectRequest = async (request: RequestItem) => {
-    if (!window.confirm('Respingi solicitarea și returnezi banii pacientului?')) return;
-    await apiRequest(`/requests/${request.id}/reject`, {
-      method: 'POST',
-      body: JSON.stringify({ reason: 'Solicitare respinsă de operator.' })
-    });
-    loadRequests();
+    if (!window.confirm('Respingi solicitarea? Va fi reatribuită altui operator sau anulată cu refund.')) return;
+    await runAction(
+      () => apiRequest(`/requests/${request.id}/reject`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: 'Solicitare respinsă de operator.' })
+      }),
+      'Solicitare respinsă.'
+    );
   };
 
   const proposeTime = async (request: RequestItem) => {
     const value = window.prompt('Propune o dată/oră nouă (format: YYYY-MM-DD HH:mm)');
     if (!value) return;
-    await apiRequest(`/requests/${request.id}/propose-time`, {
-      method: 'POST',
-      body: JSON.stringify({ scheduled_at: value.replace(' ', 'T') })
-    });
-    loadRequests();
+    await runAction(
+      () => apiRequest(`/requests/${request.id}/propose-time`, {
+        method: 'POST',
+        body: JSON.stringify({ scheduled_at: value.replace(' ', 'T') })
+      }),
+      'Oră nouă propusă pacientului.'
+    );
   };
 
   const completeRequest = async () => {
     if (!selectedRequest) return;
-    setIsSaving(true);
-    try {
-      await apiRequest(`/requests/${selectedRequest.id}/complete`, {
+    await runAction(
+      () => apiRequest(`/requests/${selectedRequest.id}/complete`, {
         method: 'POST',
         body: JSON.stringify({
           diagnosis: completeData.diagnosis,
           recommendations: completeData.recommendations,
           treatment_plan: notes || null
         })
-      });
-      setIsCompleteModalOpen(false);
-      loadRequests();
-    } finally {
-      setIsSaving(false);
-    }
+      }),
+      'Consultație finalizată.',
+      () => setIsCompleteModalOpen(false)
+    );
+  };
+
+  const completeExamination = async (request: RequestItem) => {
+    if (!window.confirm('Confirmi că ai terminat examinarea? Datele din aparat se atașează automat când sosesc.')) return;
+
+    await runAction(
+      () => apiRequest(`/requests/${request.id}/examination-done`, { method: 'POST' }),
+      'Examinare finalizată. Datele din aparat se atașează automat când sosesc.'
+    );
   };
 
   const forwardRequest = async () => {
     if (!selectedRequest || !selectedDoctor) return;
-    setIsSaving(true);
-    try {
-      await apiRequest(`/requests/${selectedRequest.id}/forward-to-doctor`, {
+    await runAction(
+      () => apiRequest(`/requests/${selectedRequest.id}/forward-to-doctor`, {
         method: 'POST',
-        body: JSON.stringify({
-          doctor_id: selectedDoctor,
-          triage_notes: notes
-        })
-      });
-      setIsForwardModalOpen(false);
-      loadRequests();
-    } finally {
-      setIsSaving(false);
-    }
+        body: JSON.stringify({ doctor_id: selectedDoctor, triage_notes: notes })
+      }),
+      'Datele au fost transmise medicului.',
+      () => setIsForwardModalOpen(false)
+    );
   };
 
   const saveObjectiveData = async () => {
     if (!selectedRequest) return;
+    setObjectiveError('');
     setIsSaving(true);
     try {
       await apiRequest(`/requests/${selectedRequest.id}/objective-data`, {
         method: 'POST',
         body: JSON.stringify({
           source: 'manual_operator',
-          payload: { notes: objectiveText, recorded_at: new Date().toISOString() }
+          payload: toObjectivePayload(objectiveValues)
         })
       });
       setIsObjectiveModalOpen(false);
+      setObjectiveValues({});
       loadRequests();
+    } catch (err) {
+      setObjectiveError(err instanceof Error ? err.message : 'Nu am putut salva datele.');
     } finally {
       setIsSaving(false);
     }
@@ -221,7 +261,19 @@ export function RequestsPage() {
     }
   };
 
-  const byStatus = (status: string) => requests.filter((request) => status === 'new' ? ['new', 'rescheduled'].includes(request.status) : request.status === status);
+  /**
+   * Coloanele urmăresc etapa OPERATORULUI, nu statusul global al consultației.
+   * După ce examinarea e finalizată, munca lui s-a încheiat — cazul rămâne
+   * deschis la medic, dar nu mai are ce face operatorul cu el.
+   */
+  const byStage = (stage: 'new' | 'active' | 'done') =>
+    requests.filter((request) => {
+      if (['cancelled', 'rejected', 'expired'].includes(request.status)) return false;
+      if (stage === 'new') return ['new', 'rescheduled'].includes(request.status);
+      if (stage === 'done') return Boolean(request.objective_data_completed_at) || request.status === 'completed';
+
+      return request.status === 'accepted' && !request.objective_data_completed_at;
+    });
 
   return (
     <div className="space-y-8">
@@ -230,11 +282,18 @@ export function RequestsPage() {
         <p className="text-slate-500">Gestionează cererile reale de examinare clinică la domiciliu.</p>
       </div>
 
+      {actionError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{actionError}</div>
+      )}
+      {actionMessage && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{actionMessage}</div>
+      )}
+
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Column
           title="Noi"
           dot="bg-amber-500"
-          requests={byStatus('new')}
+          requests={byStage('new')}
           empty="Nu există solicitări noi."
           render={(request, index) => (
             <RequestCard key={request.id} request={request} index={index} tone="amber">
@@ -251,16 +310,26 @@ export function RequestsPage() {
         <Column
           title="În desfășurare"
           dot="bg-blue-500"
-          requests={byStatus('accepted')}
+          requests={byStage('active')}
           empty="Nu există solicitări preluate."
           render={(request, index) => (
             <RequestCard key={request.id} request={request} index={index} tone="blue">
               <div className="flex flex-col gap-2">
-                <Button className="w-full rounded-xl bg-gradient-to-r from-primary to-purple-600 border-0" onClick={() => openForward(request)}>
-                  <Send className="h-4 w-4 mr-2" /> Transmite la medic
+                {/* Acțiunea normală: măsurătorile se fac cu aparatul HIGO, iar
+                    datele sosesc singure. Formularul de mai jos rămâne opțional,
+                    pentru ce aparatul nu acoperă. */}
+                <Button
+                  className="w-full rounded-xl bg-gradient-to-r from-primary to-purple-600 border-0"
+                  disabled={Boolean(request.objective_data_completed_at)}
+                  onClick={() => completeExamination(request)}>
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  {request.objective_data_completed_at ? 'Examinare finalizată' : 'Am terminat examinarea'}
                 </Button>
                 <Button variant="outline" className="w-full rounded-xl" onClick={() => openObjective(request)}>
-                  <Stethoscope className="h-4 w-4 mr-2" /> Date obiective
+                  <Stethoscope className="h-4 w-4 mr-2" /> Adaugă date manual
+                </Button>
+                <Button variant="outline" className="w-full rounded-xl" onClick={() => openForward(request)}>
+                  <Send className="h-4 w-4 mr-2" /> Transmite la medic
                 </Button>
                 <Button variant="outline" className="w-full rounded-xl" onClick={() => openAddon(request)}>
                   <PlusCircle className="h-4 w-4 mr-2" /> Serviciu pe loc
@@ -271,9 +340,13 @@ export function RequestsPage() {
                 <Button variant="outline" className="w-full rounded-xl" onClick={() => proposeTime(request)}>
                   Reprogramează
                 </Button>
+                {/* Concluzia o scrie medicul. Butonul apare doar la vizitele
+                    fără medic asignat, unde operatorul își încheie singur cazul. */}
+                {!request.doctor && (
                 <Button variant="outline" className="w-full rounded-xl" onClick={() => openComplete(request)}>
                   <CheckCircle2 className="h-4 w-4 mr-2" /> Finalizează ca operator
                 </Button>
+                )}
               </div>
             </RequestCard>
           )}
@@ -282,12 +355,13 @@ export function RequestsPage() {
         <Column
           title="Finalizate"
           dot="bg-green-500"
-          requests={byStatus('completed')}
-          empty="Nu există solicitări finalizate."
+          requests={byStage('done')}
+          empty="Nicio examinare finalizată încă."
           render={(request, index) => (
             <RequestCard key={request.id} request={request} index={index} tone="green">
               <Badge variant="secondary" className="bg-green-50 text-green-700">
-                <CheckCircle2 className="h-3 w-3 mr-1" /> Date transmise
+                <CheckCircle2 className="h-3 w-3 mr-1" />
+                {request.status === 'completed' ? 'Consultație încheiată' : 'Examinare finalizată — la medic'}
               </Badge>
             </RequestCard>
           )}
@@ -326,18 +400,21 @@ export function RequestsPage() {
       </Dialog>
 
       <Dialog open={isObjectiveModalOpen} onOpenChange={setIsObjectiveModalOpen}>
-        <DialogContent className="sm:max-w-[500px] glass-panel border-0 rounded-2xl z-50">
+        <DialogContent className="sm:max-w-[620px] max-h-[85vh] overflow-y-auto glass-panel border-0 rounded-2xl z-50">
           <DialogHeader>
             <DialogTitle className="text-2xl">Date obiective</DialogTitle>
             <DialogDescription>Aceste date apar în consultația pacientului și la medic.</DialogDescription>
           </DialogHeader>
-          <div className="py-4 space-y-3">
+          <div className="py-4 space-y-4">
             {selectedRequest && <RequestSummary request={selectedRequest} />}
-            <Textarea value={objectiveText} onChange={(event) => setObjectiveText(event.target.value)} className="min-h-[140px] rounded-xl" placeholder="Ex: TA 120/80, SpO2 98%, auscultație..." />
+            {objectiveError && (
+              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{objectiveError}</p>
+            )}
+            <ObjectiveDataForm value={objectiveValues} onChange={setObjectiveValues} />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsObjectiveModalOpen(false)} className="rounded-xl">Anulare</Button>
-            <Button onClick={saveObjectiveData} disabled={!objectiveText || isSaving} className="rounded-xl">Salvează</Button>
+            <Button onClick={saveObjectiveData} disabled={!hasObjectiveValues || isSaving} className="rounded-xl">Salvează</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -445,7 +522,10 @@ export function RequestsPage() {
             <Button variant="outline" onClick={() => setIsCompleteModalOpen(false)} className="rounded-xl">
               Anulare
             </Button>
-            <Button onClick={completeRequest} disabled={!completeData.diagnosis || isSaving} className="rounded-xl bg-slate-900 text-white">
+            <Button
+              onClick={completeRequest}
+              disabled={!completeData.diagnosis.trim() || isSaving}
+              className="rounded-xl bg-slate-900 text-white">
               {isSaving ? 'Se salvează...' : 'Finalizează'}
             </Button>
           </DialogFooter>
@@ -486,8 +566,15 @@ function RequestCard({ request, index, tone, children }: {
       <Card className={`glass-card border-l-4 ${border} border-y-0 border-r-0 shadow-md`}>
         <CardContent className="p-5">
           <div className="flex justify-between items-start mb-3">
-            <h4 className="font-bold text-slate-900">{request.patient?.name || 'Pacient'}</h4>
-            <span className="text-xs font-medium text-slate-500">{new Date(request.created_at).toLocaleString()}</span>
+            <div className="min-w-0">
+              {/* Titularul contului nu e pacientul: examinarea e pentru profilul
+                  de pe solicitare, iar codul lui e „Personal ID”-ul din HIGO. */}
+              <h4 className="font-bold text-slate-900">{request.patient_profile?.name || request.patient?.name || 'Pacient'}</h4>
+              {request.patient_profile?.patient_code && (
+                <p className="text-xs text-slate-500">Cod pacient {request.patient_profile.patient_code}</p>
+              )}
+            </div>
+            <span className="text-xs font-medium text-slate-500">{dateTime(request.created_at)}</span>
           </div>
           <div className="mb-3 flex flex-wrap gap-2 text-xs">
             <Badge variant="secondary" className="rounded-full">
@@ -506,10 +593,10 @@ function RequestCard({ request, index, tone, children }: {
           </div>
           <div className="space-y-2 mb-4">
             {request.scheduled_at && (
-              <p className="text-sm font-medium text-slate-700">Programat: {new Date(request.scheduled_at).toLocaleString()}</p>
+              <p className="text-sm font-medium text-slate-700">Programat: {dateTime(request.scheduled_at)}</p>
             )}
             {request.proposed_scheduled_at && (
-              <p className="text-sm font-medium text-amber-700">Propus: {new Date(request.proposed_scheduled_at).toLocaleString()}</p>
+              <p className="text-sm font-medium text-amber-700">Propus: {dateTime(request.proposed_scheduled_at)}</p>
             )}
             {request.patient_profile?.address && (
               <div className="flex items-start text-sm text-slate-700">
@@ -549,7 +636,12 @@ function RequestCard({ request, index, tone, children }: {
 function RequestSummary({ request }: { request: RequestItem }) {
   return (
     <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
-      <h4 className="font-bold text-slate-900">{request.patient?.name}</h4>
+      <h4 className="font-bold text-slate-900">
+        {request.patient_profile?.name || request.patient?.name}
+        {request.patient_profile?.patient_code && (
+          <span className="ml-2 text-xs font-normal text-slate-500">Cod pacient {request.patient_profile.patient_code}</span>
+        )}
+      </h4>
       <div className="flex items-start text-sm text-slate-600">
         <MapPin className="h-4 w-4 mr-2 mt-0.5 shrink-0 text-slate-400" />
         <span className="whitespace-pre-wrap">{request.symptoms}</span>

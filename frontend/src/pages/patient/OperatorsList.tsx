@@ -41,7 +41,7 @@ interface PatientProfile {
   id: number;
   first_name?: string | null;
   last_name?: string | null;
-  identity_number?: string | null;
+  patient_code?: string | null;
   region?: string | null;
   locality?: string | null;
   status?: string | null;
@@ -66,7 +66,9 @@ export function OperatorsList() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    apiRequest<{data: Operator[]}>('/catalog/operators', { auth: false }).then((response) => setOperators(response.data));
+    apiRequest<{data: Operator[]}>('/catalog/operators', { auth: false })
+      .then((response) => setOperators(response.data ?? []))
+      .catch(() => setOperators([]));
     apiRequest<{patient_profiles: PatientProfile[]}>('/patient/profile')
       .then((response) => {
         const profiles = response.patient_profiles ?? [];
@@ -359,5 +361,5 @@ function canRequestConsultation(profile: PatientProfile) {
   if (profile.status && profile.status !== 'active') return false;
   if (profile.active_until && new Date(profile.active_until).getTime() <= Date.now()) return false;
 
-  return Boolean(profile.first_name && profile.last_name && profile.identity_number);
+  return Boolean(profile.first_name && profile.last_name);
 }

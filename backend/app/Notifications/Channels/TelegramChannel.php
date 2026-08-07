@@ -3,25 +3,34 @@
 namespace App\Notifications\Channels;
 
 use App\Services\FeatureFlags;
+use App\Services\TelegramBot;
 use Illuminate\Notifications\Notification;
-use Illuminate\Support\Facades\Http;
 
 class TelegramChannel
 {
+    public function __construct(
+        private readonly TelegramBot $bot,
+        private readonly FeatureFlags $features,
+    ) {}
+
     public function send(object $notifiable, Notification $notification): void
     {
         if (! method_exists($notification, 'toTelegram')) {
             return;
         }
 
-        if (! app(FeatureFlags::class)->enabled('telegram_notifications')) {
+        if (! $this->features->enabled('telegram_notifications')) {
             return;
         }
 
-        $token = config('services.telegram.bot_token') ?: env('TELEGRAM_BOT_TOKEN');
+        // Comutatorul per utilizator: contul rămâne conectat, dar tace.
+        if (($notifiable->telegram_notifications_enabled ?? true) === false) {
+            return;
+        }
+
         $chatId = $notifiable->telegram_chat_id ?? null;
 
-        if (! $token || ! $chatId) {
+        if (! $chatId || ! $this->bot->configured()) {
             return;
         }
 
@@ -32,11 +41,6 @@ class TelegramChannel
             return;
         }
 
-        Http::timeout(5)->post("https://api.telegram.org/bot{$token}/sendMessage", [
-            'chat_id' => $chatId,
-            'text' => $text,
-            'parse_mode' => 'HTML',
-            'disable_web_page_preview' => true,
-        ]);
+        $this->bot->sendMessage((string) $chatId, $text);
     }
 }

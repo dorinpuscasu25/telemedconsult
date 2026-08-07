@@ -1,13 +1,126 @@
 <!doctype html>
-<html lang="en">
+<html lang="ro">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>telemedconsult.md — Platformă de telemedicină</title>
+    <style>
+      /* Stiluri inline: trebuie să funcționeze chiar dacă bundle-ul CSS nu se încarcă. */
+      .boot-screen {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        color: #475569;
+        text-align: center;
+      }
+      .boot-card {
+        max-width: 420px;
+      }
+      .boot-title {
+        margin: 0 0 8px;
+        font-size: 18px;
+        font-weight: 700;
+        color: #0f172a;
+      }
+      .boot-text {
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.6;
+      }
+      .boot-button {
+        margin-top: 20px;
+        padding: 10px 22px;
+        border: 0;
+        border-radius: 12px;
+        background: #2563eb;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .boot-spinner {
+        width: 28px;
+        height: 28px;
+        margin: 0 auto 16px;
+        border: 3px solid #e2e8f0;
+        border-top-color: #2563eb;
+        border-radius: 50%;
+        animation: boot-spin 0.8s linear infinite;
+      }
+      @keyframes boot-spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <!--
+      Conținutul din #root este înlocuit de React la montare. Dacă bundle-ul nu
+      se încarcă sau aruncă o eroare înainte ca React să pornească, utilizatorul
+      vede acest mesaj în loc de un ecran complet alb.
+    -->
+    <div id="root">
+      <div class="boot-screen" id="boot-screen">
+        <div class="boot-card">
+          <div class="boot-spinner"></div>
+          <p class="boot-text">Se încarcă aplicația...</p>
+        </div>
+      </div>
+    </div>
+
+    <noscript>
+      <div class="boot-screen">
+        <div class="boot-card">
+          <h1 class="boot-title">JavaScript este dezactivat</h1>
+          <p class="boot-text">
+            telemedconsult.md are nevoie de JavaScript pentru a funcționa. Activează-l din setările browserului și
+            reîncarcă pagina.
+          </p>
+        </div>
+      </div>
+    </noscript>
+
+    <script>
+      (function () {
+        var shown = false;
+
+        function showBootError(reason) {
+          if (shown) return;
+          var root = document.getElementById('root');
+          // Dacă React s-a montat deja, ecranul de pornire nu mai există.
+          if (!root || !document.getElementById('boot-screen')) return;
+          shown = true;
+
+          root.innerHTML =
+            '<div class="boot-screen"><div class="boot-card">' +
+            '<h1 class="boot-title">Aplicația nu a putut porni</h1>' +
+            '<p class="boot-text">Este posibil ca browserul să folosească o versiune veche din memorie. ' +
+            'Reîncarcă pagina; dacă problema persistă, golește memoria cache a browserului.</p>' +
+            '<button class="boot-button" onclick="location.reload(true)">Reîncarcă pagina</button>' +
+            '</div></div>';
+
+          if (reason) console.error('[boot]', reason);
+        }
+
+        // Un modul care aruncă la evaluare sau un fișier care dă 404.
+        window.addEventListener('error', function (event) {
+          var target = event.target;
+          if (target && (target.tagName === 'SCRIPT' || target.tagName === 'LINK')) {
+            showBootError('Resursă neîncărcată: ' + (target.src || target.href));
+            return;
+          }
+          showBootError(event.error || event.message);
+        }, true);
+
+        // Plasă finală: dacă în 12 secunde React tot nu s-a montat, ceva e rupt.
+        setTimeout(function () {
+          showBootError('Aplicația nu s-a montat în timp util.');
+        }, 12000);
+      })();
+    </script>
+
     <script type="module" src="/runtime-env.js"></script>
     <script type="module" src="/src/index.tsx"></script>
   </body>

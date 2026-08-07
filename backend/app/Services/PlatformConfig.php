@@ -20,12 +20,22 @@ class PlatformConfig
         'rate.operator_subscription_bank_transaction' => ['value' => 3.2, 'group' => 'commissions', 'type' => 'number'],
         'rate.affiliate_doctor_topup' => ['value' => 5, 'group' => 'affiliate', 'type' => 'number'],
         'rate.affiliate_operator' => ['value' => 6, 'group' => 'affiliate', 'type' => 'number'],
-        'affiliate.patient_registration_reward' => ['value' => 0, 'group' => 'affiliate', 'type' => 'number'],
+        // Procentul pe care îl primește invitatorul din FIECARE alimentare de
+        // portofel făcută de utilizatorul pe care l-a invitat.
+        'rate.affiliate_patient_topup' => ['value' => 10, 'group' => 'affiliate', 'type' => 'number'],
+        // Alimentările sub această sumă (MDL) nu generează comision.
+        'affiliate.patient_topup_min_amount' => ['value' => 0, 'group' => 'affiliate', 'type' => 'number'],
+        // true = comision doar la prima alimentare; false = la fiecare alimentare.
+        'affiliate.patient_topup_first_only' => ['value' => false, 'group' => 'affiliate', 'type' => 'boolean'],
         'affiliate.patient_registration_rules' => [
-            'value' => 'Invită o persoană folosind linkul tău personal. Bonusul afișat se rezervă la înregistrare și intră în portofelul tău după ce noul pacient își confirmă emailul. Se acordă un singur bonus pentru fiecare pacient nou. Conturile proprii, duplicate sau frauduloase nu sunt eligibile. Bonusul este credit de platformă și poate fi folosit pentru serviciile disponibile pe telemedconsult.md.',
+            'value' => 'Invită o persoană folosind linkul tău personal. Când persoana invitată alimentează portofelul, primești automat procentul afișat mai sus din suma alimentată, direct în portofelul tău. Comisionul se acordă doar pentru plăți confirmate, nu la simpla înregistrare. Conturile proprii, duplicate sau frauduloase nu sunt eligibile. Comisionul este credit de platformă și poate fi folosit pentru serviciile disponibile pe telemedconsult.md.',
             'group' => 'affiliate',
             'type' => 'string',
         ],
+        // Bonusul de bun-venit: se creditează în portofelul utilizatorului la
+        // confirmarea emailului, o singură dată per cont.
+        'wallet.registration_bonus_enabled' => ['value' => false, 'group' => 'wallet', 'type' => 'boolean'],
+        'wallet.registration_bonus' => ['value' => 0, 'group' => 'wallet', 'type' => 'number'],
         'minimum_consultation_price' => ['value' => 500, 'group' => 'financial', 'type' => 'number'],
         'operator_exam_price' => ['value' => 250, 'group' => 'financial', 'type' => 'number'],
         'chat.free_days' => ['value' => 3, 'group' => 'chat', 'type' => 'number'],

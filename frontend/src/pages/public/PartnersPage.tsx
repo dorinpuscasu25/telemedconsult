@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Handshake, ExternalLink, Building2 } from 'lucide-react';
 import { Card, CardContent } from '../../components/ui/card';
 import { apiRequest } from '../../lib/api';
+import { useSiteContent } from '../../contexts/SiteContentContext';
 
 type Partner = {
   id: number;
@@ -12,6 +13,7 @@ type Partner = {
 };
 
 export function PartnersPage() {
+  const { text } = useSiteContent();
   const [partners, setPartners] = useState<Partner[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -27,13 +29,10 @@ export function PartnersPage() {
     <div className="mx-auto w-full max-w-6xl px-4 py-14 md:px-8">
       <div className="mb-10 max-w-2xl">
         <span className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary">
-          <Handshake className="h-4 w-4" /> Parteneri
+          <Handshake className="h-4 w-4" /> {text('partners.badge')}
         </span>
-        <h1 className="mt-5 text-4xl font-extrabold tracking-tight text-slate-900">Partenerii noștri</h1>
-        <p className="mt-3 text-lg text-slate-500">
-          Colaborăm cu laboratoare, farmacii și furnizori de dispozitive medicale pentru a-ți oferi
-          servicii complete de îngrijire.
-        </p>
+        <h1 className="mt-5 text-4xl font-extrabold tracking-tight text-slate-900">{text('partners.title')}</h1>
+        <p className="mt-3 text-lg text-slate-500">{text('partners.subtitle')}</p>
       </div>
 
       {error && (
@@ -50,7 +49,7 @@ export function PartnersPage() {
         <Card className="glass-card border-0">
           <CardContent className="flex flex-col items-center gap-3 py-16 text-center text-slate-500">
             <Building2 className="h-8 w-8 text-slate-400" />
-            Momentan nu există parteneri de afișat.
+            {text('partners.empty')}
           </CardContent>
         </Card>
       ) : (
@@ -77,7 +76,7 @@ export function PartnersPage() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="mt-auto inline-flex items-center text-sm font-medium text-primary hover:text-primary/80">
-                    Vizitează site-ul <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
+                    {text('partners.visit')} <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
                   </a>
                 )}
               </CardContent>

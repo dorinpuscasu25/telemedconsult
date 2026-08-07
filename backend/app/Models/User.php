@@ -16,7 +16,7 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'phone', 'telegram_chat_id', 'status', 'active_role_id', 'higo_person_id'])]
+#[Fillable(['name', 'email', 'password', 'phone', 'telegram_chat_id', 'telegram_notifications_enabled', 'status', 'active_role_id', 'higo_person_id'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -110,6 +110,9 @@ class User extends Authenticatable
             'password' => 'hashed',
             'two_factor_confirmed_at' => 'datetime',
             'last_seen_at' => 'datetime',
+            'telegram_linked_at' => 'datetime',
+            'telegram_link_token_expires_at' => 'datetime',
+            'telegram_notifications_enabled' => 'boolean',
         ];
     }
 }

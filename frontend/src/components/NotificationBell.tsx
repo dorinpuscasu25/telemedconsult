@@ -28,8 +28,8 @@ export function NotificationBell() {
   const loadNotifications = () => {
     apiRequest<{data: AppNotification[]; unread_count: number}>('/notifications')
       .then((response) => {
-        setNotifications(response.data);
-        setUnreadCount(response.unread_count);
+        setNotifications(response.data ?? []);
+        setUnreadCount(Number(response.unread_count) || 0);
       })
       .catch(() => undefined);
   };

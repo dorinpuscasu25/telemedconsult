@@ -2,18 +2,35 @@
 
 namespace App\Services;
 
+use App\Models\Payment;
 use App\Models\Referral;
+use App\Models\ReferralCommission;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use Illuminate\Database\QueryException;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
 
+/**
+ * Programul de afiliere.
+ *
+ * Regula de business: invitatorul primește un PROCENT (configurabil de admin)
+ * din fiecare sumă alimentată în portofel de utilizatorul invitat. Comisionul se
+ * acordă doar la plată confirmată — nu la înregistrare și nu la confirmarea
+ * emailului.
+ */
 class ReferralProgram
 {
-    public const REWARD_SETTING = 'affiliate.patient_registration_reward';
+    /** Procentul din alimentare care merge către invitator. */
+    public const RATE_SETTING = 'rate.affiliate_patient_topup';
+
+    /** Alimentările sub această sumă (MDL) nu generează comision. */
+    public const MIN_AMOUNT_SETTING = 'affiliate.patient_topup_min_amount';
+
+    /** true = doar prima alimentare este comisionată. */
+    public const FIRST_ONLY_SETTING = 'affiliate.patient_topup_first_only';
 
     public const RULES_SETTING = 'affiliate.patient_registration_rules';
 
@@ -25,6 +42,30 @@ class ReferralProgram
     public function enabled(): bool
     {
         return $this->features->enabled('affiliate_program');
+    }
+
+    /** Procentul curent, limitat la intervalul 0–100. */
+    public function ratePercent(): float
+    {
+        return max(0.0, min(100.0, $this->config->number(self::RATE_SETTING, 0)));
+    }
+
+    /** Suma minimă (în MDL) a unei alimentări eligibile. */
+    public function minimumAmount(): float
+    {
+        return max(0.0, $this->config->number(self::MIN_AMOUNT_SETTING, 0));
+    }
+
+    public function firstDepositOnly(): bool
+    {
+        return $this->config->bool(self::FIRST_ONLY_SETTING, false);
+    }
+
+    public function rules(): ?string
+    {
+        $rules = $this->config->get(self::RULES_SETTING);
+
+        return is_string($rules) ? $rules : null;
     }
 
     public function ensureCode(User $user): string
@@ -58,6 +99,12 @@ class ReferralProgram
         throw new RuntimeException('Nu am putut genera codul unic de afiliere.');
     }
 
+    /**
+     * Leagă un utilizator nou-înregistrat de invitatorul său.
+     *
+     * Nu se rezervă și nu se plătește nicio sumă aici — legătura este doar
+     * înregistrată, iar plata are loc la alimentarea confirmată.
+     */
     public function attachPatient(User $referredUser, ?string $code): ?Referral
     {
         if (! $this->enabled() || blank($code)) {
@@ -70,65 +117,120 @@ class ReferralProgram
             return null;
         }
 
-        $rewardAmountMinor = (int) round(max(0, $this->config->number(self::REWARD_SETTING, 0)) * 100);
+        try {
+            return Referral::create([
+                'referrer_id' => $referrer->id,
+                'referred_user_id' => $referredUser->id,
+                'reward_amount_minor' => 0,
+                'currency' => 'MDL',
+                'status' => Referral::STATUS_PENDING,
+            ]);
+        } catch (QueryException $exception) {
+            // `referred_user_id` este unique: dacă legătura există deja, o
+            // returnăm în loc să blocăm înregistrarea.
+            if (! $this->isUniqueConstraintViolation($exception)) {
+                throw $exception;
+            }
 
-        return Referral::create([
-            'referrer_id' => $referrer->id,
-            'referred_user_id' => $referredUser->id,
-            'reward_amount_minor' => $rewardAmountMinor,
-            'currency' => 'MDL',
-            'status' => Referral::STATUS_PENDING,
-        ]);
+            return Referral::where('referred_user_id', $referredUser->id)->first();
+        }
     }
 
-    public function rewardVerifiedPatient(User $referredUser): ?Referral
+    /**
+     * Creditează invitatorul cu procentul configurat din alimentarea confirmată.
+     *
+     * Trebuie apelată DUPĂ ce plata a fost marcată `paid`, din interiorul
+     * aceleiași tranzacții de bază de date.
+     */
+    public function creditTopUpCommission(Payment $payment): ?ReferralCommission
     {
-        return DB::transaction(function () use ($referredUser) {
-            $referral = Referral::where('referred_user_id', $referredUser->id)
-                ->lockForUpdate()
-                ->first();
+        if (! $this->enabled()) {
+            return null;
+        }
 
-            if (! $referral || $referral->status !== Referral::STATUS_PENDING) {
-                return $referral;
-            }
+        $referral = Referral::where('referred_user_id', $payment->user_id)
+            ->lockForUpdate()
+            ->first();
 
-            if (! $this->enabled() || ! $referredUser->email_verified_at || $referral->reward_amount_minor <= 0) {
-                $referral->forceFill([
-                    'status' => Referral::STATUS_INELIGIBLE,
-                    'rewarded_at' => now(),
-                ])->save();
+        if (! $referral || (int) $referral->referrer_id === (int) $payment->user_id) {
+            return null;
+        }
 
-                return $referral;
-            }
+        // Idempotență: dacă alimentarea a fost deja comisionată (callback MAIB
+        // repetat, sau ok-redirect sosit după callback), nu plătim a doua oară.
+        if (ReferralCommission::where('payment_id', $payment->id)->exists()) {
+            return null;
+        }
 
-            $wallet = $this->lockedWallet($referral->referrer_id, $referral->currency);
-            $wallet->increment('balance_minor', $referral->reward_amount_minor);
+        if ($this->firstDepositOnly()
+            && ReferralCommission::where('referred_user_id', $payment->user_id)->exists()) {
+            return null;
+        }
 
-            WalletTransaction::create([
-                'wallet_id' => $wallet->id,
-                'user_id' => $referral->referrer_id,
+        $depositMinor = (int) $payment->amount_minor;
+        $minimumMinor = (int) round($this->minimumAmount() * 100);
+
+        if ($depositMinor < $minimumMinor || $depositMinor <= 0) {
+            return null;
+        }
+
+        $rate = $this->ratePercent();
+        $commissionMinor = (int) round($depositMinor * $rate / 100);
+
+        if ($commissionMinor <= 0) {
+            return null;
+        }
+
+        $currency = $payment->currency ?: 'MDL';
+        $wallet = $this->lockedWallet((int) $referral->referrer_id, $currency);
+        $wallet->increment('balance_minor', $commissionMinor);
+
+        $transaction = WalletTransaction::create([
+            'wallet_id' => $wallet->id,
+            'user_id' => $referral->referrer_id,
+            'amount_minor' => $commissionMinor,
+            'currency' => $currency,
+            'type' => 'referral_topup_commission',
+            'status' => 'completed',
+            'description' => 'Comision afiliere din alimentare',
+            'metadata' => [
                 'referral_id' => $referral->id,
-                'amount_minor' => $referral->reward_amount_minor,
-                'currency' => $referral->currency,
-                'type' => 'patient_referral_bonus',
-                'status' => 'completed',
-                'description' => 'Bonus afiliere pentru pacient verificat',
-                'metadata' => [
-                    'referred_user_id' => $referredUser->id,
-                    'source' => 'patient_registration_referral',
-                ],
-                'rate_snapshot' => [
-                    self::REWARD_SETTING => $referral->reward_amount_minor / 100,
-                ],
-            ]);
+                'referred_user_id' => $payment->user_id,
+                'payment_id' => $payment->id,
+                'deposit_amount' => $depositMinor / 100,
+                'source' => 'patient_topup_referral',
+            ],
+            'rate_snapshot' => [self::RATE_SETTING => $rate],
+        ]);
 
-            $referral->forceFill([
-                'status' => Referral::STATUS_REWARDED,
-                'rewarded_at' => now(),
-            ])->save();
+        $commission = ReferralCommission::create([
+            'referral_id' => $referral->id,
+            'referrer_id' => $referral->referrer_id,
+            'referred_user_id' => $payment->user_id,
+            'payment_id' => $payment->id,
+            'wallet_transaction_id' => $transaction->id,
+            'deposit_amount_minor' => $depositMinor,
+            'commission_amount_minor' => $commissionMinor,
+            'rate_percent' => $rate,
+            'currency' => $currency,
+        ]);
 
-            return $referral;
-        });
+        // `reward_amount_minor` devine totalul cumulat câștigat din acest
+        // referral, ca panoul de afiliere să nu recalculeze la fiecare cerere.
+        $referral->forceFill([
+            'status' => Referral::STATUS_REWARDED,
+            'reward_amount_minor' => (int) $referral->reward_amount_minor + $commissionMinor,
+            'rewarded_at' => now(),
+        ])->save();
+
+        Log::info('Comision afiliere acordat', [
+            'referral_id' => $referral->id,
+            'payment_id' => $payment->id,
+            'rate_percent' => $rate,
+            'commission_minor' => $commissionMinor,
+        ]);
+
+        return $commission;
     }
 
     private function lockedWallet(int $userId, string $currency): Wallet

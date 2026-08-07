@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle2, Search, Wallet, XCircle } from 'lucide-react';
 import { Button } from '../../components/ui/button';
@@ -31,6 +31,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Textarea } from '../../components/ui/textarea';
 import { apiRequest } from '../../lib/api';
+import { dateTime, money, num } from '../../lib/format';
 
 interface FinancialData {
   summary: {
@@ -82,7 +83,7 @@ export function TransactionsPage() {
   const [payoutReference, setPayoutReference] = useState('');
 
   const loadData = () => {
-    apiRequest<FinancialData>('/admin/financial').then(setData);
+    apiRequest<FinancialData>('/admin/financial').then(setData).catch(() => setData(null));
   };
 
   useEffect(() => {
@@ -152,7 +153,7 @@ export function TransactionsPage() {
                   <p className={`text-sm font-medium ${card.text}`}>{card.label}</p>
                   <Wallet className="h-4 w-4 text-slate-600" />
                 </div>
-                <div className="text-2xl font-bold text-slate-900">{card.value.toFixed(2)} MDL</div>
+                <div className="text-2xl font-bold text-slate-900">{money(card.value)} MDL</div>
               </CardContent>
             </Card>
           </motion.div>
@@ -211,13 +212,13 @@ export function TransactionsPage() {
                   <TableBody>
                     {filteredTransactions.map((tx) => (
                       <TableRow key={tx.id} className="border-slate-200/50 hover:bg-slate-50/50">
-                        <TableCell className="text-slate-500">{new Date(tx.date).toLocaleString()}</TableCell>
+                        <TableCell className="text-slate-500">{dateTime(tx.date)}</TableCell>
                         <TableCell className="font-medium text-slate-900">{tx.user}</TableCell>
                         <TableCell className="text-slate-500">{tx.type}</TableCell>
-                        <TableCell className={`text-right font-medium ${tx.amount > 0 ? 'text-green-600' : 'text-slate-900'}`}>
-                          {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)} {tx.currency}
+                        <TableCell className={`text-right font-medium ${num(tx.amount) > 0 ? 'text-green-600' : 'text-slate-900'}`}>
+                          {num(tx.amount) > 0 ? '+' : ''}{money(tx.amount)} {tx.currency}
                         </TableCell>
-                        <TableCell className="text-right font-bold text-green-600">+{tx.fee.toFixed(2)} {tx.currency}</TableCell>
+                        <TableCell className="text-right font-bold text-green-600">+{money(tx.fee)} {tx.currency}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -236,10 +237,10 @@ export function TransactionsPage() {
                   <div key={request.id} className="rounded-xl border border-slate-200/70 bg-white/60 p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                       <h3 className="font-semibold text-slate-900">{request.doctor}</h3>
-                      <p className="text-sm text-slate-500">Solicitat la {new Date(request.date).toLocaleString()}</p>
+                      <p className="text-sm text-slate-500">Solicitat la {dateTime(request.date)}</p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="font-bold text-slate-900">{request.amount.toFixed(2)} {request.currency}</span>
+                      <span className="font-bold text-slate-900">{money(request.amount)} {request.currency}</span>
                       <Button size="sm" className="rounded-lg" onClick={() => openApprove(request)}>
                         <CheckCircle2 className="h-4 w-4 mr-2" /> Procesează
                       </Button>
@@ -259,11 +260,11 @@ export function TransactionsPage() {
                             <div>
                               <h4 className="font-semibold text-slate-900">{request.doctor}</h4>
                               <p className="text-sm text-slate-500">
-                                {request.status === 'approved' ? 'Trimis' : 'Respins'}: {(request.approved_amount ?? request.amount).toFixed(2)} {request.currency}
+                                {request.status === 'approved' ? 'Trimis' : 'Respins'}: {money(request.approved_amount ?? request.amount)} {request.currency}
                               </p>
                               {request.payout_sent_at && (
                                 <p className="text-xs text-slate-500">
-                                  Data: {new Date(request.payout_sent_at).toLocaleString()} • Metodă: {request.payout_method || '-'} • Ref: {request.payout_reference || '-'}
+                                  Data: {dateTime(request.payout_sent_at)} • Metodă: {request.payout_method || '-'} • Ref: {request.payout_reference || '-'}
                                 </p>
                               )}
                               {request.processed_by && <p className="text-xs text-slate-400">Marcat de {request.processed_by}</p>}
@@ -294,7 +295,7 @@ export function TransactionsPage() {
               <div className="py-4 space-y-4">
                 <div className="rounded-xl bg-slate-50 border border-slate-100 p-4">
                   <p className="font-semibold text-slate-900">{selectedRequest.doctor}</p>
-                  <p className="text-sm text-slate-500">Suma solicitată: {selectedRequest.amount.toFixed(2)} {selectedRequest.currency}</p>
+                  <p className="text-sm text-slate-500">Suma solicitată: {money(selectedRequest.amount)} {selectedRequest.currency}</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Suma procesată (MDL)</Label>

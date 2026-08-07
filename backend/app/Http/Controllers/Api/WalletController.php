@@ -3,15 +3,16 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Payment;
-use App\Models\PaymentEvent;
 use App\Models\DoctorProfile;
 use App\Models\OperatorProfile;
+use App\Models\Payment;
+use App\Models\PaymentEvent;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\FeatureFlags;
 use App\Services\PlatformConfig;
+use App\Services\ReferralProgram;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -220,6 +221,12 @@ class WalletController extends Controller
                 'metadata' => ['payment_id' => $payment->id, 'provider_payment_id' => $payment->provider_payment_id],
             ]);
 
+            // Afiliere pacient: procent din alimentare către cel care a invitat
+            // utilizatorul prin linkul de referral. Legătura vine din tabela
+            // `referrals`, nu din body-ul cererii.
+            app(ReferralProgram::class)->creditTopUpCommission($payment);
+
+            // Afiliere medic/operator: codul este transmis explicit la top-up.
             $this->creditAffiliateBonus($payment);
         });
     }

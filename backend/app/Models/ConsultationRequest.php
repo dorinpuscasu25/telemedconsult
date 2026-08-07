@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['patient_id', 'patient_profile_id', 'doctor_id', 'operator_id', 'declined_operator_ids', 'coordinator_id', 'specialty_id', 'type', 'consultation_kind', 'status', 'symptoms', 'selected_services', 'triage_notes', 'scheduled_at', 'proposed_scheduled_at', 'proposed_by', 'accepted_at', 'operator_accepted_at', 'anamnesis_completed_at', 'objective_data_completed_at', 'conclusion_sent_at', 'doctor_response_minutes', 'completed_at', 'amount_minor', 'platform_fee_minor', 'provider_amount_minor', 'pricing_snapshot', 'payment_status', 'acceptance_expires_at', 'chat_expires_at', 'free_chat_until', 'chat_reactivated_until', 'cancelled_at', 'refunded_at', 'rating_required_after', 'closed_at', 'cancellation_reason'])]
+#[Fillable(['patient_id', 'patient_profile_id', 'doctor_id', 'operator_id', 'declined_operator_ids', 'coordinator_id', 'specialty_id', 'type', 'consultation_kind', 'status', 'symptoms', 'selected_services', 'triage_notes', 'scheduled_at', 'proposed_scheduled_at', 'proposed_by', 'accepted_at', 'operator_accepted_at', 'anamnesis_completed_at', 'objective_data_completed_at', 'doctor_started_at', 'conclusion_sent_at', 'doctor_response_minutes', 'completed_at', 'amount_minor', 'platform_fee_minor', 'provider_amount_minor', 'pricing_snapshot', 'payment_status', 'acceptance_expires_at', 'chat_expires_at', 'free_chat_until', 'chat_reactivated_until', 'cancelled_at', 'refunded_at', 'rating_required_after', 'closed_at', 'cancellation_reason'])]
 class ConsultationRequest extends Model
 {
     public function patient(): BelongsTo
@@ -60,6 +60,7 @@ class ConsultationRequest extends Model
             'declined_operator_ids' => 'array',
             'anamnesis_completed_at' => 'datetime',
             'objective_data_completed_at' => 'datetime',
+            'doctor_started_at' => 'datetime',
             'conclusion_sent_at' => 'datetime',
             'completed_at' => 'datetime',
             'acceptance_expires_at' => 'datetime',

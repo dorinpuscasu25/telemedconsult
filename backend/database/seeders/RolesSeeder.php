@@ -15,7 +15,8 @@ class RolesSeeder extends Seeder
      */
     public const ROLES = [
         ['name' => 'admin', 'label' => 'Administrator'],
-        ['name' => 'patient', 'label' => 'Pacient'],
+        // Titularul contului e „Utilizator”; pacienții sunt profilurile pe care le adaugă el.
+        ['name' => 'patient', 'label' => 'Utilizator'],
         ['name' => 'doctor', 'label' => 'Medic'],
         ['name' => 'operator', 'label' => 'Operator'],
         ['name' => 'coordinator', 'label' => 'Coordonator'],

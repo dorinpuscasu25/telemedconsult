@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CheckCircle2, RefreshCw, Stethoscope } from 'lucide-react';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -34,7 +34,9 @@ export function DoctorsPage() {
   const [doctors, setDoctors] = useState<AdminUser[]>([]);
 
   const loadDoctors = () => {
-    apiRequest<{data: AdminUser[]}>('/admin/users?role=doctor').then((response) => setDoctors(response.data));
+    apiRequest<{data: AdminUser[]}>('/admin/users?role=doctor')
+      .then((response) => setDoctors(response.data ?? []))
+      .catch(() => setDoctors([]));
   };
 
   useEffect(() => {

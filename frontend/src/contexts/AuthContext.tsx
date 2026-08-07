@@ -1,11 +1,11 @@
-import React, {
+import {
   useEffect,
   useState,
   createContext,
   useContext,
   type ReactNode
 } from 'react';
-import { apiRequest, setToken } from '../lib/api';
+import { UNAUTHORIZED_EVENT, apiRequest, getToken, setToken } from '../lib/api';
 import { disconnectEcho } from '../lib/realtime';
 
 export type RoleName = 'patient' | 'doctor' | 'operator' | 'coordinator' | 'admin';
@@ -65,10 +65,36 @@ export function AuthProvider({ children }: {children: ReactNode;}) {
   });
 
   useEffect(() => {
+    if (!getToken()) {
+      // Fără token nu are rost o cerere care va da 401 garantat.
+      setIsLoading(false);
+      return;
+    }
+
     apiRequest<{user: User}>('/auth/me')
-      .then((response) => setUser(normalizeUser(response.user)))
+      .then((response) => {
+        if (response?.user) {
+          setUser(normalizeUser(response.user));
+          return;
+        }
+        setToken(null);
+      })
       .catch(() => setToken(null))
       .finally(() => setIsLoading(false));
+  }, []);
+
+  // Orice 401 venit dintr-o cerere oarecare (token expirat în timp ce
+  // utilizatorul avea o pagină deschisă) trebuie să golească sesiunea, altfel
+  // paginile continuă să randeze cu date lipsă și crapă.
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      disconnectEcho();
+      setUser(null);
+      setIsLoading(false);
+    };
+
+    window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
   }, []);
 
   const login = async (email: string, password: string) => {

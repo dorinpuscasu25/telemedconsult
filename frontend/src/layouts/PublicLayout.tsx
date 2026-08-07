@@ -3,12 +3,8 @@ import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { Activity, Menu, X } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { useAuth } from '../contexts/AuthContext';
-
-const NAV_LINKS = [
-  { label: 'Acasă', to: '/' },
-  { label: 'Blog', to: '/blog' },
-  { label: 'Parteneri', to: '/parteneri' }
-];
+import { useSiteContent } from '../contexts/SiteContentContext';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 
 function dashboardPath(role: string | null, status?: string): string {
   if (status === 'pending') return '/pending';
@@ -18,10 +14,18 @@ function dashboardPath(role: string | null, status?: string): string {
 
 export function PublicLayout() {
   const { isAuthenticated, role, user } = useAuth();
+  const { text } = useSiteContent();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = React.useState(false);
 
   const target = dashboardPath(role, user?.status);
+
+  // Etichetele de meniu sunt editabile din panoul de conținut.
+  const navLinks = [
+    { label: text('header.nav_home'), to: '/' },
+    { label: text('header.nav_news'), to: '/noutati' },
+    { label: text('header.nav_partners'), to: '/parteneri' }
+  ];
 
   return (
     <div className="flex min-h-screen flex-col gradient-bg">
@@ -32,12 +36,13 @@ export function PublicLayout() {
               <Activity className="h-5 w-5" />
             </div>
             <span className="text-xl font-extrabold tracking-tight text-slate-900">
-              telemedconsult<span className="text-primary">.md</span>
+              {text('header.brand_name')}
+              <span className="text-primary">{text('header.brand_suffix')}</span>
             </span>
           </Link>
 
           <nav className="hidden items-center gap-1 md:flex">
-            {NAV_LINKS.map((link) => (
+            {navLinks.map((link) => (
               <NavLink
                 key={link.to}
                 to={link.to}
@@ -55,15 +60,15 @@ export function PublicLayout() {
           <div className="hidden items-center gap-2 md:flex">
             {isAuthenticated ? (
               <Button className="rounded-xl" onClick={() => navigate(target)}>
-                Panoul meu
+                {text('header.cta_dashboard')}
               </Button>
             ) : (
               <>
                 <Button variant="ghost" className="rounded-xl" onClick={() => navigate('/login')}>
-                  Autentificare
+                  {text('header.cta_login')}
                 </Button>
                 <Button className="rounded-xl bg-gradient-to-r from-primary to-purple-600 shadow-lg shadow-primary/20" onClick={() => navigate('/register')}>
-                  Creează cont
+                  {text('header.cta_register')}
                 </Button>
               </>
             )}
@@ -81,7 +86,7 @@ export function PublicLayout() {
         {mobileOpen && (
           <div className="border-t border-white/20 bg-white/80 px-4 py-3 backdrop-blur-xl md:hidden">
             <nav className="flex flex-col gap-1">
-              {NAV_LINKS.map((link) => (
+              {navLinks.map((link) => (
                 <NavLink
                   key={link.to}
                   to={link.to}
@@ -96,15 +101,15 @@ export function PublicLayout() {
               <div className="mt-2 flex flex-col gap-2 border-t border-slate-200/70 pt-3">
                 {isAuthenticated ? (
                   <Button className="rounded-xl" onClick={() => { setMobileOpen(false); navigate(target); }}>
-                    Panoul meu
+                    {text('header.cta_dashboard')}
                   </Button>
                 ) : (
                   <>
                     <Button variant="outline" className="rounded-xl" onClick={() => { setMobileOpen(false); navigate('/login'); }}>
-                      Autentificare
+                      {text('header.cta_login')}
                     </Button>
                     <Button className="rounded-xl" onClick={() => { setMobileOpen(false); navigate('/register'); }}>
-                      Creează cont
+                      {text('header.cta_register')}
                     </Button>
                   </>
                 )}
@@ -115,17 +120,19 @@ export function PublicLayout() {
       </header>
 
       <main className="flex-1">
-        <Outlet />
+        <ErrorBoundary inline>
+          <Outlet />
+        </ErrorBoundary>
       </main>
 
       <footer className="glass-panel border-t border-white/20">
         <div className="mx-auto flex w-full max-w-7xl flex-col items-center justify-between gap-4 px-4 py-7 text-center text-sm text-slate-500 md:flex-row md:px-8 md:py-8 md:text-left">
           <div className="flex items-start gap-2 sm:items-center">
             <Activity className="mt-0.5 h-4 w-4 shrink-0 text-primary sm:mt-0" />
-            <span>© {new Date().getFullYear()} telemedconsult.md. Toate drepturile rezervate.</span>
+            <span>© {new Date().getFullYear()} {text('footer.copyright')}</span>
           </div>
           <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
-            {NAV_LINKS.map((link) => (
+            {navLinks.map((link) => (
               <Link key={link.to} to={link.to} className="transition-colors hover:text-slate-800">
                 {link.label}
               </Link>

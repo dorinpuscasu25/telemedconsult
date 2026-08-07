@@ -44,10 +44,8 @@ class ConsultationStateMachineTest extends TestCase
         $scheduled = $this->request(['status' => 'accepted', 'scheduled_at' => now()->addDay()]);
         $this->assertSame(ConsultationStateMachine::SCHEDULED, $this->fsm->stateFor($scheduled));
 
-        $awaitingPatient = $this->request(['status' => 'accepted', 'objective_data_completed_at' => now()]);
-        $this->assertSame(ConsultationStateMachine::AWAITING_PATIENT_INPUT, $this->fsm->stateFor($awaitingPatient));
-
-        $awaitingDoctor = $this->request(['status' => 'accepted', 'objective_data_completed_at' => now(), 'anamnesis_completed_at' => now()]);
+        // Examinarea operatorului e singura condiție ca dosarul să ajungă la medic.
+        $awaitingDoctor = $this->request(['status' => 'accepted', 'objective_data_completed_at' => now()]);
         $this->assertSame(ConsultationStateMachine::AWAITING_DOCTOR, $this->fsm->stateFor($awaitingDoctor));
 
         $concluded = $this->request(['status' => 'completed', 'conclusion_sent_at' => now()]);
@@ -60,20 +58,17 @@ class ConsultationStateMachineTest extends TestCase
         $this->assertSame(ConsultationStateMachine::CANCELLED, $this->fsm->stateFor($cancelled));
     }
 
-    public function test_doctor_cannot_conclude_with_exam_before_both_flags(): void
+    public function test_doctor_cannot_conclude_before_the_operator_finishes_the_examination(): void
     {
         [$doctor, $consultationRequest] = $this->doctorScenario();
         Sanctum::actingAs($doctor);
 
-        // Only anamnesis done — objective data missing.
-        $consultationRequest->forceFill(['anamnesis_completed_at' => now()])->save();
-
         $this->postJson("/api/v1/requests/{$consultationRequest->id}/complete", ['diagnosis' => 'Faringită'])
             ->assertUnprocessable()
-            ->assertJsonPath('message', 'Consultația nu poate fi concluzionată încă: sunt necesare datele obiective ale operatorului ȘI anamneza pacientului.');
+            ->assertJsonPath('message', 'Operatorul nu a finalizat încă examinarea la domiciliu.');
     }
 
-    public function test_doctor_can_conclude_with_exam_when_both_flags_set(): void
+    public function test_doctor_can_conclude_once_the_examination_is_finished(): void
     {
         [$doctor, $consultationRequest] = $this->doctorScenario();
         Sanctum::actingAs($doctor);

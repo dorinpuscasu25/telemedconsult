@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\SyncHigoEntity;
 use App\Models\CoordinatorProfile;
 use App\Models\DoctorProfile;
 use App\Models\OperatorCapability;
@@ -15,6 +16,7 @@ use App\Models\Role;
 use App\Models\Specialty;
 use App\Models\User;
 use App\Notifications\AppEventNotification;
+use App\Rules\ValidPhoneNumber;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -75,7 +77,7 @@ class AdminController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'phone' => ['nullable', 'string', 'max:50'],
+            'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber],
             'telegram_chat_id' => ['nullable', 'string', 'max:100'],
             'password' => ['nullable', 'string', 'min:8'],
             'roles' => ['required', 'array', 'min:1'],
@@ -136,6 +138,8 @@ class AdminController extends Controller
             );
         }
 
+        dispatch(SyncHigoEntity::forUser($user));
+
         return response()->json([
             'message' => 'Utilizator creat.',
             'user' => $this->serializeUser($user->refresh()),
@@ -149,7 +153,7 @@ class AdminController extends Controller
         $validated = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'email' => ['sometimes', 'required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user)],
-            'phone' => ['nullable', 'string', 'max:50'],
+            'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber],
             'telegram_chat_id' => ['nullable', 'string', 'max:100'],
             'password' => ['nullable', 'string', 'min:8'],
             'status' => ['sometimes', Rule::in(['active', 'suspended'])],
@@ -213,6 +217,8 @@ class AdminController extends Controller
             ));
         }
 
+        dispatch(SyncHigoEntity::forUser($user->refresh()));
+
         return response()->json([
             'message' => 'Utilizator actualizat.',
             'user' => $this->serializeUser($user->refresh()),
@@ -265,6 +271,8 @@ class AdminController extends Controller
             '/',
             'success',
         ));
+
+        dispatch(SyncHigoEntity::forUser($user->refresh()));
 
         return response()->json([
             'message' => 'Cont aprobat.',

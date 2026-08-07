@@ -28,6 +28,7 @@ class DoctorProfile extends Model
     protected function casts(): array
     {
         return [
+            'higo_password' => 'encrypted',
             'platforms' => 'array',
             'service_catalog' => 'array',
             'required_investigations' => 'array',

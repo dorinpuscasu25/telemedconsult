@@ -11,6 +11,7 @@ import {
 } from '../../components/ui/card';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiRequest } from '../../lib/api';
+import { dateTime } from '../../lib/format';
 
 interface DashboardData {
   summary: {
@@ -25,6 +26,7 @@ interface DashboardData {
   pending_requests: Array<{
     id: string;
     patient?: { id: string; name: string; email: string } | null;
+    patient_profile?: { name?: string } | null;
     specialty?: string | null;
     symptoms?: string | null;
     created_at: string;
@@ -138,13 +140,13 @@ export function DoctorHome() {
                 <div key={request.id} className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
                   <div className="min-w-0">
                     <div className="mb-1 flex flex-wrap items-center gap-2">
-                      <h3 className="font-semibold text-slate-900">{request.patient?.name || 'Pacient'}</h3>
+                      <h3 className="font-semibold text-slate-900">{request.patient_profile?.name || request.patient?.name || 'Pacient'}</h3>
                       <Badge variant="outline" className="bg-amber-50 text-amber-700">
                         Nou
                       </Badge>
                     </div>
                     <p className="text-sm text-slate-500">
-                      {request.specialty || 'Consultație'} • {new Date(request.created_at).toLocaleString()}
+                      {request.specialty || 'Consultație'} • {dateTime(request.created_at)}
                     </p>
                     <p className="mt-2 line-clamp-2 text-sm text-slate-700">
                       {request.symptoms || 'Fără detalii.'}

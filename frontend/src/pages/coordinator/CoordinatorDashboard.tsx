@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ClipboardCheck, UserCheck, Users } from 'lucide-react';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -21,6 +21,7 @@ interface CoordinatorRequest {
   triage_notes?: string | null;
   created_at: string;
   patient?: { name: string; email: string } | null;
+  patient_profile?: { name?: string } | null;
   doctor?: { id: string; name: string } | null;
   operator?: { id: string; name: string } | null;
   coordinator?: { id: string; name: string } | null;
@@ -55,7 +56,7 @@ export function CoordinatorDashboard() {
   const [error, setError] = useState('');
 
   const loadData = () => {
-    apiRequest<DashboardData>('/coordinator/dashboard').then(setData);
+    apiRequest<DashboardData>('/coordinator/dashboard').then(setData).catch(() => setData(null));
   };
 
   useEffect(() => {
@@ -140,7 +141,7 @@ export function CoordinatorDashboard() {
                     <Badge variant="secondary">{request.status}</Badge>
                     {request.coordinator && <Badge variant="outline">Coordonator: {request.coordinator.name}</Badge>}
                   </div>
-                  <h2 className="mt-3 font-semibold text-slate-950">{request.patient?.name || 'Pacient'} • {request.specialty || 'General'}</h2>
+                  <h2 className="mt-3 font-semibold text-slate-950">{request.patient_profile?.name || request.patient?.name || 'Pacient'} • {request.specialty || 'General'}</h2>
                   <p className="mt-2 text-sm leading-6 text-slate-600">{request.symptoms}</p>
                   {(request.doctor || request.operator) && (
                     <p className="mt-2 text-sm font-medium text-slate-800">

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AdminBlogPostController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AdminFeatureFlagController;
+use App\Http\Controllers\Api\AdminHigoController;
 use App\Http\Controllers\Api\AdminInvestigationTypeController;
 use App\Http\Controllers\Api\AdminOperationsController;
 use App\Http\Controllers\Api\AdminPartnerController;
@@ -12,11 +13,15 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CatalogController;
 use App\Http\Controllers\Api\CoordinatorController;
 use App\Http\Controllers\Api\DoctorOperationsController;
+use App\Http\Controllers\Api\ExamMediaController;
+use App\Http\Controllers\Api\HigoExamController;
 use App\Http\Controllers\Api\IntegrationController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PatientEngagementController;
 use App\Http\Controllers\Api\PatientProfileController;
 use App\Http\Controllers\Api\ReferralController;
+use App\Http\Controllers\Api\SiteContentController;
+use App\Http\Controllers\Api\TelegramController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\WorkflowController;
 use Illuminate\Support\Facades\Broadcast;
@@ -39,14 +44,33 @@ Route::prefix('v1')->group(function () {
     Route::get('/catalog/pricing', [CatalogController::class, 'pricing']);
     Route::get('/catalog/regions', [CatalogController::class, 'regions']);
     Route::get('/catalog/investigations', [CatalogController::class, 'investigations']);
+    Route::get('/catalog/objective-fields', [CatalogController::class, 'objectiveFields']);
     Route::get('/catalog/features', [CatalogController::class, 'features']);
     Route::get('/catalog/blog', [CatalogController::class, 'blog']);
     Route::get('/catalog/blog/{slug}', [CatalogController::class, 'blogPost']);
     Route::get('/catalog/partners', [CatalogController::class, 'partners']);
+    Route::get('/catalog/site-content', [SiteContentController::class, 'index']);
     Route::get('/integrations/status', [IntegrationController::class, 'status']);
     Route::post('/payments/callback/maib', [WalletController::class, 'callback']);
     Route::get('/payments/maib/ok', [WalletController::class, 'ok']);
     Route::get('/payments/maib/fail', [WalletController::class, 'fail']);
+
+    // Aparatul HIGO livrează examinările fără sesiune; secretul din URL e paza.
+    Route::post('/higo/exams/webhook/{secret}', [HigoExamController::class, 'store'])
+        ->middleware('throttle:240,1');
+
+    // Imaginile și înregistrările examinării: `<img>` și `<audio>` nu pot trimite
+    // antetul de autentificare, deci paza e semnătura cu viață scurtă pusă în
+    // fișa consultației, care ajunge doar la participanții ei.
+    Route::get('/exam-media/{media}', [ExamMediaController::class, 'show'])
+        ->whereNumber('media')
+        ->middleware('signed')
+        ->name('exam-media.show');
+
+    // Telegram apelează webhook-ul fără sesiune: secretul din URL + antetul
+    // `X-Telegram-Bot-Api-Secret-Token` sunt autentificarea.
+    Route::post('/telegram/webhook/{secret}', [TelegramController::class, 'webhook'])
+        ->middleware('throttle:120,1');
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/auth/me', [AuthController::class, 'me']);
@@ -55,6 +79,12 @@ Route::prefix('v1')->group(function () {
 
         Route::get('/notifications', [NotificationController::class, 'index']);
         Route::post('/notifications/read', [NotificationController::class, 'markRead']);
+
+        Route::get('/telegram/status', [TelegramController::class, 'status']);
+        Route::post('/telegram/link', [TelegramController::class, 'link'])->middleware('throttle:20,1');
+        Route::post('/telegram/unlink', [TelegramController::class, 'unlink']);
+        Route::post('/telegram/preferences', [TelegramController::class, 'preferences']);
+        Route::post('/telegram/test', [TelegramController::class, 'test'])->middleware('throttle:5,1');
 
         Route::get('/admin/summary', [AdminController::class, 'summary']);
         Route::get('/admin/roles', [AdminController::class, 'roles']);
@@ -102,6 +132,10 @@ Route::prefix('v1')->group(function () {
         Route::post('/admin/blog-posts', [AdminBlogPostController::class, 'store']);
         Route::put('/admin/blog-posts/{blogPost}', [AdminBlogPostController::class, 'update']);
         Route::delete('/admin/blog-posts/{blogPost}', [AdminBlogPostController::class, 'destroy']);
+        Route::get('/admin/site-content', [SiteContentController::class, 'adminIndex']);
+        Route::put('/admin/site-content', [SiteContentController::class, 'update']);
+        Route::post('/admin/site-content/reset', [SiteContentController::class, 'reset']);
+
         Route::get('/admin/partners', [AdminPartnerController::class, 'index']);
         Route::post('/admin/partners', [AdminPartnerController::class, 'store']);
         Route::put('/admin/partners/{partner}', [AdminPartnerController::class, 'update']);
@@ -118,6 +152,8 @@ Route::prefix('v1')->group(function () {
         Route::post('/requests/{consultationRequest}/forward-to-doctor', [WorkflowController::class, 'forwardToDoctor']);
         Route::post('/requests/{consultationRequest}/anamnesis', [WorkflowController::class, 'completeAnamnesis']);
         Route::post('/requests/{consultationRequest}/objective-data', [WorkflowController::class, 'storeObjectiveData']);
+        Route::post('/requests/{consultationRequest}/examination-done', [WorkflowController::class, 'completeExamination']);
+        Route::post('/requests/{consultationRequest}/start', [WorkflowController::class, 'startConsultation']);
         Route::post('/requests/{consultationRequest}/add-on-service', [WorkflowController::class, 'addOnService']);
         Route::post('/requests/{consultationRequest}/meet-link', [WorkflowController::class, 'storeMeetLink']);
         Route::post('/requests/{consultationRequest}/additional-investigation', [WorkflowController::class, 'requestAdditionalInvestigation']);
@@ -161,6 +197,15 @@ Route::prefix('v1')->group(function () {
         Route::get('/doctor/dashboard', [DoctorOperationsController::class, 'dashboard']);
         Route::get('/doctor/stats', [DoctorOperationsController::class, 'stats']);
         Route::post('/doctor/withdrawals', [DoctorOperationsController::class, 'storeWithdrawal']);
+
+        Route::get('/admin/higo/sync', [AdminHigoController::class, 'index']);
+        Route::post('/admin/higo/sync/{kind}/{id}', [AdminHigoController::class, 'retry'])->whereNumber('id');
+        Route::get('/admin/higo/exams/{exam}', [AdminHigoController::class, 'showExam'])->whereNumber('exam');
+        Route::post('/admin/higo/exams/{exam}/remap', [AdminHigoController::class, 'remapExam']);
+        Route::post('/admin/higo/exams/remap', [AdminHigoController::class, 'remapAll']);
+        Route::get('/admin/higo/mapping', [AdminHigoController::class, 'mapping']);
+        Route::put('/admin/higo/mapping', [AdminHigoController::class, 'updateMapping']);
+        Route::post('/admin/higo/credentials/{kind}/{id}/reset', [AdminHigoController::class, 'resetPassword'])->whereNumber('id');
 
         Route::get('/integrations/events', [IntegrationController::class, 'events']);
         Route::post('/integrations/documents/{medicalDocument}/queue', [IntegrationController::class, 'queueDocument']);

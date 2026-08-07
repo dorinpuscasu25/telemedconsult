@@ -33,7 +33,24 @@ interface Message {
   created_at: string;
 }
 
+/** Starea reală a chatului, calculată în backend din etapa consultației. */
+interface ChatState {
+  state: 'pending' | 'open' | 'reactivatable' | 'closed';
+  can_write: boolean;
+  can_reactivate: boolean;
+  message: string | null;
+  reactivate_until?: string | null;
+}
+
+const CHAT_BADGES: Record<ChatState['state'], { label: string; className: string }> = {
+  pending: { label: 'În așteptare', className: 'bg-amber-50 text-amber-600 border-amber-200' },
+  open: { label: 'Activ', className: 'bg-green-50 text-green-600 border-green-200' },
+  reactivatable: { label: 'Închis', className: 'bg-slate-100 text-slate-500 border-slate-200' },
+  closed: { label: 'Încheiat', className: 'bg-slate-100 text-slate-500 border-slate-200' }
+};
+
 interface Conversation {
+  chat?: ChatState;
   id: number;
   status: string;
   consultation_request_id?: number | null;
@@ -265,6 +282,15 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
   }
 
   const activeParticipant = participantFor(activeChat);
+  // Backendul calculează starea din etapa consultației; `status` rămâne doar ca
+  // rezervă pentru conversațiile fără cerere asociată.
+  const chat: ChatState = activeChat.chat ?? {
+    state: activeChat.status === 'open' ? 'open' : 'closed',
+    can_write: activeChat.status === 'open',
+    can_reactivate: false,
+    message: null
+  };
+  const chatBadge = CHAT_BADGES[chat.state] ?? CHAT_BADGES.closed;
 
   return (
     <div className="h-[calc(100vh-8rem)] flex gap-6">
@@ -287,7 +313,7 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
                       <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${participant.email}`} />
                       <AvatarFallback>{participant.name.charAt(0)}</AvatarFallback>
                     </Avatar>
-                    {conversation.status === 'open' && <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />}
+                    {(conversation.chat?.can_write ?? conversation.status === 'open') && <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />}
                   </div>
                   <div className="ml-3 flex-1 overflow-hidden">
                     <div className="flex justify-between items-center mb-0.5">
@@ -319,10 +345,8 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
               <p className="text-xs text-primary font-medium">{activeParticipant.role}</p>
             </div>
           </div>
-          <Badge
-            variant="outline"
-            className={activeChat.status === 'open' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-slate-100 text-slate-500 border-slate-200'}>
-            <Clock className="w-3 h-3 mr-1" /> {activeChat.status === 'open' ? 'Activ' : 'Închis'}
+          <Badge variant="outline" className={chatBadge.className}>
+            <Clock className="w-3 h-3 mr-1" /> {chatBadge.label}
           </Badge>
         </div>
 
@@ -374,7 +398,7 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
         </ScrollArea>
 
         <div className="p-4 bg-white/60 backdrop-blur-md border-t border-slate-200/50 shrink-0">
-          {activeChat.status === 'open' ? (
+          {chat.can_write ? (
             <form onSubmit={handleSend} className="flex items-end gap-2">
               <Button
                 type="button"
@@ -407,10 +431,16 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
             </form>
           ) : (
             <div className="flex flex-col items-center justify-center p-2 text-center">
-              <p className="text-sm text-slate-500 mb-3">Această conversație nu este activă.</p>
-              <Button className="rounded-xl bg-slate-900 text-white" onClick={reactivateChat} disabled={!activeChat.consultation_request_id && !activeChat.consultation_request?.id}>
-                <CheckCircle2 className="mr-2 h-4 w-4" /> Reactivează chat
-              </Button>
+              <p className="mb-3 text-sm text-slate-500">
+                {chat.message ?? 'Această conversație nu este activă.'}
+              </p>
+              {/* Reactivarea are sens doar după concluzie, cât timp fereastra e
+                  deschisă — nu cât încă se așteaptă examinarea. */}
+              {chat.can_reactivate && (
+                <Button className="rounded-xl bg-slate-900 text-white" onClick={reactivateChat}>
+                  <CheckCircle2 className="mr-2 h-4 w-4" /> Reactivează chat
+                </Button>
+              )}
             </div>
           )}
         </div>

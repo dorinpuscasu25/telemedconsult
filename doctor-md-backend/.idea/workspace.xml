@@ -4,7 +4,71 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="94001e56-3d4a-44d1-84ac-dda7af399d23" name="Changes" comment="" />
+    <list default="true" id="94001e56-3d4a-44d1-84ac-dda7af399d23" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/../.claude/launch.json" beforeDir="false" afterPath="$PROJECT_DIR$/../.claude/launch.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../backend/.env.example" beforeDir="false" afterPath="$PROJECT_DIR$/../backend/.env.example" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../backend/app/Http/Controllers/Api/AdminController.php" beforeDir="false" afterPath="$PROJECT_DIR$/../backend/app/Http/Controllers/Api/AdminController.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../backend/app/Http/Controllers/Api/AdminOperationsController.php" beforeDir="false" afterPath="$PROJECT_DIR$/../backend/app/Http/Controllers/Api/AdminOperationsController.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../backend/app/Http/Controllers/Api/AuthController.php" beforeDir="false" afterPath="$PROJECT_DIR$/../backend/app/Http/Controllers/Api/AuthController.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../backend/app/Http/Controllers/Api/CatalogController.php" beforeDir="false" afterPath="$PROJECT_DIR$/../backend/app/Http/Controllers/Api/CatalogController.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../backend/app/Http/Controllers/Api/PatientProfileController.php" beforeDir="false" afterPath="$PROJECT_DIR$/../backend/app/Http/Controllers/Api/PatientProfileController.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../backend/app/Http/Controllers/Api/ReferralController.php" beforeDir="false" afterPath="$PROJECT_DIR$/../backend/app/Http/Controllers/Api/ReferralController.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../backend/app/Http/Controllers/Api/WalletController.php" beforeDir="false" afterPath="$PROJECT_DIR$/../backend/app/Http/Controllers/Api/WalletController.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../backend/app/Http/Controllers/Api/WorkflowController.php" beforeDir="false" afterPath="$PROJECT_DIR$/../backend/app/Http/Controllers/Api/WorkflowController.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../backend/app/Models/User.php" beforeDir="false" afterPath="$PROJECT_DIR$/../backend/app/Models/User.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../backend/app/Notifications/Channels/TelegramChannel.php" beforeDir="false" afterPath="$PROJECT_DIR$/../backend/app/Notifications/Channels/TelegramChannel.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../backend/app/Services/PlatformConfig.php" beforeDir="false" afterPath="$PROJECT_DIR$/../backend/app/Services/PlatformConfig.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../backend/app/Services/ReferralProgram.php" beforeDir="false" afterPath="$PROJECT_DIR$/../backend/app/Services/ReferralProgram.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../backend/config/higo.php" beforeDir="false" afterPath="$PROJECT_DIR$/../backend/config/higo.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../backend/config/services.php" beforeDir="false" afterPath="$PROJECT_DIR$/../backend/config/services.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../backend/routes/api.php" beforeDir="false" afterPath="$PROJECT_DIR$/../backend/routes/api.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../backend/tests/Feature/FeatureFlagsTest.php" beforeDir="false" afterPath="$PROJECT_DIR$/../backend/tests/Feature/FeatureFlagsTest.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../backend/tests/Feature/PatientReferralProgramTest.php" beforeDir="false" afterPath="$PROJECT_DIR$/../backend/tests/Feature/PatientReferralProgramTest.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/Dockerfile" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/Dockerfile" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/docker/nginx.conf" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/docker/nginx.conf" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/App.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/components/NotificationBell.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/components/NotificationBell.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/contexts/AuthContext.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/contexts/AuthContext.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/index.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/layouts/AdminLayout.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/layouts/AdminLayout.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/layouts/AppLayout.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/layouts/AppLayout.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/layouts/PublicLayout.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/layouts/PublicLayout.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/lib/api.ts" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/lib/api.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/lib/realtime.ts" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/lib/realtime.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/GuestPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/GuestPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/PendingApprovalPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/PendingApprovalPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/admin/AdminDashboard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/admin/AdminDashboard.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/admin/BlogPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/admin/BlogPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/admin/ComplaintsPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/admin/ComplaintsPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/admin/ContractsPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/admin/ContractsPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/admin/DoctorsPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/admin/DoctorsPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/admin/FeatureFlagsPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/admin/FeatureFlagsPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/admin/PatientCardPackagesPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/admin/PatientCardPackagesPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/admin/RegistrationsPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/admin/RegistrationsPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/admin/SettingsPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/admin/SettingsPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/admin/SpecialtiesPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/admin/SpecialtiesPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/admin/TransactionsPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/admin/TransactionsPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/admin/UsersPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/admin/UsersPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/coordinator/CoordinatorDashboard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/coordinator/CoordinatorDashboard.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/doctor/ConsultationsPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/doctor/ConsultationsPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/doctor/DoctorHome.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/doctor/DoctorHome.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/doctor/StatsPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/doctor/StatsPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/operator/OperatorHome.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/operator/OperatorHome.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/operator/RequestsPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/operator/RequestsPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/patient/ComplaintsPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/patient/ComplaintsPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/patient/DoctorsList.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/patient/DoctorsList.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/patient/OperatorsList.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/patient/OperatorsList.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/patient/PatientHome.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/patient/PatientHome.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/patient/ProfilePage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/patient/ProfilePage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/patient/WalletPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/patient/WalletPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/public/BlogListPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/public/BlogListPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/public/BlogPostPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/public/BlogPostPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/public/HomePage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/public/HomePage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/src/pages/public/PartnersPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/src/pages/public/PartnersPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/tsconfig.json" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/tsconfig.json" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -20,8 +84,11 @@
     </persistenceIdMap>
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="467" />
+    <option name="cachedIndexableFilesCount" value="1" />
     <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
   </component>
   <component name="McpProjectServerCommands">
     <commands />
@@ -193,22 +260,24 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;/Users/dorinpuscasu/Desktop/Projects/doctor.md-project/doctor-md-backend&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.MCP Project settings loaded": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "git-widget-placeholder": "main",
+    "last_opened_file_path": "/Users/dorinpuscasu/Desktop/Projects/doctor.md-project/doctor-md-backend",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
+}]]></component>
   <component name="RunManager">
     <configuration name="Main" type="PHPUnitRunConfigurationType" factoryName="PHPUnit">
       <TestRunner configuration_file="$PROJECT_DIR$/phpunit.xml" scope="XML" use_alternative_configuration_file="true" />
@@ -231,7 +300,8 @@
       <option name="presentableId" value="Default" />
       <updated>1783511974869</updated>
       <workItem from="1783511975874" duration="6969000" />
-      <workItem from="1784056106443" duration="2765000" />
+      <workItem from="1784056106443" duration="3541000" />
+      <workItem from="1786012396147" duration="697000" />
     </task>
     <servers />
   </component>

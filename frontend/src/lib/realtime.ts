@@ -8,7 +8,20 @@ type EchoInstance = Echo<'reverb'>;
 let echo: EchoInstance | null = null;
 
 const apiBaseUrl = runtimeEnv.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE_URL || '/api/v1';
-const apiOrigin = new URL(apiBaseUrl, window.location.origin).origin;
+
+/**
+ * Calculat leneș și protejat: la nivel de modul, un `VITE_API_BASE_URL`
+ * malformat arunca o excepție ÎNAINTE ca React să pornească, iar niciun
+ * ErrorBoundary nu o putea prinde — rezultatul era un ecran complet alb.
+ */
+function getApiOrigin(): string {
+  try {
+    return new URL(apiBaseUrl, window.location.origin).origin;
+  } catch {
+    console.warn('VITE_API_BASE_URL este invalid, folosesc originea paginii:', apiBaseUrl);
+    return window.location.origin;
+  }
+}
 
 export function getEcho() {
   const token = getToken();
@@ -37,7 +50,7 @@ export function getEcho() {
         forceTLS: reverbScheme === 'https',
         enabledTransports: ['ws', 'wss'],
         disableStats: true,
-        authEndpoint: `${apiOrigin}/api/broadcasting/auth`,
+        authEndpoint: `${getApiOrigin()}/api/broadcasting/auth`,
         auth: {
           headers: {
             Authorization: `Bearer ${token}`,

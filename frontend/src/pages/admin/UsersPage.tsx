@@ -101,7 +101,7 @@ interface TravelFeeRow {
 
 const ROLE_LABELS: Record<RoleName, string> = {
   admin: 'Admin',
-  patient: 'Pacient',
+  patient: 'Utilizator',
   doctor: 'Medic',
   operator: 'Operator',
   coordinator: 'Coordonator'
@@ -166,11 +166,15 @@ export function UsersPage() {
     const params = new URLSearchParams();
     if (searchTerm) params.set('search', searchTerm);
 
-    apiRequest<{data: AdminUser[]}>(`/admin/users?${params.toString()}`).then((response) => setUsers(response.data));
+    apiRequest<{data: AdminUser[]}>(`/admin/users?${params.toString()}`)
+      .then((response) => setUsers(response.data ?? []))
+      .catch(() => setUsers([]));
   };
 
   useEffect(() => {
-    apiRequest<{data: Specialty[]}>('/catalog/specialties', { auth: false }).then((response) => setSpecialties(response.data));
+    apiRequest<{data: Specialty[]}>('/catalog/specialties', { auth: false })
+      .then((response) => setSpecialties(response.data ?? []))
+      .catch(() => setSpecialties([]));
     apiRequest<{data: CatalogRegion[]}>('/catalog/regions', { auth: false })
       .then((response) => setRegionsCatalog(response.data ?? []))
       .catch(() => setRegionsCatalog([]));
@@ -196,7 +200,15 @@ export function UsersPage() {
 
   const tabCounts = useMemo(() => {
     return ROLE_TABS.reduce<Record<string, number>>((acc, tab) => {
-      acc[tab.value] = tab.value === 'all' ? users.length : users.filter((user) => user.roles.includes(tab.value)).length;
+      if (tab.value === 'all') {
+        acc[tab.value] = users.length;
+        return acc;
+      }
+
+      // `tab.value` este restrâns aici la un RoleName real, deci `includes`
+      // primește tipul corect în loc de uniunea care conținea și 'all'.
+      const role = tab.value;
+      acc[tab.value] = users.filter((user) => user.roles.includes(role)).length;
       return acc;
     }, {});
   }, [users]);
