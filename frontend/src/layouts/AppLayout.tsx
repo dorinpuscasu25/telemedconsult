@@ -14,13 +14,13 @@ import {
   Stethoscope,
   BarChart2,
   ChevronDown,
-  MoreHorizontal,
   Plane,
   MessageSquareWarning,
   Newspaper,
   Send } from
 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
+import { OverflowNav } from '../components/OverflowNav';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -171,15 +171,6 @@ export function AppLayout() {
     const requiredFeature = role === 'patient' ? patientFeatureByPath[item.path] : undefined;
     return !requiredFeature || isEnabled(requiredFeature);
   });
-  // Meniul pacientului este cel mai încărcat, așa că intrările secundare trec
-  // în dropdown-ul „Mai multe” pe ecrane late.
-  const secondaryPatientLabels = ['Operatori', 'Chat', 'Reclamații', text('header.nav_news')];
-  const desktopPrimaryItems = role === 'patient'
-    ? navItems.filter((item) => !secondaryPatientLabels.includes(item.label))
-    : navItems;
-  const desktopMoreItems = role === 'patient'
-    ? navItems.filter((item) => secondaryPatientLabels.includes(item.label))
-    : [];
   const isNavItemActive = (target: string) => {
     const [targetPath, targetQuery = ''] = target.split('?');
     const pathMatches = location.pathname === targetPath ||
@@ -211,40 +202,12 @@ export function AppLayout() {
                   telemedconsult.md
                 </span>
               </Link>
-              <nav className="ml-6 hidden min-w-0 items-center gap-1 xl:flex" aria-label="Navigație principală">
-                {desktopPrimaryItems.map((item) => {
-                  const isActive = isNavItemActive(item.path);
-                  return (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      className={`inline-flex h-10 shrink-0 items-center whitespace-nowrap rounded-xl px-2.5 text-sm font-medium transition-all duration-200 ${isActive ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900'}`}>
-                      
-                      <item.icon
-                        className={`h-4 w-4 mr-2 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                      
-                      {item.label}
-                    </Link>);
-
-                })}
-                {desktopMoreItems.length > 0 && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger className={`inline-flex h-10 items-center gap-2 rounded-xl px-2.5 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${desktopMoreItems.some((item) => isNavItemActive(item.path)) ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900'}`}>
-                      <MoreHorizontal className="h-4 w-4" />
-                      Mai multe
-                      <ChevronDown className="h-3.5 w-3.5" />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-52">
-                      {desktopMoreItems.map((item) => (
-                        <DropdownMenuItem key={item.path} className="cursor-pointer gap-3 px-3 py-2.5" onClick={() => navigate(item.path)}>
-                          <item.icon className="h-4 w-4 text-slate-400" />
-                          <span>{item.label}</span>
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-              </nav>
+              <OverflowNav
+                items={navItems}
+                isActive={isNavItemActive}
+                onNavigate={navigate}
+                className="ml-6 hidden xl:block"
+              />
             </div>
 
             <div className="flex shrink-0 items-center gap-2">
