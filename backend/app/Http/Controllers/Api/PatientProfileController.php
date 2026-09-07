@@ -121,15 +121,21 @@ class PatientProfileController extends Controller
                 ->orderBy('expires_at')
                 ->first();
 
-            abort_unless($purchase && $purchase->availableSlots() > 0, 422, 'Nu ai cartele disponibile pentru un profil nou.');
-
-            $purchase->increment('used_slots');
+            if ($purchase && $purchase->availableSlots() > 0) {
+                $purchase->increment('used_slots');
+                $activeUntil = $purchase->expires_at;
+            } else {
+                // Primul profil al unui cont este gratuit. Pachetele sunt
+                // necesare doar pentru al doilea profil și următoarele.
+                abort_unless(! $user->patientProfiles()->exists(), 422, 'Nu ai cartele disponibile pentru un profil nou.');
+                $activeUntil = null;
+            }
 
             return PatientProfile::create([
                 ...$validated,
                 'user_id' => $user->id,
                 'status' => 'active',
-                'active_until' => $purchase->expires_at,
+                'active_until' => $activeUntil,
                 'life_history' => [],
             ]);
         });
@@ -169,8 +175,8 @@ class PatientProfileController extends Controller
 
         $purchase = DB::transaction(function () use ($user, $validated) {
             $package = PatientCardPackage::where('is_active', true)->lockForUpdate()->findOrFail($validated['package_id']);
-            $wallet = Wallet::where('user_id', $user->id)->lockForUpdate()->first()
-                ?? Wallet::create(['user_id' => $user->id, 'balance_minor' => 0, 'currency' => 'MDL']);
+            $wallet = Wallet::where('user_id', $user->id)->where('type', 'real')->lockForUpdate()->first()
+                ?? Wallet::create(['user_id' => $user->id, 'type' => 'real', 'balance_minor' => 0, 'currency' => 'MDL']);
 
             if ($wallet->balance_minor < $package->price_minor) {
                 throw new HttpResponseException(response()->json([

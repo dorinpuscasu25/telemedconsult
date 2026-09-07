@@ -375,13 +375,13 @@ export function ProfilePage() {
         action: 'Deschide contul meu',
         onClick: () => changeTab('account')
       }
-    : !hasPurchasedCards
+    : profiles.length === 0 && !hasPurchasedCards
     ? {
         step: 'Primul pas',
-        title: 'Cumpără un pachet pentru a începe',
-        description: 'Pachetul îți permite să adaugi un pacient și să soliciți servicii medicale pentru el.',
-        action: 'Alege un pachet',
-        onClick: () => changeTab('cards')
+        title: 'Adaugă primul pacient gratuit',
+        description: 'Primul profil de pacient este gratuit. Pentru profilurile următoare vei putea cumpăra un pachet.',
+        action: 'Adaugă pacient',
+        onClick: () => setIsPatientOpen(true)
       }
     : profiles.length === 0 && availableSlots > 0
       ? {

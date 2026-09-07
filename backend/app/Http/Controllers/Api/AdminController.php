@@ -167,6 +167,7 @@ class AdminController extends Controller
             'service_catalog' => ['nullable', 'array'],
             'required_investigations' => ['nullable', 'array'],
             'is_approved' => ['nullable', 'boolean'],
+            'accepts_points' => ['nullable', 'boolean'],
             'country' => ['nullable', 'string', 'max:100'],
             'region' => ['nullable', 'string', 'max:255'],
             'locality' => ['nullable', 'string', 'max:255'],
@@ -408,6 +409,7 @@ class AdminController extends Controller
                     'required_investigations' => $payload['required_investigations'] ?? $existingDoctor?->required_investigations ?? [],
                     'affiliate_code' => $existingDoctor?->affiliate_code ?? Str::lower(Str::random(10)),
                     'is_approved' => $payload['is_approved'] ?? $existingDoctor?->is_approved ?? true,
+                    'accepts_points' => $payload['accepts_points'] ?? $existingDoctor?->accepts_points ?? false,
                     'is_available' => true,
                 ],
             );

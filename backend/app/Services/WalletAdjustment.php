@@ -99,14 +99,14 @@ class WalletAdjustment
 
     private function lockedWallet(User $user): Wallet
     {
-        $wallet = Wallet::where('user_id', $user->id)->lockForUpdate()->first();
+        $wallet = Wallet::where('user_id', $user->id)->where('type', 'real')->lockForUpdate()->first();
 
         if ($wallet) {
             return $wallet;
         }
 
         try {
-            Wallet::create(['user_id' => $user->id, 'balance_minor' => 0, 'currency' => 'MDL']);
+            Wallet::create(['user_id' => $user->id, 'type' => 'real', 'balance_minor' => 0, 'currency' => 'MDL']);
         } catch (QueryException $exception) {
             // `user_id` e unique: dacă portofelul a apărut între timp, îl luăm.
             if (! in_array((string) $exception->getCode(), ['19', '23000', '23505'], true)) {
@@ -114,6 +114,6 @@ class WalletAdjustment
             }
         }
 
-        return Wallet::where('user_id', $user->id)->lockForUpdate()->firstOrFail();
+        return Wallet::where('user_id', $user->id)->where('type', 'real')->lockForUpdate()->firstOrFail();
     }
 }

@@ -44,6 +44,7 @@ class AdminOperationsController extends Controller
                 'fee' => $this->platformFeeFor($transaction) / 100,
                 'status' => $transaction->status,
                 'currency' => $transaction->currency,
+                'wallet_type' => $transaction->wallet_type ?? $transaction->wallet?->type ?? 'real',
             ]);
 
         $withdrawals = WithdrawalRequest::with(['user', 'processor'])
@@ -70,7 +71,8 @@ class AdminOperationsController extends Controller
 
         return response()->json([
             'summary' => [
-                'wallets_balance' => Wallet::sum('balance_minor') / 100,
+                'wallets_balance' => Wallet::where('type', 'real')->sum('balance_minor') / 100,
+                'points_balance' => Wallet::where('type', 'points')->sum('balance_minor') / 100,
                 'top_ups' => Payment::where('purpose', 'wallet_top_up')->whereIn('status', ['paid', 'pending'])->sum('amount_minor') / 100,
                 'platform_fees' => $transactions->sum('fee'),
                 'pending_withdrawals' => WithdrawalRequest::where('status', 'pending')->sum('amount_minor') / 100,
@@ -88,7 +90,7 @@ class AdminOperationsController extends Controller
     {
         $this->authorizeAdmin($request);
 
-        $wallet = Wallet::where('user_id', $user->id)->first();
+        $wallet = Wallet::where('user_id', $user->id)->where('type', 'real')->first();
 
         return response()->json([
             'data' => [
@@ -141,7 +143,7 @@ class AdminOperationsController extends Controller
             $request->user(),
         );
 
-        $balance = (int) Wallet::where('user_id', $user->id)->value('balance_minor');
+            $balance = (int) Wallet::where('user_id', $user->id)->where('type', 'real')->value('balance_minor');
 
         return response()->json([
             'message' => ($amountMinor > 0 ? 'Am adăugat ' : 'Am scăzut ')
@@ -359,6 +361,7 @@ class AdminOperationsController extends Controller
             'rate.affiliate_doctor_topup' => 'Cota de afiliere medic',
             'rate.affiliate_operator' => 'Cota de afiliere operator',
             'rate.affiliate_patient_topup' => 'Cota de afiliere pacient la alimentare',
+            'wallet.max_points_payment_percent' => 'Procentul maxim achitabil cu puncte',
         ];
 
         collect($validated['settings'] ?? [])->each(function (array $setting) use ($percentKeys) {

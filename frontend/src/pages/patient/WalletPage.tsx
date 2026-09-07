@@ -36,6 +36,12 @@ interface WalletData {
     balance: number;
     currency: string;
   };
+  points_wallet: {
+    id: number;
+    balance: number;
+    currency: string;
+    type: 'points';
+  };
   transactions: Array<{
     id: number;
     date: string;
@@ -96,6 +102,7 @@ export function WalletPage() {
   };
 
   const wallet = walletData?.wallet;
+  const pointsWallet = walletData?.points_wallet;
   const transactions = walletData?.transactions ?? [];
 
   return (
@@ -141,6 +148,19 @@ export function WalletPage() {
                   <Plus className="mr-2 h-4 w-4" /> Alimentează
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+          <Card className="h-full border-0 bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-xl">
+            <CardContent className="flex h-full flex-col justify-between p-8">
+              <div>
+                <p className="mb-1 font-medium text-white/80">Puncte bonus</p>
+                <h2 className="text-4xl font-bold">{(pointsWallet?.balance ?? 0).toFixed(2)}</h2>
+                <p className="mt-2 text-sm text-white/80">Puncte din referral și bonusuri</p>
+              </div>
+              <p className="mt-6 text-sm font-medium">Folosibile la plata consultațiilor eligibile</p>
             </CardContent>
           </Card>
         </motion.div>

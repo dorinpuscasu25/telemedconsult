@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use App\Services\WalletLedger;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Log;
 
@@ -81,6 +82,7 @@ class RegistrationBonus
 
         $transaction = WalletTransaction::create([
             'wallet_id' => $wallet->id,
+            'wallet_type' => WalletLedger::POINTS,
             'user_id' => $user->id,
             'amount_minor' => $amountMinor,
             'currency' => $wallet->currency ?: 'MDL',
@@ -104,14 +106,14 @@ class RegistrationBonus
 
     private function lockedWallet(User $user): Wallet
     {
-        $wallet = Wallet::where('user_id', $user->id)->lockForUpdate()->first();
+        $wallet = Wallet::where('user_id', $user->id)->where('type', WalletLedger::POINTS)->lockForUpdate()->first();
 
         if ($wallet) {
             return $wallet;
         }
 
         try {
-            Wallet::create(['user_id' => $user->id, 'balance_minor' => 0, 'currency' => 'MDL']);
+            Wallet::create(['user_id' => $user->id, 'type' => WalletLedger::POINTS, 'balance_minor' => 0, 'currency' => 'MDL']);
         } catch (QueryException $exception) {
             // `user_id` e unique: dacă portofelul a apărut între timp (o plată
             // în paralel), îl luăm pe acela.
@@ -120,6 +122,6 @@ class RegistrationBonus
             }
         }
 
-        return Wallet::where('user_id', $user->id)->lockForUpdate()->firstOrFail();
+        return Wallet::where('user_id', $user->id)->where('type', WalletLedger::POINTS)->lockForUpdate()->firstOrFail();
     }
 }

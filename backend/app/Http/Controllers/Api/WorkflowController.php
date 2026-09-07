@@ -26,6 +26,7 @@ use App\Services\FinancialBreakdown;
 use App\Services\ObjectiveDataSchema;
 use App\Services\OperatorAssignmentService;
 use App\Services\PlatformConfig;
+use App\Services\WalletLedger;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -163,6 +164,7 @@ class WorkflowController extends Controller
             'symptoms' => ['required', 'string', 'max:2000'],
             'selected_services' => ['nullable', 'array'],
             'scheduled_at' => ['nullable', 'date'],
+            'points_percent' => ['nullable', 'integer', 'min:0', 'max:100'],
         ], [
             'patient_profile_id.required' => 'Alege un profil de pacient înainte de confirmare.',
             'patient_profile_id.exists' => 'Profilul de pacient selectat nu există.',
@@ -219,6 +221,14 @@ class WorkflowController extends Controller
             $provider = $this->providerForPricing($validated) ?? $request->user();
             $pricing = app(FinancialBreakdown::class)->forProvider($price * 100, $provider);
 
+            $maxPointsPercent = (int) min(100, max(0, app(PlatformConfig::class)->number('wallet.max_points_payment_percent', 30)));
+            $requestedPointsPercent = (int) ($validated['points_percent'] ?? 0);
+            $doctorAcceptsPoints = (bool) ($provider->doctorProfile?->accepts_points ?? false);
+            $pointsPercent = $doctorAcceptsPoints ? min($requestedPointsPercent, $maxPointsPercent) : 0;
+            $totalMinor = (int) $pricing['amount_minor'];
+            $pointsAmountMinor = (int) floor($totalMinor * $pointsPercent / 100);
+            $realAmountMinor = $totalMinor - $pointsAmountMinor;
+
             if ($costBreakdown !== null) {
                 $pricing = [...$pricing, 'cost_breakdown' => $costBreakdown];
             }
@@ -236,6 +246,9 @@ class WorkflowController extends Controller
                 'selected_services' => $validated['selected_services'] ?? [],
                 'scheduled_at' => $validated['scheduled_at'] ?? null,
                 'amount_minor' => $pricing['amount_minor'],
+                'real_amount_minor' => $realAmountMinor,
+                'points_amount_minor' => $pointsAmountMinor,
+                'points_percent' => $pointsPercent,
                 'platform_fee_minor' => $pricing['platform_fee_minor'],
                 'provider_amount_minor' => $pricing['provider_amount_minor'],
                 'pricing_snapshot' => $pricing,
@@ -691,10 +704,10 @@ class WorkflowController extends Controller
 
         $amountMinor = (int) round(((float) $validated['amount']) * 100);
         DB::transaction(function () use ($consultationRequest, $user, $validated, $amountMinor) {
-            $patientWallet = Wallet::where('user_id', $consultationRequest->patient_id)->lockForUpdate()->first()
-                ?? Wallet::create(['user_id' => $consultationRequest->patient_id, 'balance_minor' => 0, 'currency' => 'MDL']);
+            $patientWallet = Wallet::where('user_id', $consultationRequest->patient_id)->where('type', 'real')->lockForUpdate()->first()
+                ?? Wallet::create(['user_id' => $consultationRequest->patient_id, 'type' => 'real', 'balance_minor' => 0, 'currency' => 'MDL']);
             $operatorWallet = Wallet::firstOrCreate(
-                ['user_id' => $user->id],
+                ['user_id' => $user->id, 'type' => 'real'],
                 ['balance_minor' => 0, 'currency' => 'MDL'],
             );
             $pricing = app(FinancialBreakdown::class)->forProvider($amountMinor, $user);
@@ -847,7 +860,7 @@ class WorkflowController extends Controller
         $until = now()->addHours($hours);
 
         DB::transaction(function () use ($request, $consultationRequest, $priceMinor, $until, $config) {
-            $wallet = Wallet::where('user_id', $request->user()->id)->lockForUpdate()->first()
+            $wallet = Wallet::where('user_id', $request->user()->id)->where('type', 'real')->lockForUpdate()->first()
                 ?? Wallet::create(['user_id' => $request->user()->id, 'balance_minor' => 0, 'currency' => 'MDL']);
             abort_if($wallet->balance_minor < $priceMinor, 422, 'Balanță insuficientă pentru reactivarea chat-ului.');
 
@@ -1109,6 +1122,9 @@ class WorkflowController extends Controller
             'chat_can_write' => $this->canWriteChat($item),
             'payment_status' => $item->payment_status,
             'amount' => $item->amount_minor / 100,
+            'real_amount' => $item->real_amount_minor / 100,
+            'points_amount' => $item->points_amount_minor / 100,
+            'points_percent' => $item->points_percent,
             'platform_fee' => $item->platform_fee_minor / 100,
             'provider_amount' => $item->provider_amount_minor / 100,
             'pricing_snapshot' => $item->pricing_snapshot,
@@ -1257,7 +1273,7 @@ class WorkflowController extends Controller
     {
         $providerId = $validated['doctor_id'] ?? $validated['operator_id'] ?? null;
 
-        return $providerId ? User::with(['roles', 'operatorProfile'])->find($providerId) : null;
+        return $providerId ? User::with(['roles', 'doctorProfile', 'operatorProfile'])->find($providerId) : null;
     }
 
     private function resolvePatientProfile(Request $request, int $patientProfileId): PatientProfile
@@ -1557,25 +1573,17 @@ class WorkflowController extends Controller
             return;
         }
 
-        $wallet = Wallet::where('user_id', $patient->id)->lockForUpdate()->first()
-            ?? Wallet::create(['user_id' => $patient->id, 'balance_minor' => 0, 'currency' => 'MDL']);
+        $ledger = app(WalletLedger::class);
+        $wallet = $ledger->locked($patient, WalletLedger::REAL);
+        $pointsWallet = $ledger->locked($patient, WalletLedger::POINTS);
+        $realAmount = (int) ($consultationRequest->real_amount_minor ?: $consultationRequest->amount_minor);
+        $pointsAmount = (int) $consultationRequest->points_amount_minor;
+        abort_if($wallet->balance_minor < $realAmount, 422, 'Balanță insuficientă în portofelul de bani reali.');
+        abort_if($pointsWallet->balance_minor < $pointsAmount, 422, 'Nu ai suficiente puncte pentru această plată.');
 
-        abort_if($wallet->balance_minor < $consultationRequest->amount_minor, 422, 'Balanță insuficientă. Alimentați portofelul pentru a continua.');
+        if ($realAmount > 0) $ledger->move($wallet, -$realAmount, 'service_hold', 'Rezervare consultație din bani reali', ['consultation_request_id' => $consultationRequest->id], $consultationRequest->id);
+        if ($pointsAmount > 0) $ledger->move($pointsWallet, -$pointsAmount, 'points_service_hold', 'Rezervare consultație din puncte', ['consultation_request_id' => $consultationRequest->id], $consultationRequest->id);
 
-        $wallet->decrement('balance_minor', $consultationRequest->amount_minor);
-
-        WalletTransaction::create([
-            'wallet_id' => $wallet->id,
-            'user_id' => $patient->id,
-            'amount_minor' => -$consultationRequest->amount_minor,
-            'currency' => $wallet->currency,
-            'type' => 'service_hold',
-            'status' => 'held',
-            'description' => $consultationRequest->type === 'operator' ? 'Rezervare examinare operator' : 'Rezervare consultație medicală',
-            'metadata' => ['consultation_request_id' => $consultationRequest->id],
-            'rate_snapshot' => $consultationRequest->pricing_snapshot['rate_snapshot'] ?? [],
-            'consultation_request_id' => $consultationRequest->id,
-        ]);
     }
 
     private function captureHeldFunds(ConsultationRequest $consultationRequest, User $provider, int $consultationId): void
@@ -1584,7 +1592,7 @@ class WorkflowController extends Controller
             return;
         }
 
-        $providerWallet = Wallet::where('user_id', $provider->id)->lockForUpdate()->first()
+        $providerWallet = Wallet::where('user_id', $provider->id)->where('type', 'real')->lockForUpdate()->first()
             ?? Wallet::create(['user_id' => $provider->id, 'balance_minor' => 0, 'currency' => 'MDL']);
 
         if ($consultationRequest->provider_amount_minor > 0) {
@@ -1637,26 +1645,13 @@ class WorkflowController extends Controller
             return;
         }
 
-        $patientWallet = Wallet::where('user_id', $consultationRequest->patient_id)->lockForUpdate()->first()
-            ?? Wallet::create(['user_id' => $consultationRequest->patient_id, 'balance_minor' => 0, 'currency' => 'MDL']);
-
-        $patientWallet->increment('balance_minor', $consultationRequest->amount_minor);
-
-        WalletTransaction::create([
-            'wallet_id' => $patientWallet->id,
-            'user_id' => $consultationRequest->patient_id,
-            'amount_minor' => $consultationRequest->amount_minor,
-            'currency' => $patientWallet->currency,
-            'type' => 'service_refund',
-            'status' => 'completed',
-            'description' => 'Returnare fonduri rezervate',
-            'metadata' => [
-                'consultation_request_id' => $consultationRequest->id,
-                'reason' => $reason,
-            ],
-            'rate_snapshot' => $consultationRequest->pricing_snapshot['rate_snapshot'] ?? [],
-            'consultation_request_id' => $consultationRequest->id,
-        ]);
+        $ledger = app(WalletLedger::class);
+        $patientWallet = $ledger->locked($consultationRequest->patient_id, WalletLedger::REAL);
+        $pointsWallet = $ledger->locked($consultationRequest->patient_id, WalletLedger::POINTS);
+        $realAmount = (int) ($consultationRequest->real_amount_minor ?: $consultationRequest->amount_minor);
+        $pointsAmount = (int) $consultationRequest->points_amount_minor;
+        if ($realAmount > 0) $ledger->move($patientWallet, $realAmount, 'service_refund', 'Returnare bani reali pentru consultație', ['reason' => $reason], $consultationRequest->id);
+        if ($pointsAmount > 0) $ledger->move($pointsWallet, $pointsAmount, 'points_service_refund', 'Returnare puncte pentru consultație', ['reason' => $reason], $consultationRequest->id);
 
         $consultationRequest->forceFill([
             'payment_status' => 'refunded',
@@ -1757,28 +1752,23 @@ class WorkflowController extends Controller
         }
 
         $retainMinor = min($retainMinor, $consultationRequest->amount_minor);
-        $refundMinor = $consultationRequest->amount_minor - $retainMinor;
+        $realHeld = (int) ($consultationRequest->real_amount_minor ?: $consultationRequest->amount_minor);
+        $pointsHeld = (int) $consultationRequest->points_amount_minor;
+        // Taxa de deplasare se achită către operator în bani reali; consumăm
+        // întâi componenta reală a rezervării, apoi componenta de puncte.
+        $retainReal = min($retainMinor, $realHeld);
+        $retainPoints = min($pointsHeld, $retainMinor - $retainReal);
+        $refundReal = $realHeld - $retainReal;
+        $refundPoints = $pointsHeld - $retainPoints;
 
-        if ($refundMinor > 0) {
-            $patientWallet = Wallet::where('user_id', $consultationRequest->patient_id)->lockForUpdate()->first()
-                ?? Wallet::create(['user_id' => $consultationRequest->patient_id, 'balance_minor' => 0, 'currency' => 'MDL']);
-            $patientWallet->increment('balance_minor', $refundMinor);
-
-            WalletTransaction::create([
-                'wallet_id' => $patientWallet->id,
-                'user_id' => $consultationRequest->patient_id,
-                'amount_minor' => $refundMinor,
-                'currency' => $patientWallet->currency,
-                'type' => 'service_refund',
-                'status' => 'completed',
-                'description' => 'Returnare parțială (taxa de drum reținută)',
-                'metadata' => ['consultation_request_id' => $consultationRequest->id, 'reason' => $reason, 'retained_minor' => $retainMinor],
-                'consultation_request_id' => $consultationRequest->id,
-            ]);
-        }
+        $ledger = app(WalletLedger::class);
+        $patientWallet = $ledger->locked($consultationRequest->patient_id, WalletLedger::REAL);
+        $pointsWallet = $ledger->locked($consultationRequest->patient_id, WalletLedger::POINTS);
+        if ($refundReal > 0) $ledger->move($patientWallet, $refundReal, 'service_refund', 'Returnare parțială în bani reali', ['reason' => $reason, 'retained_minor' => $retainMinor], $consultationRequest->id);
+        if ($refundPoints > 0) $ledger->move($pointsWallet, $refundPoints, 'points_service_refund', 'Returnare parțială în puncte', ['reason' => $reason, 'retained_minor' => $retainMinor], $consultationRequest->id);
 
         if ($retainMinor > 0 && $consultationRequest->operator_id) {
-            $operatorWallet = Wallet::where('user_id', $consultationRequest->operator_id)->lockForUpdate()->first()
+            $operatorWallet = Wallet::where('user_id', $consultationRequest->operator_id)->where('type', 'real')->lockForUpdate()->first()
                 ?? Wallet::create(['user_id' => $consultationRequest->operator_id, 'balance_minor' => 0, 'currency' => 'MDL']);
             $operatorWallet->increment('balance_minor', $retainMinor);
 

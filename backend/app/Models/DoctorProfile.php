@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['user_id', 'higo_doctor_id', 'specialty_id', 'license_number', 'bio', 'experience_years', 'consultation_price', 'video_price', 'video_duration_minutes', 'google_meet_account', 'platforms', 'service_catalog', 'required_investigations', 'affiliate_code', 'rating', 'reviews_count', 'is_available', 'is_approved'])]
+#[Fillable(['user_id', 'higo_doctor_id', 'specialty_id', 'license_number', 'bio', 'experience_years', 'consultation_price', 'video_price', 'video_duration_minutes', 'google_meet_account', 'platforms', 'service_catalog', 'required_investigations', 'affiliate_code', 'rating', 'reviews_count', 'is_available', 'is_approved', 'accepts_points'])]
 class DoctorProfile extends Model
 {
     public function user(): BelongsTo
@@ -34,6 +34,7 @@ class DoctorProfile extends Model
             'required_investigations' => 'array',
             'is_available' => 'boolean',
             'is_approved' => 'boolean',
+            'accepts_points' => 'boolean',
             'rating' => 'decimal:1',
         ];
     }

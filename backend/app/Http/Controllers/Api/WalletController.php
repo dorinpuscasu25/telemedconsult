@@ -13,6 +13,7 @@ use App\Models\WalletTransaction;
 use App\Services\FeatureFlags;
 use App\Services\PlatformConfig;
 use App\Services\ReferralProgram;
+use App\Services\WalletLedger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -25,16 +26,22 @@ class WalletController extends Controller
 {
     public function show(Request $request): JsonResponse
     {
-        $wallet = $this->walletFor($request->user());
+        $wallet = $this->walletFor($request->user(), WalletLedger::REAL);
+        $points = $this->walletFor($request->user(), WalletLedger::POINTS);
 
         return response()->json([
             'wallet' => $this->serializeWallet($wallet),
+            'points_wallet' => $this->serializeWallet($points),
             'transactions' => $wallet->transactions()->latest()->limit(50)->get()->map(fn (WalletTransaction $transaction) => [
                 'id' => $transaction->id,
                 'date' => $transaction->created_at,
                 'type' => $transaction->description,
                 'amount' => $transaction->amount_minor / 100,
                 'status' => $transaction->status,
+            ]),
+            'points_transactions' => $points->transactions()->latest()->limit(50)->get()->map(fn (WalletTransaction $transaction) => [
+                'id' => $transaction->id, 'date' => $transaction->created_at, 'type' => $transaction->description,
+                'amount' => $transaction->amount_minor / 100, 'status' => $transaction->status,
             ]),
             'payments' => Payment::where('user_id', $request->user()->id)->latest()->limit(20)->get(),
         ]);
@@ -254,13 +261,14 @@ class WalletController extends Controller
         }
 
         $affiliateWallet = Wallet::firstOrCreate(
-            ['user_id' => $beneficiaryId],
+            ['user_id' => $beneficiaryId, 'type' => WalletLedger::POINTS],
             ['balance_minor' => 0, 'currency' => $payment->currency],
         );
         $affiliateWallet->increment('balance_minor', $bonusMinor);
 
         WalletTransaction::create([
             'wallet_id' => $affiliateWallet->id,
+            'wallet_type' => WalletLedger::POINTS,
             'user_id' => $beneficiaryId,
             'amount_minor' => $bonusMinor,
             'currency' => $payment->currency,
@@ -302,10 +310,10 @@ class WalletController extends Controller
         return $url.$separator.'orderId='.$payment->id;
     }
 
-    private function walletFor(User $user): Wallet
+    private function walletFor(User $user, string $type = WalletLedger::REAL): Wallet
     {
         return Wallet::firstOrCreate(
-            ['user_id' => $user->id],
+            ['user_id' => $user->id, 'type' => $type],
             ['balance_minor' => 0, 'currency' => 'MDL'],
         );
     }
@@ -314,6 +322,7 @@ class WalletController extends Controller
     {
         return [
             'id' => $wallet->id,
+            'type' => $wallet->type,
             'balance' => $wallet->balance_minor / 100,
             'currency' => $wallet->currency,
         ];

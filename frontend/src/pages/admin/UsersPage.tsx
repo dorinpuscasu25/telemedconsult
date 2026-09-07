@@ -49,7 +49,7 @@ interface AdminUser {
   roles: RoleName[];
   active_role: RoleName | null;
   profiles?: {
-    doctor?: { specialty_id?: number; consultation_price?: number; license_number?: string; is_approved?: boolean } | null;
+    doctor?: { specialty_id?: number; consultation_price?: number; license_number?: string; is_approved?: boolean; accepts_points?: boolean } | null;
     operator?: OperatorProfilePayload | null;
     coordinator?: { region?: string } | null;
   };
@@ -132,6 +132,7 @@ const DEFAULT_FORM = {
   license_number: '',
   experience_years: '0',
   consultation_price: '400',
+  accepts_points: false,
   region: 'Chișinău',
   status: 'active',
   base_fee: '0',
@@ -226,6 +227,7 @@ export function UsersPage() {
     license_number: adminUser.profiles?.doctor?.license_number || '',
     experience_years: '0',
     consultation_price: adminUser.profiles?.doctor?.consultation_price ? String(adminUser.profiles.doctor.consultation_price) : '400',
+    accepts_points: adminUser.profiles?.doctor?.accepts_points ?? false,
     region: adminUser.profiles?.operator?.region || adminUser.profiles?.coordinator?.region || 'Chișinău',
     status: adminUser.status || 'active',
     base_fee: adminUser.profiles?.operator?.base_fee != null ? String(adminUser.profiles.operator.base_fee) : '0',
@@ -303,6 +305,7 @@ export function UsersPage() {
         license_number: form.license_number || null,
         experience_years: Number(form.experience_years || 0),
         consultation_price: Number(form.consultation_price || 0),
+        accepts_points: roles.includes('doctor') ? form.accepts_points : false,
         region: form.region || null
       };
 
@@ -632,6 +635,10 @@ export function UsersPage() {
                     <Label>Preț consultație</Label>
                     <Input className="h-11 rounded-lg bg-white" type="number" value={form.consultation_price} onChange={(e) => setForm({ ...form, consultation_price: e.target.value })} />
                   </div>
+                  <label className="flex h-11 items-center justify-between rounded-lg border border-slate-200 bg-white px-3 sm:col-span-2">
+                    <span className="text-sm text-slate-600">Acceptă plata consultațiilor cu puncte</span>
+                    <Switch checked={form.accepts_points} onCheckedChange={(value) => setForm({ ...form, accepts_points: value })} />
+                  </label>
                 </>
               )}
               {(roles.includes('operator') || roles.includes('coordinator')) && (

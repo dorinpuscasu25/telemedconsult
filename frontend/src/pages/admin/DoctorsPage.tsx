@@ -12,6 +12,7 @@ import {
   TableRow
 } from '../../components/ui/table';
 import { apiRequest } from '../../lib/api';
+import { Switch } from '../../components/ui/switch';
 
 interface AdminUser {
   id: string;
@@ -26,6 +27,7 @@ interface AdminUser {
       license_number?: string;
       experience_years?: number;
       is_approved?: boolean;
+      accepts_points?: boolean;
     } | null;
   };
 }
@@ -51,6 +53,11 @@ export function DoctorsPage() {
         is_approved: true
       })
     });
+    loadDoctors();
+  };
+
+  const togglePoints = async (doctor: AdminUser, accepts_points: boolean) => {
+    await apiRequest(`/admin/users/${doctor.id}`, { method: 'PUT', body: JSON.stringify({ accepts_points }) });
     loadDoctors();
   };
 
@@ -86,6 +93,7 @@ export function DoctorsPage() {
                   <TableHead>Licență</TableHead>
                   <TableHead>Preț</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Puncte</TableHead>
                   <TableHead className="text-right">Acțiuni</TableHead>
                 </TableRow>
               </TableHeader>
@@ -97,6 +105,9 @@ export function DoctorsPage() {
                       <TableCell>
                         <div className="font-medium text-slate-900">{doctor.name}</div>
                         <div className="text-sm text-slate-500">{doctor.email}</div>
+                      </TableCell>
+                      <TableCell>
+                        <Switch checked={profile?.accepts_points ?? false} onCheckedChange={(value) => togglePoints(doctor, value)} />
                       </TableCell>
                       <TableCell className="text-slate-600">
                         {profile?.specialty?.name || 'Nesetat'}

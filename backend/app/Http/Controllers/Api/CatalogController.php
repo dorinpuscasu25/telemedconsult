@@ -71,6 +71,7 @@ class CatalogController extends Controller
                     'reviews_count' => $profile->reviews_count,
                     'is_available' => $profile->is_available && ! $isOnVacation,
                     'is_on_vacation' => $isOnVacation,
+                    'accepts_points' => (bool) $profile->accepts_points,
                 ];
             });
 

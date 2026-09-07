@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['user_id', 'balance_minor', 'currency'])]
+#[Fillable(['user_id', 'type', 'balance_minor', 'currency'])]
 class Wallet extends Model
 {
     public function user(): BelongsTo
@@ -18,5 +18,10 @@ class Wallet extends Model
     public function transactions(): HasMany
     {
         return $this->hasMany(WalletTransaction::class);
+    }
+
+    public function isPoints(): bool
+    {
+        return $this->type === 'points';
     }
 }

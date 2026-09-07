@@ -36,6 +36,7 @@ class PlatformConfig
         // confirmarea emailului, o singură dată per cont.
         'wallet.registration_bonus_enabled' => ['value' => false, 'group' => 'wallet', 'type' => 'boolean'],
         'wallet.registration_bonus' => ['value' => 0, 'group' => 'wallet', 'type' => 'number'],
+        'wallet.max_points_payment_percent' => ['value' => 30, 'group' => 'wallet', 'type' => 'number'],
         'minimum_consultation_price' => ['value' => 500, 'group' => 'financial', 'type' => 'number'],
         'operator_exam_price' => ['value' => 250, 'group' => 'financial', 'type' => 'number'],
         'chat.free_days' => ['value' => 3, 'group' => 'chat', 'type' => 'number'],

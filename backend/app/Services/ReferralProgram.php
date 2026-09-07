@@ -8,6 +8,7 @@ use App\Models\ReferralCommission;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use App\Services\WalletLedger;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -187,6 +188,7 @@ class ReferralProgram
 
         $transaction = WalletTransaction::create([
             'wallet_id' => $wallet->id,
+            'wallet_type' => WalletLedger::POINTS,
             'user_id' => $referral->referrer_id,
             'amount_minor' => $commissionMinor,
             'currency' => $currency,
@@ -235,7 +237,7 @@ class ReferralProgram
 
     private function lockedWallet(int $userId, string $currency): Wallet
     {
-        $wallet = Wallet::where('user_id', $userId)->lockForUpdate()->first();
+        $wallet = Wallet::where('user_id', $userId)->where('type', WalletLedger::POINTS)->lockForUpdate()->first();
 
         if ($wallet) {
             return $wallet;
@@ -244,6 +246,7 @@ class ReferralProgram
         try {
             Wallet::create([
                 'user_id' => $userId,
+                'type' => WalletLedger::POINTS,
                 'balance_minor' => 0,
                 'currency' => $currency,
             ]);
@@ -253,7 +256,7 @@ class ReferralProgram
             }
         }
 
-        return Wallet::where('user_id', $userId)->lockForUpdate()->firstOrFail();
+        return Wallet::where('user_id', $userId)->where('type', WalletLedger::POINTS)->lockForUpdate()->firstOrFail();
     }
 
     private function isUniqueConstraintViolation(QueryException $exception): bool

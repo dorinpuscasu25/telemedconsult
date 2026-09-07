@@ -44,6 +44,7 @@ interface Doctor {
   rating: string | number;
   reviews_count: number;
   is_available: boolean;
+  accepts_points?: boolean;
 }
 
 interface InvestigationLine {
@@ -124,6 +125,7 @@ export function DoctorsList() {
   const [selectedOptionalIds, setSelectedOptionalIds] = useState<number[]>([]);
   const [preview, setPreview] = useState<CostPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [pointsPercent, setPointsPercent] = useState(0);
 
   useEffect(() => {
     apiRequest<{data: Doctor[]}>('/catalog/doctors', { auth: false })
@@ -177,6 +179,7 @@ export function DoctorsList() {
     setIsSuccess(false);
     setSelectedOptionalIds([]);
     setPreview(null);
+    setPointsPercent(0);
     setPatientProfileId(requestableProfiles[0]?.id ? String(requestableProfiles[0].id) : '');
     setIsRequestOpen(true);
   };
@@ -195,7 +198,8 @@ export function DoctorsList() {
         consultation_kind: consultationKind,
         patient_profile_id: Number(patientProfileId),
         doctor_id: selectedDoctor.id,
-        selected_services: selectedOptionalIds
+        selected_services: selectedOptionalIds,
+        points_percent: pointsPercent
       })
     })
       .then((response) => { if (!cancelled) setPreview(response); })
@@ -203,7 +207,7 @@ export function DoctorsList() {
       .finally(() => { if (!cancelled) setPreviewLoading(false); });
 
     return () => { cancelled = true; };
-  }, [isRequestOpen, selectedDoctor, patientProfileId, consultationKind, selectedOptionalIds]);
+  }, [isRequestOpen, selectedDoctor, patientProfileId, consultationKind, selectedOptionalIds, pointsPercent]);
 
   const toggleOptional = (id: number) => {
     setSelectedOptionalIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
@@ -230,6 +234,7 @@ export function DoctorsList() {
           specialty_id: selectedDoctor.specialty_id,
           symptoms,
           selected_services: selectedOptionalIds,
+          points_percent: pointsPercent,
           scheduled_at: scheduledAt || null
         })
       });
@@ -358,6 +363,15 @@ export function DoctorsList() {
                   {!withExamEnabled && !videoEnabled && <p className="text-sm text-slate-500">Consultațiile sunt momentan dezactivate.</p>}
                 </div>
                 <InfoList title="Recenzii recente" items={doctorReviews.map((review) => `${review.rating}/5 ${review.comment || ''}`)} empty="Nu există recenzii încă." />
+                {selectedDoctor.accepts_points && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
+                    <label className="flex items-center justify-between gap-4 font-medium text-amber-900">
+                      <span>Achită cu puncte bonus (%)</span>
+                      <input type="number" min={0} max={100} value={pointsPercent} onChange={(event) => setPointsPercent(Math.min(100, Math.max(0, Number(event.target.value) || 0)))} className="w-20 rounded-lg border border-amber-300 bg-white px-2 py-1 text-right" />
+                    </label>
+                    <p className="mt-1 text-xs text-amber-700">Procentul final este limitat de setarea platformei și de soldul disponibil.</p>
+                  </div>
+                )}
               </div>
               <DialogFooter>
                 <Button variant="outline" className="rounded-xl" onClick={() => setIsDetailOpen(false)}>Închide</Button>
