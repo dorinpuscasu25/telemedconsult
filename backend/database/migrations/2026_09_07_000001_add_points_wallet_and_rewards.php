@@ -9,11 +9,13 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('wallets', function (Blueprint $table) {
+            $table->dropForeign(['user_id']);
             $table->dropUnique(['user_id']);
         });
         Schema::table('wallets', function (Blueprint $table) {
             $table->string('type', 16)->default('real')->after('user_id');
             $table->unique(['user_id', 'type']);
+            $table->foreign('user_id')->references('id')->on('users')->cascadeOnDelete();
         });
 
         Schema::table('wallet_transactions', function (Blueprint $table) {
@@ -41,9 +43,11 @@ return new class extends Migration
             $table->dropColumn('wallet_type');
         });
         Schema::table('wallets', function (Blueprint $table) {
+            $table->dropForeign(['user_id']);
             $table->dropUnique(['user_id', 'type']);
             $table->unique('user_id');
             $table->dropColumn('type');
+            $table->foreign('user_id')->references('id')->on('users')->cascadeOnDelete();
         });
     }
 };
