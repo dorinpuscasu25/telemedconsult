@@ -1126,6 +1126,7 @@ class WorkflowController extends Controller
             'accepted_at' => $item->accepted_at,
             'anamnesis_completed_at' => $item->anamnesis_completed_at,
             'objective_data_completed_at' => $item->objective_data_completed_at,
+            'doctor_started_at' => $item->doctor_started_at,
             'conclusion_sent_at' => $item->conclusion_sent_at,
             'doctor_response_minutes' => $item->doctor_response_minutes,
             'completed_at' => $item->completed_at,

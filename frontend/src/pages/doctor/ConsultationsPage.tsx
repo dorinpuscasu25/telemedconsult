@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Activity, AlertCircle, CheckCircle2, Clock, FileText, MessageSquare, Microscope, Stethoscope } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -67,6 +67,12 @@ export function ConsultationsPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [startingId, setStartingId] = useState<string | null>(null);
+  const starting = useRef(new Set<string>());
+  const [rescheduleRequest, setRescheduleRequest] = useState<ConsultationRequest | null>(null);
+  const [proposedTime, setProposedTime] = useState('');
+  const [scheduleError, setScheduleError] = useState('');
+  const [scheduleSaving, setScheduleSaving] = useState(false);
   const [examData, setExamData] = useState({
     diagnosis: '',
     treatment_plan: '',
@@ -116,10 +122,20 @@ export function ConsultationsPage() {
   };
 
   const startConsultation = async (request: ConsultationRequest) => {
-    await runAction(
-      () => apiRequest(`/requests/${request.id}/start`, { method: 'POST' }),
-      'Consultație pornită. Chatul cu pacientul este deschis.'
-    );
+    if (request.doctor_started_at || starting.current.has(request.id)) return;
+    starting.current.add(request.id);
+    setStartingId(request.id);
+    setError('');
+    try {
+      const response = await apiRequest<{ request: ConsultationRequest }>(`/requests/${request.id}/start`, { method: 'POST' });
+      setRequests((items) => items.map((item) => item.id === request.id ? response.request : item));
+      setMessage('Consultația a început. Poți intra în apelul video sau în chat.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nu am putut începe consultația.');
+    } finally {
+      starting.current.delete(request.id);
+      setStartingId(null);
+    }
   };
 
   const acceptRequest = async (request: ConsultationRequest) => {
@@ -140,16 +156,34 @@ export function ConsultationsPage() {
     );
   };
 
-  const proposeTime = async (request: ConsultationRequest) => {
-    const value = window.prompt('Propune o dată/oră nouă (format: YYYY-MM-DD HH:mm)');
-    if (!value) return;
-    await runAction(
-      () => apiRequest(`/requests/${request.id}/propose-time`, {
+  const proposeTime = (request: ConsultationRequest) => {
+    setRescheduleRequest(request);
+    setProposedTime('');
+    setScheduleError('');
+  };
+
+  const submitProposedTime = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!rescheduleRequest || scheduleSaving) return;
+    if (!proposedTime || new Date(proposedTime).getTime() <= Date.now()) {
+      setScheduleError('Alege o dată și o oră în viitor.');
+      return;
+    }
+    setScheduleSaving(true);
+    setScheduleError('');
+    try {
+      await apiRequest(`/requests/${rescheduleRequest.id}/propose-time`, {
         method: 'POST',
-        body: JSON.stringify({ scheduled_at: value.replace(' ', 'T') })
-      }),
-      'Oră nouă propusă pacientului.'
-    );
+        body: JSON.stringify({ scheduled_at: new Date(proposedTime).toISOString() })
+      });
+      setRescheduleRequest(null);
+      setMessage('Oră nouă propusă pacientului. Așteptăm confirmarea sa.');
+      loadRequests();
+    } catch (err) {
+      setScheduleError(err instanceof Error ? err.message : 'Nu am putut propune ora.');
+    } finally {
+      setScheduleSaving(false);
+    }
   };
 
   const completeRequest = async () => {
@@ -276,11 +310,14 @@ export function ConsultationsPage() {
               )}
               {variant === 'accepted' && (
                 <>
-                  {request.ready_for_doctor && !request.doctor_started_at && (
+                  {request.ready_for_doctor && (
                     <Button
+                      disabled={!!request.doctor_started_at || startingId === request.id}
                       onClick={() => startConsultation(request)}
-                      className="rounded-xl bg-gradient-to-r from-primary to-purple-600 border-0">
-                      <Stethoscope className="mr-2 h-4 w-4" /> Începe consultația
+                      variant="outline"
+                      className="rounded-xl disabled:opacity-100 disabled:bg-emerald-50 disabled:text-emerald-700 disabled:border-emerald-200">
+                      {request.doctor_started_at ? <CheckCircle2 className="mr-2 h-4 w-4" /> : <Stethoscope className="mr-2 h-4 w-4" />}
+                      {request.doctor_started_at ? 'Consultație începută' : startingId === request.id ? 'Se începe...' : 'Începe consultația'}
                     </Button>
                   )}
                   <Button asChild variant="outline" className="rounded-xl border-primary text-primary hover:bg-primary/5">
@@ -351,6 +388,18 @@ export function ConsultationsPage() {
           {requestsByStatus('completed').length === 0 && <EmptyState text="Nu există consultații finalizate." />}
         </TabsContent>
       </Tabs>
+
+      <Dialog open={!!rescheduleRequest} onOpenChange={(open) => { if (!open && !scheduleSaving) setRescheduleRequest(null); }}>
+        <DialogContent className="sm:max-w-md rounded-2xl">
+          <DialogHeader><DialogTitle>Propune altă oră</DialogTitle><DialogDescription>Alege când poți consulta pacientul. Acesta va primi propunerea pentru confirmare.</DialogDescription></DialogHeader>
+          <form onSubmit={submitProposedTime} className="space-y-5">
+            {rescheduleRequest?.scheduled_at && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">Programarea actuală: {dateTime(rescheduleRequest.scheduled_at)}</p>}
+            <div className="space-y-2"><Label htmlFor="proposed-time">Data și ora nouă</Label><Input id="proposed-time" type="datetime-local" required value={proposedTime} onChange={(event) => setProposedTime(event.target.value)} disabled={scheduleSaving} /><p className="text-xs text-slate-500">Ora locală: {Intl.DateTimeFormat().resolvedOptions().timeZone}</p></div>
+            {scheduleError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{scheduleError}</p>}
+            <DialogFooter><Button type="button" variant="outline" disabled={scheduleSaving} onClick={() => setRescheduleRequest(null)}>Anulează</Button><Button type="submit" disabled={scheduleSaving || !proposedTime} className="bg-gradient-to-r from-primary to-purple-600">{scheduleSaving ? 'Se trimite...' : 'Trimite propunerea'}</Button></DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isExamModalOpen} onOpenChange={setIsExamModalOpen}>
         <DialogContent className="sm:max-w-[620px] glass-panel border-0 rounded-2xl z-50 max-h-[90vh] overflow-y-auto">

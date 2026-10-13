@@ -146,7 +146,12 @@ class DoctorConsultationViewTest extends TestCase
         $this->assertNotSame('open', $conversation->refresh()->status);
 
         Sanctum::actingAs($scenario['doctor']);
-        $this->postJson("/api/v1/requests/{$requestId}/start")->assertOk();
+        $started = $this->postJson("/api/v1/requests/{$requestId}/start")->assertOk();
+        $this->assertNotNull($started->json('request.doctor_started_at'));
+        $this->getJson('/api/v1/requests')->assertOk()
+            ->assertJsonPath('data.0.doctor_started_at', $started->json('request.doctor_started_at'));
+        $this->postJson("/api/v1/requests/{$requestId}/start")->assertOk()
+            ->assertJsonPath('request.doctor_started_at', $started->json('request.doctor_started_at'));
 
         $this->assertSame('open', $conversation->refresh()->status);
         $this->assertNotNull(ConsultationRequest::findOrFail($requestId)->doctor_started_at);

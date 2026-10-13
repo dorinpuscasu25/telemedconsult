@@ -11,6 +11,7 @@ import { SiteContentProvider } from './contexts/SiteContentContext';
 // Layouts
 import { AdminLayout } from './layouts/AdminLayout';
 import { AppLayout } from './layouts/AppLayout';
+import { VideoConsultationPage } from './pages/shared/VideoConsultationPage';
 // Pages
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
@@ -145,6 +146,10 @@ function AppRoutes() {
 
 
       {/* Admin Routes */}
+      <Route path="/consultations" element={<ProtectedRoute allowedRoles={['patient', 'doctor', 'operator', 'admin']}><AppLayout /></ProtectedRoute>}>
+        <Route path=":requestId/video" element={<VideoConsultationPage />} />
+      </Route>
+
       <Route
         path="/admin"
         element={
