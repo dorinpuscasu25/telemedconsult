@@ -124,6 +124,9 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
         if (requestedId && response.data.some((conversation) => conversation.id === requestedId)) {
           return requestedId;
         }
+        const requestedConsultation = Number(searchParams.get('request'));
+        const consultationChat = response.data.find((conversation) => conversation.consultation_request_id === requestedConsultation);
+        if (requestedConsultation && consultationChat) return consultationChat.id;
 
         return current ?? response.data[0]?.id ?? null;
       });

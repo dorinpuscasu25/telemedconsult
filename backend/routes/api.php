@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\ActiveConsultationController;
 use App\Http\Controllers\Api\AdminBlogPostController;
 use App\Http\Controllers\Api\AdminClinicalParameterController;
 use App\Http\Controllers\Api\AdminController;
@@ -155,6 +156,7 @@ Route::prefix('v1')->group(function () {
         Route::delete('/admin/partners/{partner}', [AdminPartnerController::class, 'destroy']);
 
         Route::get('/requests', [WorkflowController::class, 'requests']);
+        Route::get('/requests/active', [ActiveConsultationController::class, 'index']);
         Route::post('/requests/preview', [WorkflowController::class, 'previewRequest']);
         Route::post('/requests', [WorkflowController::class, 'storeRequest']);
         Route::post('/requests/{consultationRequest}/accept', [WorkflowController::class, 'accept']);

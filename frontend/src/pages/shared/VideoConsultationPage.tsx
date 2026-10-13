@@ -22,6 +22,11 @@ export function VideoConsultationPage() {
   const attempt = useRef(0);
 
   useEffect(() => {
+    attempt.current += 1;
+    setStatus(null);
+    setConnection(null);
+    setJoining(false);
+    setError('');
     let cancelled = false;
     const refresh = async () => {
       try {

@@ -31,6 +31,7 @@ import {
 '../components/ui/dropdown-menu';
 import { NotificationBell } from '../components/NotificationBell';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { ActiveConsultationBanner } from '../components/ActiveConsultationBanner';
 
 const ROLE_LABELS: Record<RoleName, string> = {
   admin: 'Admin',
@@ -290,6 +291,7 @@ export function AppLayout() {
       </header>
 
       {/* Main Content */}
+      <ActiveConsultationBanner />
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Boundary per pagină: o pagină care crapă nu mai omoară navigația.
             `key` resetează boundary-ul la fiecare schimbare de rută. */}
