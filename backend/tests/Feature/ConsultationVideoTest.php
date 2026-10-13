@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Jobs\CloseConsultationVideo;
 use App\Models\ConsultationRequest;
+use App\Models\Conversation;
 use App\Models\DoctorProfile;
 use App\Models\PatientProfile;
 use App\Models\Role;
@@ -61,6 +62,62 @@ class ConsultationVideoTest extends TestCase
         Sanctum::actingAs($this->userWithRole('doctor'));
         $this->getJson($this->endpoint($consultation, false))->assertForbidden();
         $this->postJson($this->endpoint($consultation))->assertForbidden();
+    }
+
+    public function test_selected_patient_and_doctor_names_are_authoritative_in_context_and_tokens(): void
+    {
+        [$patient, $doctor, $consultation] = $this->scenario();
+        $patient->update(['name' => 'Contul părintelui']);
+        $consultation->patientProfile->update(['first_name' => 'Ana', 'last_name' => 'Exemplu']);
+        $doctor->update(['name' => 'Elena Medic']);
+        foreach ([[$patient, 'Ana Exemplu', 'patient'], [$doctor, 'Elena Medic', 'doctor']] as [$user, $name, $role]) {
+            Sanctum::actingAs($user);
+            $this->getJson($this->endpoint($consultation, false))->assertOk()
+                ->assertJsonPath('participant.name', $name)->assertJsonPath('participant.role', $role)
+                ->assertJsonPath('consultation.participants.0.name', 'Ana Exemplu')
+                ->assertJsonMissingPath('consultation.patient_profile')->assertJsonMissingPath('consultation.participants.0.email');
+            $response = $this->postJson($this->endpoint($consultation), ['username' => 'Nume fals', 'role' => 'admin'])->assertOk()->assertJsonPath('participant.name', $name);
+            $claims = JWT::decode($response->json('participant_token'), new Key(self::SECRET, 'HS256'));
+            $this->assertSame($name, $claims->name);
+            $this->assertSame($role, $claims->attributes->role);
+            $this->assertFalse($claims->video->canUpdateOwnMetadata);
+            $this->assertStringNotContainsString($name, $claims->sub);
+            $this->assertStringNotContainsString($name, $claims->video->room);
+        }
+    }
+
+    public function test_legacy_patient_name_falls_back_to_account_and_operator_uses_own_name(): void
+    {
+        [$patient, , $consultation] = $this->scenario();
+        $consultation->update(['patient_profile_id' => null]);
+        Sanctum::actingAs($patient);
+        $this->getJson($this->endpoint($consultation, false))->assertOk()->assertJsonPath('participant.name', $patient->name);
+        $operator = $this->userWithRole('operator');
+        $consultation->update(['operator_id' => $operator->id, 'consultation_kind' => 'with_exam', 'objective_data_completed_at' => now()]);
+        Sanctum::actingAs($operator);
+        $response = $this->postJson($this->endpoint($consultation))->assertOk()->assertJsonPath('participant.name', $operator->name);
+        $claims = JWT::decode($response->json('participant_token'), new Key(self::SECRET, 'HS256'));
+        $this->assertSame($operator->name, $claims->name);
+        $this->assertSame('operator', $claims->attributes->role);
+    }
+
+    public function test_call_chat_is_persistent_and_private(): void
+    {
+        [$patient, $doctor, $consultation] = $this->scenario();
+        $chat = Conversation::create(['consultation_request_id' => $consultation->id, 'patient_id' => $patient->id, 'doctor_id' => $doctor->id, 'patient_profile_id' => $consultation->patient_profile_id, 'status' => 'open']);
+        Sanctum::actingAs($patient);
+        $this->getJson($this->endpoint($consultation, false))->assertOk()->assertJsonPath('consultation.conversation_id', $chat->id);
+        $this->getJson('/api/v1/conversations/'.$chat->id)->assertOk()
+            ->assertJsonPath('data.chat.can_write', true)
+            ->assertJsonPath('data.chat.message', null);
+        $consultation->update(['doctor_started_at' => now()]);
+        $this->postJson('/api/v1/conversations/'.$chat->id.'/messages', ['body' => 'Mesaj din consultația video'])->assertCreated();
+        Sanctum::actingAs($doctor);
+        $this->getJson('/api/v1/conversations/'.$chat->id)->assertOk()->assertJsonPath('data.messages.0.body', 'Mesaj din consultația video')
+            ->assertJsonPath('data.chat.can_write', true)->assertJsonMissingPath('data.messages.0.sender.email');
+        $this->assertDatabaseHas('messages', ['conversation_id' => $chat->id, 'body' => 'Mesaj din consultația video']);
+        Sanctum::actingAs($this->userWithRole('patient'));
+        $this->getJson('/api/v1/conversations/'.$chat->id)->assertForbidden();
     }
 
     public function test_guest_cannot_obtain_token(): void

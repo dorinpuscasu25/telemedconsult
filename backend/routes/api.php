@@ -178,6 +178,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/requests/{consultationRequest}/complete', [WorkflowController::class, 'complete']);
 
         Route::get('/conversations', [WorkflowController::class, 'conversations']);
+        Route::get('/conversations/{conversation}', [WorkflowController::class, 'conversation']);
         Route::post('/conversations/{conversation}/messages', [WorkflowController::class, 'sendMessage']);
         Route::post('/conversations/{conversation}/attachments', [WorkflowController::class, 'sendAttachment']);
 

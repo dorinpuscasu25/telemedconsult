@@ -22,18 +22,32 @@ class LiveKitService
 
     public function joinToken(ConsultationRequest $consultation, User $user): string
     {
-        $role = (int) $consultation->doctor_id === (int) $user->id ? 'Medic'
-            : ((int) $consultation->operator_id === (int) $user->id ? 'Operator' : 'Pacient');
+        $participant = $this->participantDetails($consultation, $user);
 
         return $this->token([
             'sub' => $this->participantIdentity($user->id),
-            'name' => $role,
+            'name' => $participant['name'],
+            'attributes' => ['role' => $participant['role']],
             'video' => [
                 'room' => $this->roomName($consultation), 'roomJoin' => true,
                 'canPublish' => true, 'canSubscribe' => true, 'canPublishData' => true,
+                'canUpdateOwnMetadata' => false,
                 'canPublishSources' => ['camera', 'microphone', 'screen_share', 'screen_share_audio'],
             ],
         ]);
+    }
+
+    public function participantDetails(ConsultationRequest $consultation, User $user): array
+    {
+        $role = (int) $consultation->doctor_id === (int) $user->id ? 'doctor'
+            : ((int) $consultation->patient_id === (int) $user->id ? 'patient' : 'operator');
+        $name = trim($user->name);
+        if ($role === 'patient') {
+            $consultation->loadMissing('patientProfile');
+            $name = $consultation->patientProfile?->display_name ?: $name;
+        }
+
+        return ['name' => $name, 'role' => $role, 'role_label' => ['doctor' => 'Medic', 'patient' => 'Pacient', 'operator' => 'Operator'][$role]];
     }
 
     public function closeRoom(ConsultationRequest $consultation): void

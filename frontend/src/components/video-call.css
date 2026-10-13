@@ -37,3 +37,15 @@
   .video-stage-with-chat aside { height: 320px; }
   .video-controls .lk-button, .video-controls .lk-disconnect-button { flex: 1 1 40%; justify-content: center; }
 }
+.telemed-video .lk-prejoin input[name="username"] { display: none; }
+.video-identity { margin: 0 auto 1rem; width: 100%; max-width: 520px; padding: 1rem 1.25rem; border-radius: 1rem; border: 1px solid #dbe4ff; background: #fff; }
+.telemed-video .lk-prejoin, .telemed-video .lk-grid-layout, .telemed-video .lk-participant-tile { min-width: 0; }
+.telemed-video .lk-button { white-space: normal; }
+.video-stage-with-chat { grid-template-columns: minmax(0, 1fr) minmax(250px, 320px); }
+.video-stage-with-chat .lk-grid-layout { min-width: 0; }
+@media (max-width: 767px) {
+  .video-prejoin { padding: 1.25rem .75rem; }
+  .telemed-video .lk-prejoin { padding: .75rem; }
+  .video-stage-with-chat { grid-template-columns: minmax(0, 1fr); }
+  .telemed-video .lk-prejoin .lk-button-group-container { gap: .5rem; }
+}

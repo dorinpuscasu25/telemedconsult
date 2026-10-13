@@ -928,6 +928,23 @@ class WorkflowController extends Controller
         return response()->json(['data' => $conversations]);
     }
 
+    public function conversation(Request $request, Conversation $conversation): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless(in_array((int) $user->id, array_map('intval', array_filter([$conversation->patient_id, $conversation->doctor_id, $conversation->operator_id])), true), 403);
+        $conversation->loadMissing(['consultationRequest', 'messages.sender']);
+
+        return response()->json(['data' => [
+            'id' => $conversation->id,
+            'chat' => $this->chatState($conversation, $user),
+            'messages' => $conversation->messages->sortBy('id')->values()->map(fn ($message) => [
+                'id' => $message->id, 'body' => $message->body, 'sender_id' => $message->sender_id,
+                'sender_name' => $message->sender?->name, 'type' => $message->type,
+                'metadata' => $message->metadata, 'created_at' => $message->created_at,
+            ]),
+        ]])->header('Cache-Control', 'no-store');
+    }
+
     public function sendMessage(Request $request, Conversation $conversation): JsonResponse
     {
         $user = $request->user();
