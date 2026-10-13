@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Events\ConversationMessageSent;
 use App\Events\ConversationUpdated;
 use App\Http\Controllers\Controller;
+use App\Jobs\CloseConsultationVideo;
 use App\Jobs\SyncHigoEntity;
 use App\Models\Consultation;
 use App\Models\ConsultationObjectiveData;
@@ -52,10 +53,10 @@ class WorkflowController extends Controller
 
         $this->expireStaleRequests();
 
-        $requests = ConsultationRequest::with(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])
+        $requests = ConsultationRequest::with(['patient', 'patientProfile.investigations', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])
             ->when($user->hasRole('patient') && ! $user->hasRole('admin'), fn ($query) => $query->where('patient_id', $user->id))
             ->when($user->hasRole('doctor') && ! $user->hasRole('admin'), fn ($query) => $query->where(function ($q) use ($user) {
-                $q->where('type', 'doctor')->orWhere('doctor_id', $user->id);
+                $q->where(fn ($pool) => $pool->where('type', 'doctor')->whereNull('doctor_id'))->orWhere('doctor_id', $user->id);
             }))
             // Operatorul își vede examinările atribuite indiferent de tipul
             // solicitării: la o consultație cu examinare, `type` e „doctor”, dar
@@ -283,7 +284,7 @@ class WorkflowController extends Controller
 
         return response()->json([
             'message' => 'Solicitare creată.',
-            'request' => $this->serializeRequest($item->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
+            'request' => $this->serializeRequest($item->load(['patient', 'patientProfile.investigations', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
             'conversation' => Conversation::with(['patient', 'doctor', 'operator', 'messages.sender'])
                 ->where('consultation_request_id', $item->id)
                 ->first(),
@@ -296,6 +297,16 @@ class WorkflowController extends Controller
 
         abort_unless($user->hasRole('doctor') || $user->hasRole('operator') || $user->hasRole('admin'), 403);
         abort_unless(in_array($consultationRequest->status, ['new', 'rescheduled'], true), 422, 'Solicitarea nu mai poate fi acceptată.');
+
+        abort_unless(
+            $user->hasRole('admin')
+                || ($user->hasRole('doctor') && (! $consultationRequest->doctor_id || (int) $consultationRequest->doctor_id === (int) $user->id))
+                || ($user->hasRole('operator') && ((int) $consultationRequest->operator_id === (int) $user->id
+                    || (! $consultationRequest->operator_id && $consultationRequest->type === 'operator'))),
+            403,
+            'Această solicitare nu îți este atribuită.',
+        );
+        abort_if($user->hasRole('operator') && $consultationRequest->consultation_kind !== 'with_exam', 403);
 
         if ($consultationRequest->acceptance_expires_at?->isPast()) {
             $this->refundHeldFunds($consultationRequest, 'Solicitare expirată: prestatorul nu a răspuns în timp util.');
@@ -346,7 +357,7 @@ class WorkflowController extends Controller
 
         return response()->json([
             'message' => 'Solicitare acceptată.',
-            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
+            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile.investigations', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
         ]);
     }
 
@@ -465,6 +476,8 @@ class WorkflowController extends Controller
             return $consultation;
         });
 
+        CloseConsultationVideo::dispatch($consultationRequest->id)->afterCommit();
+
         return response()->json([
             'message' => 'Consultație finalizată.',
             'consultation' => $consultation,
@@ -523,7 +536,7 @@ class WorkflowController extends Controller
 
         return response()->json([
             'message' => 'Datele au fost transmise medicului.',
-            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
+            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile.investigations', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
         ]);
     }
 
@@ -549,14 +562,16 @@ class WorkflowController extends Controller
 
         return response()->json([
             'message' => 'Anamneza a fost salvată.',
-            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
+            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile.investigations', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
         ]);
     }
 
     public function storeObjectiveData(Request $request, ConsultationRequest $consultationRequest): JsonResponse
     {
         $user = $request->user()->loadMissing('roles');
-        abort_unless($user->hasRole('operator') || $user->hasRole('admin'), 403);
+        $isPatient = (int) $consultationRequest->patient_id === (int) $user->id;
+        abort_unless($isPatient || $user->hasRole('admin') || ($user->hasRole('operator') && (int) $consultationRequest->operator_id === (int) $user->id), 403);
+        abort_unless(in_array($consultationRequest->status, ['new', 'accepted'], true) && ! $consultationRequest->conclusion_sent_at, 422, 'Consultația nu mai acceptă măsurători.');
         abort_unless($consultationRequest->patient_profile_id, 422, 'Solicitarea nu are profil de pacient asociat.');
 
         // Cheile din vocabularul canonic sunt validate (interval fiziologic);
@@ -581,15 +596,17 @@ class WorkflowController extends Controller
         $data = ConsultationObjectiveData::create([
             'consultation_request_id' => $consultationRequest->id,
             'patient_profile_id' => $consultationRequest->patient_profile_id,
-            'operator_id' => $user->id,
-            'source' => $validated['source'] ?? 'manual',
+            'operator_id' => $isPatient ? null : $user->id,
+            'source' => $isPatient ? 'patient' : ($validated['source'] ?? 'manual'),
             'payload' => $payload,
             'completed_at' => now(),
         ]);
 
-        $consultationRequest->forceFill([
-            'objective_data_completed_at' => now(),
-        ])->save();
+        if (! $isPatient) {
+            $consultationRequest->forceFill([
+                'objective_data_completed_at' => now(),
+            ])->save();
+        }
 
         $consultationRequest->doctor?->notify(new AppEventNotification(
             'Date obiective încărcate',
@@ -601,7 +618,7 @@ class WorkflowController extends Controller
         return response()->json([
             'message' => 'Date obiective salvate.',
             'objective_data' => $data,
-            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
+            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile.investigations', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
         ], 201);
     }
 
@@ -640,7 +657,7 @@ class WorkflowController extends Controller
 
         return response()->json([
             'message' => 'Examinare finalizată. Datele din aparat se atașează automat când sosesc.',
-            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
+            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile.investigations', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
         ]);
     }
 
@@ -687,7 +704,7 @@ class WorkflowController extends Controller
 
         return response()->json([
             'message' => 'Consultație pornită. Chatul cu pacientul este deschis.',
-            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
+            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile.investigations', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
         ]);
     }
 
@@ -789,11 +806,11 @@ class WorkflowController extends Controller
         ]);
 
         ConversationMessageSent::dispatch($conversation, $message->load('sender'));
-        ConversationUpdated::dispatch($conversation->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'consultationRequest', 'messages.sender']));
+        ConversationUpdated::dispatch($conversation->refresh()->load(['patient', 'patientProfile.investigations', 'doctor', 'operator', 'consultationRequest', 'messages.sender']));
 
         return response()->json([
             'message' => 'Link video adăugat.',
-            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
+            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile.investigations', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
         ]);
     }
 
@@ -844,7 +861,7 @@ class WorkflowController extends Controller
         ));
 
         ConversationMessageSent::dispatch($conversation, $message->load('sender'));
-        ConversationUpdated::dispatch($conversation->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'consultationRequest', 'messages.sender']));
+        ConversationUpdated::dispatch($conversation->refresh()->load(['patient', 'patientProfile.investigations', 'doctor', 'operator', 'consultationRequest', 'messages.sender']));
 
         return response()->json(['message' => 'Investigația suplimentară a fost solicitată.']);
     }
@@ -888,7 +905,7 @@ class WorkflowController extends Controller
 
         return response()->json([
             'message' => 'Chat reactivat.',
-            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
+            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile.investigations', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
         ]);
     }
 
@@ -896,7 +913,7 @@ class WorkflowController extends Controller
     {
         $user = $request->user();
 
-        $conversations = Conversation::with(['patient', 'patientProfile', 'doctor', 'operator', 'consultationRequest', 'messages.sender'])
+        $conversations = Conversation::with(['patient', 'patientProfile.investigations', 'doctor', 'operator', 'consultationRequest', 'messages.sender'])
             ->where(function ($query) use ($user) {
                 $query->where('patient_id', $user->id)
                     ->orWhere('doctor_id', $user->id)
@@ -1133,6 +1150,11 @@ class WorkflowController extends Controller
                 'id' => (string) $item->patientProfile->id,
                 'name' => $item->patientProfile->display_name,
                 'patient_code' => $item->patientProfile->patient_code,
+                'identity_number' => $item->patientProfile->identity_number,
+                'residential_environment' => $item->patientProfile->residential_environment,
+                'address_details' => $item->patientProfile->address_details,
+                'medical_record' => $item->patientProfile->medical_record ?? (object) [],
+                'documents' => $item->patientProfile->investigations->sortByDesc('performed_at')->values()->map(fn ($entry) => PatientMedicalRecordController::document($entry)),
                 'birth_date' => $item->patientProfile->birth_date?->toDateString(),
                 'age' => $item->patientProfile->birth_date?->age,
                 'gender' => $item->patientProfile->gender,
@@ -1516,6 +1538,8 @@ class WorkflowController extends Controller
             return $retained;
         });
 
+        CloseConsultationVideo::dispatch($consultationRequest->id)->afterCommit();
+
         return response()->json([
             'message' => $retainedTravelFee > 0
                 ? 'Solicitarea a fost anulată. Am reținut taxa de drum a operatorului; restul a fost returnat în wallet.'
@@ -1542,7 +1566,7 @@ class WorkflowController extends Controller
 
             return response()->json([
                 'message' => 'Solicitarea a fost reatribuită sau, dacă nu mai există operatori, anulată cu refund.',
-                'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
+                'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'patientProfile.investigations', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])),
             ]);
         }
 
@@ -1581,8 +1605,12 @@ class WorkflowController extends Controller
         abort_if($wallet->balance_minor < $realAmount, 422, 'Balanță insuficientă în portofelul de bani reali.');
         abort_if($pointsWallet->balance_minor < $pointsAmount, 422, 'Nu ai suficiente puncte pentru această plată.');
 
-        if ($realAmount > 0) $ledger->move($wallet, -$realAmount, 'service_hold', 'Rezervare consultație din bani reali', ['consultation_request_id' => $consultationRequest->id], $consultationRequest->id);
-        if ($pointsAmount > 0) $ledger->move($pointsWallet, -$pointsAmount, 'points_service_hold', 'Rezervare consultație din puncte', ['consultation_request_id' => $consultationRequest->id], $consultationRequest->id);
+        if ($realAmount > 0) {
+            $ledger->move($wallet, -$realAmount, 'service_hold', 'Rezervare consultație din bani reali', ['consultation_request_id' => $consultationRequest->id], $consultationRequest->id);
+        }
+        if ($pointsAmount > 0) {
+            $ledger->move($pointsWallet, -$pointsAmount, 'points_service_hold', 'Rezervare consultație din puncte', ['consultation_request_id' => $consultationRequest->id], $consultationRequest->id);
+        }
 
     }
 
@@ -1650,8 +1678,12 @@ class WorkflowController extends Controller
         $pointsWallet = $ledger->locked($consultationRequest->patient_id, WalletLedger::POINTS);
         $realAmount = (int) ($consultationRequest->real_amount_minor ?: $consultationRequest->amount_minor);
         $pointsAmount = (int) $consultationRequest->points_amount_minor;
-        if ($realAmount > 0) $ledger->move($patientWallet, $realAmount, 'service_refund', 'Returnare bani reali pentru consultație', ['reason' => $reason], $consultationRequest->id);
-        if ($pointsAmount > 0) $ledger->move($pointsWallet, $pointsAmount, 'points_service_refund', 'Returnare puncte pentru consultație', ['reason' => $reason], $consultationRequest->id);
+        if ($realAmount > 0) {
+            $ledger->move($patientWallet, $realAmount, 'service_refund', 'Returnare bani reali pentru consultație', ['reason' => $reason], $consultationRequest->id);
+        }
+        if ($pointsAmount > 0) {
+            $ledger->move($pointsWallet, $pointsAmount, 'points_service_refund', 'Returnare puncte pentru consultație', ['reason' => $reason], $consultationRequest->id);
+        }
 
         $consultationRequest->forceFill([
             'payment_status' => 'refunded',
@@ -1764,8 +1796,12 @@ class WorkflowController extends Controller
         $ledger = app(WalletLedger::class);
         $patientWallet = $ledger->locked($consultationRequest->patient_id, WalletLedger::REAL);
         $pointsWallet = $ledger->locked($consultationRequest->patient_id, WalletLedger::POINTS);
-        if ($refundReal > 0) $ledger->move($patientWallet, $refundReal, 'service_refund', 'Returnare parțială în bani reali', ['reason' => $reason, 'retained_minor' => $retainMinor], $consultationRequest->id);
-        if ($refundPoints > 0) $ledger->move($pointsWallet, $refundPoints, 'points_service_refund', 'Returnare parțială în puncte', ['reason' => $reason, 'retained_minor' => $retainMinor], $consultationRequest->id);
+        if ($refundReal > 0) {
+            $ledger->move($patientWallet, $refundReal, 'service_refund', 'Returnare parțială în bani reali', ['reason' => $reason, 'retained_minor' => $retainMinor], $consultationRequest->id);
+        }
+        if ($refundPoints > 0) {
+            $ledger->move($pointsWallet, $refundPoints, 'points_service_refund', 'Returnare parțială în puncte', ['reason' => $reason, 'retained_minor' => $retainMinor], $consultationRequest->id);
+        }
 
         if ($retainMinor > 0 && $consultationRequest->operator_id) {
             $operatorWallet = Wallet::where('user_id', $consultationRequest->operator_id)->where('type', 'real')->lockForUpdate()->first()
@@ -1841,7 +1877,7 @@ class WorkflowController extends Controller
 
     private function notifyRequestCreated(ConsultationRequest $item): void
     {
-        $item->loadMissing(['patient', 'patientProfile', 'doctor', 'operator']);
+        $item->loadMissing(['patient', 'patientProfile.investigations', 'doctor', 'operator']);
 
         // with_exam: the operator gets the assignment (NT1) and the patient is asked
         // for the anamnesis (NT3/NT4). The doctor is only pulled in at awaiting_doctor.

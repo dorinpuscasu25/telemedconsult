@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Activity, ChevronLeft, ChevronRight, ClipboardList, Cpu, Download, Images, PenLine, Stethoscope, User, X } from 'lucide-react';
+import { MedicalRecordDetails, MedicalConsultationHistory, type MedicalDocumentSummary } from './MedicalRecordDetails';
+import { patientAge, type MedicalRecord } from '../lib/medical-record';
 import { dateTime } from '../lib/format';
 
 export interface ObjectiveValue {
@@ -36,6 +38,11 @@ export interface PatientProfileSummary {
   id: string;
   name: string;
   patient_code?: string | null;
+  identity_number?: string | null;
+  residential_environment?: string | null;
+  address_details?: Record<string, string | null> | null;
+  medical_record?: MedicalRecord | null;
+  documents?: MedicalDocumentSummary[];
   birth_date?: string | null;
   age?: number | null;
   gender?: string | null;
@@ -203,7 +210,7 @@ export function PatientChart({
     return groups;
   }, {});
   const identity = [
-    profile?.age != null ? `${profile.age} ani` : null,
+    profile?.birth_date ? patientAge(profile.birth_date) : profile?.age != null ? `${profile.age} ani` : null,
     profile?.gender ? GENDER_LABELS[profile.gender] ?? profile.gender : null,
     profile?.patient_code ? `Cod pacient ${profile.patient_code}` : null
   ].filter(Boolean);
@@ -216,6 +223,9 @@ export function PatientChart({
         {profile ? (
           <div className="space-y-2 text-sm">
             <p className="font-semibold text-slate-900">{profile.name}</p>
+            {profile.identity_number && <p className="text-slate-600">IDNP: {profile.identity_number}</p>}
+            {profile.residential_environment && <p className="text-slate-600">Mediul: {profile.residential_environment === 'rural' ? 'Rural' : 'Urban'}</p>}
+            {profile.address_details && <p className="text-slate-600">{Object.entries({ building: 'Bloc', entrance: 'Scară', apartment: 'Apartament', floor: 'Etaj' }).filter(([key]) => profile.address_details?.[key]).map(([key, label]) => `${label} ${profile.address_details?.[key]}`).join(', ')}</p>}
             {identity.length > 0 && <p className="text-slate-600">{identity.join(' • ')}</p>}
             {(location || profile.address) && (
               <p className="text-slate-600">
@@ -246,6 +256,10 @@ export function PatientChart({
         )}
       </Section>
 
+      {profile && <Section title="Fișa medicală și antecedente" icon={ClipboardList}>
+        <MedicalRecordDetails record={profile.medical_record} documents={profile.documents} />
+        <div className="mt-3"><MedicalConsultationHistory key={profile.id} profileId={profile.id} /></div>
+      </Section>}
       <Section
         title="Acuze și anamneză"
         icon={ClipboardList}
@@ -301,7 +315,7 @@ export function PatientChart({
                         : 'border-slate-200 bg-white text-slate-600'
                     }`}>
                     {entry.from_device ? <Cpu className="size-3" /> : <PenLine className="size-3" />}
-                    {entry.from_device ? 'Aparat HIGO' : 'Notat manual'}
+                    {entry.from_device ? 'Aparat HIGO' : entry.source === 'patient' ? 'Declarat de pacient' : 'Notat manual'}
                   </span>
                   {entry.operator && <span className="text-slate-500">{entry.operator}</span>}
                   {entry.completed_at && <span className="text-slate-400">{dateTime(entry.completed_at)}</span>}

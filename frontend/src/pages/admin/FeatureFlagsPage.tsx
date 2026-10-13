@@ -57,6 +57,29 @@ export function FeatureFlagsPage() {
     }
   };
 
+  const applyMode = async (withOperators: boolean) => {
+    setSavingKey('mode');
+    setError('');
+    setMessage('');
+    try {
+      const response = await apiRequest<{ data: FeatureFlag[] }>('/admin/feature-flags', {
+        method: 'PUT',
+        body: JSON.stringify({ flags: [
+          { key: 'doctors', enabled: true },
+          { key: 'video_consultations', enabled: true },
+          ...['operators', 'with_exam_consultations', 'higo_devices'].map((key) => ({ key, enabled: withOperators }))
+        ] })
+      });
+      setFlags(response.data);
+      await refreshPublicFeatures();
+      setMessage(withOperators ? 'Consultațiile cu operator sunt activate. Consultațiile video directe rămân disponibile.' : 'Doar consultații directe cu medicul. Operatorii și examinările sunt dezactivate pentru solicitări noi.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nu am putut schimba modul.');
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
   return (
     <div className="max-w-4xl space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -72,6 +95,14 @@ export function FeatureFlagsPage() {
         </Button>
       </div>
 
+      <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+        <p className="font-semibold">Modul consultațiilor</p>
+        <p className="text-sm text-slate-500">Alege consultații directe până când ai operatori și aparate. Solicitările existente își păstrează fluxul.</p>
+        <div className="flex flex-wrap gap-2">
+          <Button disabled={savingKey !== null || flags.length === 0} onClick={() => applyMode(false)}>Doar consultații directe</Button>
+          <Button variant="outline" disabled={savingKey !== null || flags.length === 0} onClick={() => applyMode(true)}>Cu operatori</Button>
+        </div>
+      </div>
       <Card className="glass-card border-0">
         <CardHeader>
           <CardTitle className="flex items-center"><ToggleLeft className="mr-2 h-5 w-5 text-primary" /> Module</CardTitle>

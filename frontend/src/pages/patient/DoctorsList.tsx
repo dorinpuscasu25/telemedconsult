@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { CheckCircle2, MessageSquare, Search, Star, Video } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../../components/ui/avatar';
@@ -102,6 +102,8 @@ interface DoctorReview {
 
 export function DoctorsList() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedProfileId = searchParams.get('patient_profile');
   const { isEnabled } = useFeatureFlags();
   const withExamEnabled = isEnabled('with_exam_consultations') && isEnabled('operators');
   const videoEnabled = isEnabled('video_consultations');
@@ -139,7 +141,8 @@ export function DoctorsList() {
         const profiles = response.patient_profiles ?? [];
         const requestableProfiles = profiles.filter(canRequestConsultation);
         setPatientProfiles(profiles);
-        setPatientProfileId(requestableProfiles[0]?.id ? String(requestableProfiles[0].id) : '');
+        const requestedProfile = profiles.find((profile) => String(profile.id) === requestedProfileId && profile.can_request_consultation);
+        setPatientProfileId(requestedProfile ? String(requestedProfile.id) : requestableProfiles[0]?.id ? String(requestableProfiles[0].id) : '');
       })
       .catch(() => undefined);
   }, []);
@@ -363,7 +366,7 @@ export function DoctorsList() {
                   {!withExamEnabled && !videoEnabled && <p className="text-sm text-slate-500">Consultațiile sunt momentan dezactivate.</p>}
                 </div>
                 <InfoList title="Recenzii recente" items={doctorReviews.map((review) => `${review.rating}/5 ${review.comment || ''}`)} empty="Nu există recenzii încă." />
-                {selectedDoctor.accepts_points && (
+                {detailDoctor.accepts_points && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
                     <label className="flex items-center justify-between gap-4 font-medium text-amber-900">
                       <span>Achită cu puncte bonus (%)</span>

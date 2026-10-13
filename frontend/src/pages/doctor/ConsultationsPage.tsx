@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Activity, AlertCircle, CheckCircle2, Clock, FileText, MessageSquare, Microscope, Stethoscope, Video } from 'lucide-react';
+import { Activity, AlertCircle, CheckCircle2, Clock, FileText, MessageSquare, Microscope, Stethoscope } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Avatar, AvatarFallback } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
@@ -18,6 +18,7 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Textarea } from '../../components/ui/textarea';
+import { ConsultationVideoButton } from '../../components/ConsultationVideoButton';
 import { apiRequest } from '../../lib/api';
 import { dateTime } from '../../lib/format';
 import {
@@ -169,15 +170,6 @@ export function ConsultationsPage() {
     }
   };
 
-  const addMeetLink = async (request: ConsultationRequest) => {
-    const meetLink = window.prompt('Lipește linkul Google Meet');
-    if (!meetLink) return;
-    await runAction(() => apiRequest(`/requests/${request.id}/meet-link`, {
-      method: 'POST',
-      body: JSON.stringify({ meet_link: meetLink, scheduled_at: request.scheduled_at || null })
-    }), 'Link Meet adăugat.');
-  };
-
   const requestInvestigation = async (request: ConsultationRequest) => {
     const title = window.prompt('Ce investigație suplimentară soliciți?');
     if (!title) return;
@@ -294,11 +286,7 @@ export function ConsultationsPage() {
                   <Button asChild variant="outline" className="rounded-xl border-primary text-primary hover:bg-primary/5">
                     <Link to="/doctor/chat"><MessageSquare className="mr-2 h-4 w-4" /> Chat</Link>
                   </Button>
-                  {(request.consultation_kind === 'video' || request.type === 'video') && (
-                    <Button onClick={() => addMeetLink(request)} variant="outline" className="rounded-xl">
-                      <Video className="mr-2 h-4 w-4" /> Adaugă link Meet
-                    </Button>
-                  )}
+                  <ConsultationVideoButton requestId={request.id} />
                   <Button onClick={() => requestInvestigation(request)} variant="outline" className="rounded-xl">
                     <Microscope className="mr-2 h-4 w-4" /> Cere investigație
                   </Button>

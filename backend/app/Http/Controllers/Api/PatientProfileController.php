@@ -21,8 +21,8 @@ use App\Services\FeatureFlags;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class PatientProfileController extends Controller
@@ -74,7 +74,7 @@ class PatientProfileController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber],
-            'birth_date' => ['nullable', 'date'],
+            'birth_date' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today'],
             'gender' => ['nullable', Rule::in(['M', 'F', 'Altul'])],
             'address' => ['nullable', 'string', 'max:255'],
             'emergency_contact' => ['nullable', 'string', 'max:255'],
@@ -90,13 +90,7 @@ class PatientProfileController extends Controller
 
         $profile = $user->patientProfile;
         if ($profile) {
-            $profile->update([
-                'birth_date' => $validated['birth_date'] ?? null,
-                'gender' => $validated['gender'] ?? null,
-                'address' => $validated['address'] ?? null,
-                'emergency_contact' => $validated['emergency_contact'] ?? null,
-                'medical_summary' => $validated['medical_summary'] ?? null,
-            ]);
+            $profile->update(Arr::only($validated, ['birth_date', 'gender', 'address', 'emergency_contact', 'medical_summary']));
         }
 
         return response()->json([
@@ -251,14 +245,20 @@ class PatientProfileController extends Controller
 
         $validated = $request->validate([
             'consultation_request_id' => ['nullable', Rule::exists('consultation_requests', 'id')->where(fn ($query) => $query->where('patient_profile_id', $patientProfile->id))],
-            'type' => ['nullable', 'string', 'max:100'],
+            'type' => ['nullable', Rule::in(['investigation', 'analysis', 'nasal_left', 'nasal_right', 'eye_left', 'eye_right'])],
+            'performed_at' => ['required', 'date_format:Y-m-d', 'before_or_equal:today'],
             'title' => ['required', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:2000'],
-            'file' => ['nullable', 'file', 'max:20480', 'mimes:jpg,jpeg,png,webp,pdf,doc,docx'],
+            'file' => ['required', 'file', 'max:20480', 'mimes:jpg,jpeg,png,webp,pdf,doc,docx'],
         ]);
 
+        if (in_array($validated['type'] ?? '', ['nasal_left', 'nasal_right', 'eye_left', 'eye_right'], true)) {
+            $request->validate(['file' => ['required', 'image'], 'consultation_request_id' => ['required']]);
+            abort_unless(ConsultationRequest::whereKey($validated['consultation_request_id'])->whereIn('status', ['new', 'accepted'])->whereNull('conclusion_sent_at')->exists(), 422, 'Consultația nu mai acceptă fotografii clinice.');
+        }
+
         $file = $validated['file'] ?? null;
-        $path = $file ? $file->store('patient-investigations', 'public') : null;
+        $path = $file ? $file->store('patient-investigations', 'local') : null;
 
         $investigation = PatientInvestigation::create([
             'patient_profile_id' => $patientProfile->id,
@@ -267,6 +267,8 @@ class PatientProfileController extends Controller
             'type' => $validated['type'] ?? 'investigation',
             'title' => $validated['title'],
             'file_path' => $path,
+            'file_disk' => 'local',
+            'performed_at' => $validated['performed_at'],
             'mime_type' => $file?->getMimeType(),
             'file_size' => $file?->getSize(),
             'notes' => $validated['notes'] ?? null,
@@ -275,7 +277,7 @@ class PatientProfileController extends Controller
         return response()->json([
             'message' => 'Investigație salvată.',
             'investigation' => $investigation,
-            'url' => $path ? Storage::disk('public')->url($path) : null,
+            'url' => PatientMedicalRecordController::document($investigation)['url'],
         ], 201);
     }
 
@@ -362,11 +364,11 @@ class PatientProfileController extends Controller
         $validated = $request->validate([
             'first_name' => [$required, 'string', 'max:255'],
             'last_name' => [$required, 'string', 'max:255'],
-            'birth_date' => ['nullable', 'date'],
+            'birth_date' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today'],
             'gender' => ['nullable', Rule::in(['M', 'F', 'Altul'])],
             'country' => [$required, 'string', 'max:100'],
-            'region_id' => [$required, 'integer', Rule::exists('regions', 'id')->where('is_active', true)],
-            'locality_id' => [$required, 'integer', Rule::exists('localities', 'id')->where(function ($query) use ($request) {
+            'region_id' => [$required, $creating ? 'filled' : 'nullable', 'integer', Rule::exists('regions', 'id')->where('is_active', true)],
+            'locality_id' => [$required, $creating ? 'filled' : 'nullable', 'integer', Rule::exists('localities', 'id')->where(function ($query) use ($request) {
                 $query->where('is_active', true);
                 if ($request->filled('region_id')) {
                     $query->where('region_id', $request->integer('region_id'));
@@ -375,6 +377,13 @@ class PatientProfileController extends Controller
             'address' => [$required, 'string', 'max:255'],
             'emergency_contact' => ['nullable', 'string', 'max:255'],
             'medical_summary' => ['nullable', 'string', 'max:4000'],
+            'identity_number' => ['nullable', 'regex:/^[0-9]{13}$/'],
+            'residential_environment' => ['nullable', Rule::in(['rural', 'urban'])],
+            'address_details' => ['nullable', 'array:building,entrance,apartment,floor'],
+            'address_details.building' => ['nullable', 'string', 'max:50'],
+            'address_details.entrance' => ['nullable', 'string', 'max:50'],
+            'address_details.apartment' => ['nullable', 'string', 'max:50'],
+            'address_details.floor' => ['nullable', 'string', 'max:50'],
         ], [
             'region_id.required' => 'Alege raionul din listă.',
             'region_id.exists' => 'Raionul selectat nu este disponibil.',
@@ -403,6 +412,7 @@ class PatientProfileController extends Controller
             'can_request_consultation' => $this->canRequestConsultation($profile),
             'request_unavailable_reason' => $this->requestUnavailableReason($profile),
             'has_complete_address' => $profile->hasCompleteAddress(),
+            'investigations' => $profile->investigations->sortByDesc('performed_at')->values()->map(fn ($item) => PatientMedicalRecordController::document($item)),
         ];
     }
 

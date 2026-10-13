@@ -10,6 +10,7 @@ import { CheckCircle2, Clock, FileText, Paperclip, Send } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { apiRequest } from '../../lib/api';
 import { getEcho } from '../../lib/realtime';
+import { ConsultationVideoButton } from '../../components/ConsultationVideoButton';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface ChatUser {
@@ -334,7 +335,7 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
       </Card>
 
       <Card className="flex-1 glass-card border-0 flex flex-col overflow-hidden relative">
-        <div className="h-16 border-b border-slate-200/50 bg-white/60 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-10">
+        <div className="min-h-16 gap-2 flex-wrap py-2 border-b border-slate-200/50 bg-white/60 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-10">
           <div className="flex items-center">
             <Avatar className="h-10 w-10 border border-white shadow-sm mr-3">
               <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${activeParticipant.email}`} />
@@ -345,9 +346,12 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
               <p className="text-xs text-primary font-medium">{activeParticipant.role}</p>
             </div>
           </div>
+          <div className="flex items-center gap-2">
+          {activeChat.consultation_request_id && <ConsultationVideoButton key={activeChat.consultation_request_id} requestId={activeChat.consultation_request_id} />}
           <Badge variant="outline" className={chatBadge.className}>
             <Clock className="w-3 h-3 mr-1" /> {chatBadge.label}
           </Badge>
+          </div>
         </div>
 
         <ScrollArea className="flex-1 p-6 bg-slate-50/30">

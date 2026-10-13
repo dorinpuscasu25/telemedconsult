@@ -6,9 +6,14 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['patient_profile_id', 'consultation_request_id', 'uploaded_by', 'type', 'title', 'file_path', 'mime_type', 'file_size', 'notes'])]
+#[Fillable(['patient_profile_id', 'consultation_request_id', 'uploaded_by', 'type', 'title', 'file_path', 'mime_type', 'file_size', 'notes', 'performed_at', 'file_disk'])]
 class PatientInvestigation extends Model
 {
+    protected function casts(): array
+    {
+        return ['performed_at' => 'date'];
+    }
+
     public function patientProfile(): BelongsTo
     {
         return $this->belongsTo(PatientProfile::class);

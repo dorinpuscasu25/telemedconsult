@@ -50,6 +50,11 @@ class ConsultationRequest extends Model
         return $this->hasMany(PatientInvestigation::class);
     }
 
+    public function examMedia(): HasMany
+    {
+        return $this->hasMany(HigoExamMedia::class);
+    }
+
     protected function casts(): array
     {
         return [

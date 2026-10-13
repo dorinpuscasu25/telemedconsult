@@ -39,6 +39,26 @@ class FeatureFlagsTest extends TestCase
         $this->assertFalse(app(FeatureFlags::class)->enabled('payments'));
     }
 
+    public function test_admin_can_switch_between_direct_and_operator_modes(): void
+    {
+        Sanctum::actingAs($this->admin());
+        foreach ([false, true] as $withOperators) {
+            $flags = [
+                ['key' => 'doctors', 'enabled' => true],
+                ['key' => 'video_consultations', 'enabled' => true],
+                ['key' => 'operators', 'enabled' => $withOperators],
+                ['key' => 'with_exam_consultations', 'enabled' => $withOperators],
+                ['key' => 'higo_devices', 'enabled' => $withOperators],
+            ];
+            $this->putJson('/api/v1/admin/feature-flags', ['flags' => $flags])->assertOk();
+            $this->getJson('/api/v1/catalog/features')->assertOk()
+                ->assertJsonPath('data.video_consultations', true)
+                ->assertJsonPath('data.operators', $withOperators)
+                ->assertJsonPath('data.with_exam_consultations', $withOperators)
+                ->assertJsonPath('data.higo_devices', $withOperators);
+        }
+    }
+
     public function test_public_feature_map_reflects_toggles(): void
     {
         app(PlatformConfig::class)->upsert('feature.video_consultations', false, FeatureFlags::GROUP, 'boolean');

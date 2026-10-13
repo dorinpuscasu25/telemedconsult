@@ -11,6 +11,7 @@ export interface ObjectiveField {
   type: 'number' | 'text';
   min: number | null;
   max: number | null;
+  choices?: number[] | null;
   group: string;
   group_label: string;
 }
@@ -69,7 +70,11 @@ export function ObjectiveDataForm({ value, onChange }: ObjectiveDataFormProps) {
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{group.label}</p>
           <div className="grid gap-3 sm:grid-cols-2">
             {group.fields.map((field) =>
-              field.type === 'number' ? (
+              field.choices?.length ? (
+                <label key={field.key} className="space-y-2"><span className="text-xs font-medium text-slate-600">{field.label} {field.unit ? `(${field.unit})` : ''}</span>
+                  <select value={value[field.key] ?? ''} onChange={(event) => setField(field.key, event.target.value)} className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3"><option value="">Necompletat</option>{field.choices.map((choice) => <option key={choice} value={choice}>{choice} {field.unit}</option>)}</select>
+                </label>
+              ) : field.type === 'number' ? (
                 <div key={field.key}>
                   <Label className="text-xs text-slate-600">
                     {field.label}

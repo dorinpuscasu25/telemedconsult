@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['user_id', 'higo_patient_id', 'first_name', 'last_name', 'birth_date', 'gender', 'country', 'region', 'region_id', 'locality', 'locality_id', 'address', 'emergency_contact', 'medical_summary', 'life_history', 'status', 'active_until'])]
+#[Fillable(['identity_number', 'residential_environment', 'address_details', 'medical_record', 'user_id', 'higo_patient_id', 'first_name', 'last_name', 'birth_date', 'gender', 'country', 'region', 'region_id', 'locality', 'locality_id', 'address', 'emergency_contact', 'medical_summary', 'life_history', 'status', 'active_until'])]
 class PatientProfile extends Model
 {
     /**
@@ -78,6 +78,8 @@ class PatientProfile extends Model
         return [
             'birth_date' => 'date',
             'life_history' => 'array',
+            'address_details' => 'array',
+            'medical_record' => 'array',
             'active_until' => 'datetime',
         ];
     }

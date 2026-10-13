@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\ClinicalParameter;
+use Illuminate\Support\Facades\Cache;
+
 /**
  * Vocabularul canonic al datelor obiective.
  *
@@ -35,6 +38,10 @@ class ObjectiveDataSchema
         'glucose' => ['label' => 'Glicemie', 'unit' => 'mmol/L', 'type' => 'number', 'min' => 1, 'max' => 40, 'group' => 'vitals'],
         'weight' => ['label' => 'Greutate', 'unit' => 'kg', 'type' => 'number', 'min' => 1, 'max' => 400, 'group' => 'anthropometry'],
         'height' => ['label' => 'Înălțime', 'unit' => 'cm', 'type' => 'number', 'min' => 30, 'max' => 250, 'group' => 'anthropometry'],
+        'grip_strength_right' => ['label' => 'Dinamometrie mâna dreaptă', 'unit' => 'kg', 'type' => 'number', 'min' => 0, 'max' => 150, 'group' => 'anthropometry'],
+        'grip_strength_left' => ['label' => 'Dinamometrie mâna stângă', 'unit' => 'kg', 'type' => 'number', 'min' => 0, 'max' => 150, 'group' => 'anthropometry'],
+        'abdominal_circumference' => ['label' => 'Circumferință abdominală', 'unit' => 'cm', 'type' => 'number', 'min' => 1, 'max' => 300, 'group' => 'anthropometry'],
+        'pulse_oximeter' => ['label' => 'Puls măsurat cu pulsoximetrul', 'unit' => 'bpm', 'type' => 'number', 'min' => 20, 'max' => 250, 'group' => 'vitals'],
         'ecg' => ['label' => 'EKG', 'unit' => null, 'type' => 'text', 'group' => 'exam'],
         'auscultation' => ['label' => 'Auscultație', 'unit' => null, 'type' => 'text', 'group' => 'exam'],
         'throat' => ['label' => 'Examinare gât', 'unit' => null, 'type' => 'text', 'group' => 'exam'],
@@ -68,13 +75,13 @@ class ObjectiveDataSchema
     {
         $rules = [];
 
-        foreach (self::FIELDS as $key => $field) {
+        foreach (self::fields() as $key => $field) {
             if ($field['type'] === 'number') {
                 $rules["{$prefix}.{$key}"] = [
                     'nullable',
                     'numeric',
-                    'min:'.$field['min'],
-                    'max:'.$field['max'],
+                    ...(isset($field['min']) ? ['min:'.$field['min']] : []),
+                    ...(isset($field['max']) ? ['max:'.$field['max']] : []),
                 ];
 
                 continue;
@@ -96,8 +103,8 @@ class ObjectiveDataSchema
     {
         $messages = [];
 
-        foreach (self::FIELDS as $key => $field) {
-            if ($field['type'] !== 'number') {
+        foreach (self::fields() as $key => $field) {
+            if ($field['type'] !== 'number' || ! isset($field['min'], $field['max'])) {
                 continue;
             }
 
@@ -121,8 +128,8 @@ class ObjectiveDataSchema
     {
         $catalog = [];
 
-        foreach (self::FIELDS as $key => $field) {
-            if ($field['device_only'] ?? false) {
+        foreach (self::fields() as $key => $field) {
+            if (($field['device_only'] ?? false) || ($field['is_active'] ?? true) === false) {
                 continue;
             }
 
@@ -131,6 +138,7 @@ class ObjectiveDataSchema
                 'label' => $field['label'],
                 'unit' => $field['unit'],
                 'type' => $field['type'],
+                'choices' => $key === 'spo2' ? range(80, 100) : null,
                 'min' => $field['min'] ?? null,
                 'max' => $field['max'] ?? null,
                 'group' => $field['group'],
@@ -141,9 +149,14 @@ class ObjectiveDataSchema
         return $catalog;
     }
 
+    public static function fields(): array
+    {
+        return array_merge(self::FIELDS, Cache::remember('clinical-parameter-fields', 60, fn () => ClinicalParameter::all()->keyBy('key')->map(fn ($field) => $field->only(['label', 'unit', 'type', 'min', 'max', 'group', 'is_active']))->all()));
+    }
+
     public static function knows(string $key): bool
     {
-        return array_key_exists($key, self::FIELDS);
+        return array_key_exists($key, self::fields());
     }
 
     /**
@@ -152,7 +165,7 @@ class ObjectiveDataSchema
      */
     public static function label(string $key): string
     {
-        return self::FIELDS[$key]['label']
+        return self::fields()[$key]['label']
             ?? ucfirst(str_replace('_', ' ', $key));
     }
 
@@ -162,7 +175,7 @@ class ObjectiveDataSchema
      */
     public static function unit(string $key): ?string
     {
-        return self::FIELDS[$key]['unit'] ?? null;
+        return self::fields()[$key]['unit'] ?? null;
     }
 
     /**
@@ -176,7 +189,7 @@ class ObjectiveDataSchema
     {
         $fields = [];
 
-        foreach (self::FIELDS as $key => $field) {
+        foreach (self::fields() as $key => $field) {
             $fields[] = [
                 'key' => $key,
                 'label' => $field['label'],

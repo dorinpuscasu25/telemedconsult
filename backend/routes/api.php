@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AdminBlogPostController;
+use App\Http\Controllers\Api\AdminClinicalParameterController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AdminFeatureFlagController;
 use App\Http\Controllers\Api\AdminHigoController;
@@ -11,6 +12,7 @@ use App\Http\Controllers\Api\AdminPatientCardPackageController;
 use App\Http\Controllers\Api\AdminRegionController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CatalogController;
+use App\Http\Controllers\Api\ConsultationVideoController;
 use App\Http\Controllers\Api\CoordinatorController;
 use App\Http\Controllers\Api\DoctorOperationsController;
 use App\Http\Controllers\Api\ExamMediaController;
@@ -18,6 +20,7 @@ use App\Http\Controllers\Api\HigoExamController;
 use App\Http\Controllers\Api\IntegrationController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PatientEngagementController;
+use App\Http\Controllers\Api\PatientMedicalRecordController;
 use App\Http\Controllers\Api\PatientProfileController;
 use App\Http\Controllers\Api\ReferralController;
 use App\Http\Controllers\Api\SiteContentController;
@@ -30,6 +33,7 @@ use Illuminate\Support\Facades\Route;
 Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
 Route::prefix('v1')->group(function () {
+    Route::get('/patient-investigations/{investigation}/file', [PatientMedicalRecordController::class, 'file'])->middleware('signed')->name('patient-investigation.file');
     Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:10,1');
     Route::post('/auth/verify-email-otp', [AuthController::class, 'verifyEmailOtp'])->middleware('throttle:10,1');
     Route::post('/auth/resend-email-otp', [AuthController::class, 'resendEmailOtp'])->middleware('throttle:5,1');
@@ -85,6 +89,13 @@ Route::prefix('v1')->group(function () {
         Route::post('/telegram/unlink', [TelegramController::class, 'unlink']);
         Route::post('/telegram/preferences', [TelegramController::class, 'preferences']);
         Route::post('/telegram/test', [TelegramController::class, 'test'])->middleware('throttle:5,1');
+
+        Route::get('/patient/profiles/{patientProfile}/medical-record', [PatientMedicalRecordController::class, 'show']);
+        Route::patch('/patient/profiles/{patientProfile}/medical-record', [PatientMedicalRecordController::class, 'update']);
+        Route::delete('/patient/profiles/{patientProfile}/investigations/{investigation}', [PatientMedicalRecordController::class, 'destroyDocument']);
+        Route::get('/admin/clinical-parameters', [AdminClinicalParameterController::class, 'index']);
+        Route::post('/admin/clinical-parameters', [AdminClinicalParameterController::class, 'store']);
+        Route::put('/admin/clinical-parameters/{clinicalParameter}', [AdminClinicalParameterController::class, 'update']);
 
         Route::get('/admin/summary', [AdminController::class, 'summary']);
         Route::get('/admin/roles', [AdminController::class, 'roles']);
@@ -157,6 +168,8 @@ Route::prefix('v1')->group(function () {
         Route::post('/requests/{consultationRequest}/examination-done', [WorkflowController::class, 'completeExamination']);
         Route::post('/requests/{consultationRequest}/start', [WorkflowController::class, 'startConsultation']);
         Route::post('/requests/{consultationRequest}/add-on-service', [WorkflowController::class, 'addOnService']);
+        Route::get('/requests/{consultationRequest}/video', [ConsultationVideoController::class, 'status']);
+        Route::post('/requests/{consultationRequest}/video/token', [ConsultationVideoController::class, 'token'])->middleware('throttle:30,1');
         Route::post('/requests/{consultationRequest}/meet-link', [WorkflowController::class, 'storeMeetLink']);
         Route::post('/requests/{consultationRequest}/additional-investigation', [WorkflowController::class, 'requestAdditionalInvestigation']);
         Route::post('/requests/{consultationRequest}/reactivate-chat', [WorkflowController::class, 'reactivateChat']);

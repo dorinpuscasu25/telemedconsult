@@ -22,7 +22,7 @@ class FeatureFlags
     public const FLAGS = [
         'payments' => ['label' => 'Plăți & portofel', 'default' => true, 'description' => 'Alimentare portofel, debitări și plăți pentru consultații. Dezactivat = blochează alimentările.'],
         'with_exam_consultations' => ['label' => 'Consultații cu examinare', 'default' => true, 'description' => 'Fluxul cu operator la domiciliu (atribuire, examinare, taxă drum).'],
-        'video_consultations' => ['label' => 'Consultații video', 'default' => true, 'description' => 'Consultațiile preliminare video/Meet cu medicul.'],
+        'video_consultations' => ['label' => 'Consultații video', 'default' => true, 'description' => 'Consultațiile video directe cu medicul, prin LiveKit.'],
         'higo_devices' => ['label' => 'Aparate & integrare HIGO', 'default' => true, 'description' => 'Dispozitivele HIGO și sincronizarea datelor obiective.'],
         'doctors' => ['label' => 'Catalog medici', 'default' => true, 'description' => 'Vizibilitatea medicilor pentru pacienți în catalog.'],
         'operators' => ['label' => 'Operatori & examinări', 'default' => true, 'description' => 'Modulul de operatori teren și examinări.'],

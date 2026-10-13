@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { CheckCircle2, Copy, CreditCard, Download, FileUp, Gift, LockKeyhole, Plus, Trash2, User, UsersRound, WalletCards } from 'lucide-react';
+import { CheckCircle2, Copy, CreditCard, Download, Gift, LockKeyhole, Plus, Trash2, User, UsersRound, WalletCards } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import {
@@ -17,12 +17,13 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue
 } from '../../components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Textarea } from '../../components/ui/textarea';
 import { apiRequest } from '../../lib/api';
 import { dateOnly, money } from '../../lib/format';
+import { PatientMedicalRecord } from '../../components/PatientMedicalRecord';
+import { patientAge } from '../../lib/medical-record';
 import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 
 type PatientProfile = {
@@ -120,7 +121,9 @@ const emptyPatient = {
   first_name: '',
   last_name: '',
   birth_date: '',
-  gender: 'Altul',
+  gender: '',
+  identity_number: '',
+  residential_environment: '',
   country: 'Republica Moldova',
   region_id: '',
   locality_id: '',
@@ -133,15 +136,13 @@ export function ProfilePage() {
   const navigate = useNavigate();
   const { isEnabled } = useFeatureFlags();
   const [searchParams, setSearchParams] = useSearchParams();
-  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [medicalDirty, setMedicalDirty] = useState(false);
   const [data, setData] = useState<ProfileResponse | null>(null);
   const [referralData, setReferralData] = useState<ReferralResponse | null>(null);
   const [accountForm, setAccountForm] = useState({ name: '', phone: '' });
   const [patientForm, setPatientForm] = useState(emptyPatient);
   const [regionsCatalog, setRegionsCatalog] = useState<CatalogRegion[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<PatientProfile | null>(null);
-  const [lifeForm, setLifeForm] = useState({ category: 'Alergii', note: '' });
-  const [investigationForm, setInvestigationForm] = useState({ title: '', type: 'investigation', notes: '' });
   const [isPatientOpen, setIsPatientOpen] = useState(false);
   const [activeTab, setActiveTab] = useState(() => profileTab(searchParams.get('tab')));
   const [message, setMessage] = useState('');
@@ -234,7 +235,7 @@ export function ProfilePage() {
     try {
       await apiRequest('/patient/profile', {
         method: 'PUT',
-        body: JSON.stringify({ ...accountForm, gender: 'Altul' })
+        body: JSON.stringify(accountForm)
       });
       notify('Cont salvat.');
       loadProfile();
@@ -271,6 +272,8 @@ export function ProfilePage() {
         method: 'POST',
         body: JSON.stringify({
           ...patientForm,
+          gender: patientForm.gender || null,
+          residential_environment: patientForm.residential_environment || null,
           region_id: patientForm.region_id ? Number(patientForm.region_id) : null,
           locality_id: patientForm.locality_id ? Number(patientForm.locality_id) : null
         })
@@ -281,44 +284,6 @@ export function ProfilePage() {
       loadProfile();
     } catch (err) {
       fail(err, 'Nu am putut crea profilul.');
-    }
-  };
-
-  const appendLifeHistory = async () => {
-    if (!selectedProfile || !lifeForm.note.trim()) return;
-    try {
-      await apiRequest(`/patient/profiles/${selectedProfile.id}/life-history`, {
-        method: 'POST',
-        body: JSON.stringify(lifeForm)
-      });
-      setLifeForm({ ...lifeForm, note: '' });
-      notify('Istoric adăugat.');
-      loadProfile();
-    } catch (err) {
-      fail(err, 'Nu am putut adăuga istoricul.');
-    }
-  };
-
-  const uploadInvestigation = async () => {
-    if (!selectedProfile || !investigationForm.title.trim()) return;
-    const form = new FormData();
-    form.append('title', investigationForm.title);
-    form.append('type', investigationForm.type);
-    form.append('notes', investigationForm.notes);
-    const file = fileRef.current?.files?.[0];
-    if (file) form.append('file', file);
-
-    try {
-      await apiRequest(`/patient/profiles/${selectedProfile.id}/investigations`, {
-        method: 'POST',
-        body: form
-      });
-      setInvestigationForm({ title: '', type: 'investigation', notes: '' });
-      if (fileRef.current) fileRef.current.value = '';
-      notify('Investigație salvată.');
-      loadProfile();
-    } catch (err) {
-      fail(err, 'Nu am putut salva investigația.');
     }
   };
 
@@ -473,7 +438,7 @@ export function ProfilePage() {
           </TabsList>
         )}
 
-        <TabsContent id="patient-profiles" value="patients" className="scroll-mt-24 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+        <TabsContent id="patient-profiles" value="patients" className="scroll-mt-24 grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
           <Card className="border-slate-200/70 bg-white shadow-sm">
             <CardHeader>
               <div className="flex items-start justify-between gap-3">
@@ -509,7 +474,7 @@ export function ProfilePage() {
               {profiles.map((profile) => (
                 <button
                   key={profile.id}
-                  onClick={() => setSelectedProfile(profile)}
+                  onClick={() => { if (selectedProfile?.id === profile.id) return; if (!medicalDirty || window.confirm('Ai modificări nesalvate în fișa curentă. Renunți la ele?')) { setMedicalDirty(false); setSelectedProfile(profile); } }}
                   className={`w-full rounded-xl border p-4 text-left transition ${selectedProfile?.id === profile.id ? 'border-primary bg-primary/5' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
                   <div className="flex items-start gap-3">
                     <div className="grid h-10 w-10 place-items-center rounded-lg bg-slate-100 text-slate-700">
@@ -537,7 +502,7 @@ export function ProfilePage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <CardTitle>{selectedProfile ? displayName(selectedProfile) : 'Fișa pacientului'}</CardTitle>
-                  <CardDescription>Istoric viață, investigații și export GDPR.</CardDescription>
+                  <CardDescription>Fișă medicală, analize și istoricul consultațiilor.</CardDescription>
                 </div>
                 {selectedProfile && (
                   <div className="flex gap-2">
@@ -553,57 +518,7 @@ export function ProfilePage() {
             </CardHeader>
             <CardContent className="space-y-6">
               {!selectedProfile && <p className="text-sm text-slate-500">Selectează un profil.</p>}
-              {selectedProfile && (
-                <>
-                  <section className="space-y-3">
-                    <h3 className="font-semibold text-slate-950">Istoricul vieții</h3>
-                    <div className="grid gap-3 sm:grid-cols-[160px_1fr_auto]">
-                      <Select value={lifeForm.category} onValueChange={(category) => setLifeForm({ ...lifeForm, category })}>
-                        <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Vaccinuri">Vaccinuri</SelectItem>
-                          <SelectItem value="Alergii">Alergii</SelectItem>
-                          <SelectItem value="Antecedente">Antecedente</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Input value={lifeForm.note} onChange={(event) => setLifeForm({ ...lifeForm, note: event.target.value })} placeholder="Adaugă informație" className="rounded-xl" />
-                      <Button onClick={appendLifeHistory} className="rounded-xl">Adaugă</Button>
-                    </div>
-                    <div className="space-y-2">
-                      {(selectedProfile.life_history ?? []).length === 0 && <p className="text-sm text-slate-500">Nu există intrări încă.</p>}
-                      {(selectedProfile.life_history ?? []).map((item, index) => (
-                        <div key={`${item.added_at}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
-                          <span className="font-semibold text-slate-900">{item.category}:</span> {item.note}
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-
-                  <section className="space-y-3">
-                    <h3 className="font-semibold text-slate-950">Investigații</h3>
-                    <div className="grid gap-3">
-                      <Input value={investigationForm.title} onChange={(event) => setInvestigationForm({ ...investigationForm, title: event.target.value })} placeholder="Titlu investigație" className="rounded-xl" />
-                      <Textarea value={investigationForm.notes} onChange={(event) => setInvestigationForm({ ...investigationForm, notes: event.target.value })} placeholder="Note" className="rounded-xl" />
-                      <div className="flex flex-col gap-2 sm:flex-row">
-                        <Input ref={fileRef} type="file" className="rounded-xl bg-white" />
-                        <Button onClick={uploadInvestigation} className="rounded-xl">
-                          <FileUp className="mr-2 h-4 w-4" />
-                          Salvează
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      {(selectedProfile.investigations ?? []).length === 0 && <p className="text-sm text-slate-500">Nu există investigații.</p>}
-                      {(selectedProfile.investigations ?? []).map((item) => (
-                        <div key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
-                          <p className="font-semibold text-slate-900">{item.title}</p>
-                          {item.notes && <p className="text-slate-600">{item.notes}</p>}
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                </>
-              )}
+              {selectedProfile && <PatientMedicalRecord key={selectedProfile.id} profile={selectedProfile} regions={regionsCatalog} onSaved={loadProfile} onDirtyChange={setMedicalDirty} />}
             </CardContent>
           </Card>
         </TabsContent>
@@ -763,7 +678,7 @@ export function ProfilePage() {
                 <ReferralStat icon={WalletCards} label="Fără alimentare încă" value={referralData.stats.pending_count} />
               </div>
 
-              <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+              <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
                 <Card className="border-slate-200/70 bg-white shadow-sm">
                   <CardHeader>
                     <CardTitle>Regulament</CardTitle>
@@ -840,6 +755,10 @@ export function ProfilePage() {
               <Field label="Prenume"><Input value={patientForm.first_name} onChange={(event) => setPatientForm({ ...patientForm, first_name: event.target.value })} required className="rounded-xl" /></Field>
               <Field label="Nume"><Input value={patientForm.last_name} onChange={(event) => setPatientForm({ ...patientForm, last_name: event.target.value })} required className="rounded-xl" /></Field>
               <Field label="Data nașterii"><Input type="date" value={patientForm.birth_date} onChange={(event) => setPatientForm({ ...patientForm, birth_date: event.target.value })} className="rounded-xl" /></Field>
+              <Field label="IDNP (opțional)"><Input inputMode="numeric" pattern="[0-9]{13}" maxLength={13} value={patientForm.identity_number} onChange={(event) => setPatientForm({ ...patientForm, identity_number: event.target.value })} placeholder="13 cifre" /></Field>
+              <Field label="Sex"><select className="h-11 w-full rounded-xl border bg-white px-3" value={patientForm.gender} onChange={(event) => setPatientForm({ ...patientForm, gender: event.target.value })}><option value="">Necompletat</option><option value="M">Masculin</option><option value="F">Feminin</option></select></Field>
+              <Field label="Mediul de trai"><select className="h-11 w-full rounded-xl border bg-white px-3" value={patientForm.residential_environment} onChange={(event) => setPatientForm({ ...patientForm, residential_environment: event.target.value })}><option value="">Necompletat</option><option value="rural">Rural</option><option value="urban">Urban</option></select></Field>
+              <p className="flex items-end rounded-xl bg-slate-50 p-3 text-sm">Vârsta: {patientAge(patientForm.birth_date)}</p>
               <Field label="Țară"><Input value={patientForm.country} onChange={(event) => setPatientForm({ ...patientForm, country: event.target.value })} required className="rounded-xl" /></Field>
               <Field label="Raion / municipiu">
                 <Select value={patientForm.region_id} onValueChange={(value) => setPatientForm({ ...patientForm, region_id: value, locality_id: '' })}>
