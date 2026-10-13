@@ -159,7 +159,9 @@ class AuthController extends Controller
         }
 
         if ($user->email_verified_at) {
-            return $this->tokenResponse($user, 'Emailul este deja verificat.');
+            throw ValidationException::withMessages([
+                'email' => ['Emailul este deja verificat. Autentifică-te cu parola.'],
+            ]);
         }
 
         $otp = EmailVerificationOtp::where('user_id', $user->id)
@@ -275,7 +277,9 @@ class AuthController extends Controller
             ]);
         }
 
-        if (! $user->email_verified_at) {
+        $isAdmin = $user->hasRole('admin');
+
+        if (! $isAdmin && ! $user->email_verified_at) {
             $devOtp = $this->sendEmailOtp($user);
 
             return response()->json([
@@ -286,7 +290,7 @@ class AuthController extends Controller
             ], 202);
         }
 
-        if (app(PlatformConfig::class)->bool('auth.email_2fa_enabled', true)) {
+        if (! $isAdmin && app(PlatformConfig::class)->bool('auth.email_2fa_enabled', true)) {
             $devOtp = $this->sendEmailOtp($user);
 
             return response()->json([
