@@ -118,6 +118,7 @@ export function DoctorsList() {
   const [patientProfileId, setPatientProfileId] = useState('');
   const [consultationKind, setConsultationKind] = useState<'with_exam' | 'video'>('with_exam');
   const [symptoms, setSymptoms] = useState('');
+  const [illnessHistory, setIllnessHistory] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [isRequestOpen, setIsRequestOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -236,6 +237,7 @@ export function DoctorsList() {
           doctor_id: selectedDoctor.id,
           specialty_id: selectedDoctor.specialty_id,
           symptoms,
+          current_illness_history: illnessHistory,
           selected_services: selectedOptionalIds,
           points_percent: pointsPercent,
           scheduled_at: scheduledAt || null
@@ -369,7 +371,7 @@ export function DoctorsList() {
                 {detailDoctor.accepts_points && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
                     <label className="flex items-center justify-between gap-4 font-medium text-amber-900">
-                      <span>Achită cu puncte bonus (%)</span>
+                      <span>Achită din portofelul de bonusuri (%)</span>
                       <input type="number" min={0} max={100} value={pointsPercent} onChange={(event) => setPointsPercent(Math.min(100, Math.max(0, Number(event.target.value) || 0)))} className="w-20 rounded-lg border border-amber-300 bg-white px-2 py-1 text-right" />
                     </label>
                     <p className="mt-1 text-xs text-amber-700">Procentul final este limitat de setarea platformei și de soldul disponibil.</p>
@@ -428,7 +430,8 @@ export function DoctorsList() {
                     {withExamEnabled ? 'Cu examinare la domiciliu' : 'Video / preliminară'}
                   </div>}
                 </Field>
-                <Field label="Descrie problema">
+                <Field label="Istoricul bolii actuale"><Textarea value={illnessHistory} onChange={(event) => setIllnessHistory(event.target.value)} maxLength={4000} placeholder="De când a apărut problema și cum a evoluat?" className="min-h-[90px] rounded-xl" /></Field>
+                <Field label="Acuze / simptome">
                   <Textarea value={symptoms} onChange={(event) => setSymptoms(event.target.value)} required className="min-h-[120px] rounded-xl" />
                 </Field>
                 <Field label="Data și ora preferată">

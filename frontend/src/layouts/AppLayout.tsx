@@ -20,6 +20,7 @@ import {
   Send } from
 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
+import { ChatPatientMenu } from '../components/ChatPatientMenu';
 import { OverflowNav } from '../components/OverflowNav';
 import {
   DropdownMenu,
@@ -30,6 +31,7 @@ import {
   DropdownMenuTrigger } from
 '../components/ui/dropdown-menu';
 import { NotificationBell } from '../components/NotificationBell';
+import { TelegramConnectionBanner } from '../components/TelegramConnectionBanner';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { ActiveConsultationBanner } from '../components/ActiveConsultationBanner';
 
@@ -275,6 +277,7 @@ export function AppLayout() {
             aria-label="Navigație principală">
             {navItems.map((item) => {
               const isActive = isNavItemActive(item.path);
+              if (item.path.endsWith('/chat')) return <ChatPatientMenu key={item.path} active={isActive} />;
 
               return (
                 <Link
@@ -296,6 +299,7 @@ export function AppLayout() {
         {/* Boundary per pagină: o pagină care crapă nu mai omoară navigația.
             `key` resetează boundary-ul la fiecare schimbare de rută. */}
         <ErrorBoundary inline key={location.pathname} label={`app:${location.pathname}`}>
+          <TelegramConnectionBanner />
           <Outlet />
         </ErrorBoundary>
       </main>

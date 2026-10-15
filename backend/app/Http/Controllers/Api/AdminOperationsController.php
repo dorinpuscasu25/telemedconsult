@@ -143,7 +143,7 @@ class AdminOperationsController extends Controller
             $request->user(),
         );
 
-            $balance = (int) Wallet::where('user_id', $user->id)->where('type', 'real')->value('balance_minor');
+        $balance = (int) Wallet::where('user_id', $user->id)->where('type', 'real')->value('balance_minor');
 
         return response()->json([
             'message' => ($amountMinor > 0 ? 'Am adăugat ' : 'Am scăzut ')
@@ -361,6 +361,7 @@ class AdminOperationsController extends Controller
             'rate.affiliate_doctor_topup' => 'Cota de afiliere medic',
             'rate.affiliate_operator' => 'Cota de afiliere operator',
             'rate.affiliate_patient_topup' => 'Cota de afiliere pacient la alimentare',
+            'wallet.topup_bonus_percent' => 'Bonusul la alimentare',
             'wallet.max_points_payment_percent' => 'Procentul maxim achitabil cu puncte',
         ];
 
@@ -374,6 +375,10 @@ class AdminOperationsController extends Controller
                         'settings' => [$percentKeys[$key].' trebuie să fie un procent între 0 și 100.'],
                     ]);
                 }
+            }
+
+            if ($key === 'consultations.addendum_days' && (! is_numeric($value) || (int) $value != $value || $value < 1 || $value > 90)) {
+                throw ValidationException::withMessages(['settings' => ['Fereastra completărilor trebuie să fie între 1 și 90 zile.']]);
             }
 
             if ($key === 'affiliate.patient_topup_min_amount') {

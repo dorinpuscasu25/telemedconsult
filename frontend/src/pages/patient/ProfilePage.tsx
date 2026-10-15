@@ -158,6 +158,9 @@ export function ProfilePage() {
         phone: response.user.phone || ''
       });
       setSelectedProfile((current) => {
+        const requested = Number(searchParams.get('patient_profile'));
+        const target = response.patient_profiles.find((profile) => Number(profile.id) === requested);
+        if (target) return target;
         if (current && response.patient_profiles.some((profile) => profile.id === current.id)) {
           return response.patient_profiles.find((profile) => profile.id === current.id) || null;
         }
@@ -191,6 +194,13 @@ export function ProfilePage() {
     setActiveTab(permittedTab);
     if (permittedTab !== requestedTab) setSearchParams({}, { replace: true });
   }, [isEnabled, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const requested = Number(searchParams.get('patient_profile'));
+    if (!requested || !data) return;
+    const target = data.patient_profiles.find((profile) => Number(profile.id) === requested);
+    if (target && Number(selectedProfile?.id) !== requested && !medicalDirty) setSelectedProfile(target);
+  }, [searchParams, data, selectedProfile?.id, medicalDirty]);
 
   const changeTab = (tab: string) => {
     const requestedTab = profileTab(tab);

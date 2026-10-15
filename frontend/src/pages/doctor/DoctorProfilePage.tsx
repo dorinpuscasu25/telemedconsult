@@ -21,6 +21,7 @@ import {
 } from '../../components/ui/select';
 import { Switch } from '../../components/ui/switch';
 import { Textarea } from '../../components/ui/textarea';
+import { DoctorSignature } from '../../components/DoctorSignature';
 import { apiRequest } from '../../lib/api';
 
 interface Specialty {
@@ -40,6 +41,9 @@ interface DoctorProfileResponse {
     phone?: string | null;
   };
   profile?: {
+    clinic_name?: string | null;
+    clinic_details?: string | null;
+    accepts_points?: boolean;
     specialty_id?: number | null;
     license_number?: string | null;
     bio?: string | null;
@@ -95,6 +99,9 @@ export function DoctorProfilePage() {
   const vacationsCardRef = useRef<HTMLDivElement | null>(null);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [form, setForm] = useState({
+    clinic_name: '',
+    clinic_details: '',
+    accepts_points: false,
     name: '',
     email: '',
     phone: '',
@@ -129,6 +136,9 @@ export function DoctorProfilePage() {
     apiRequest<DoctorProfileResponse>('/doctor/profile').then((response) => {
       setSpecialties(response.specialties);
       setForm({
+        clinic_name: response.profile?.clinic_name || '',
+        clinic_details: response.profile?.clinic_details || '',
+        accepts_points: response.profile?.accepts_points ?? false,
         name: response.user.name || '',
         email: response.user.email || '',
         phone: response.user.phone || '',
@@ -319,7 +329,8 @@ export function DoctorProfilePage() {
         </div>
       )}
 
-      <form onSubmit={saveProfile} className="grid gap-6 lg:grid-cols-[1.3fr_0.8fr]">
+      <DoctorSignature />
+      <div className="grid gap-3 rounded-xl border p-4"><label>Denumirea clinicii<Input value={form.clinic_name} onChange={(event) => setForm({ ...form, clinic_name: event.target.value })} /></label><label>Date clinică pentru antet<Textarea value={form.clinic_details} onChange={(event) => setForm({ ...form, clinic_details: event.target.value })} /></label><label><input type="checkbox" checked={form.accepts_points} onChange={(event) => setForm({ ...form, accepts_points: event.target.checked })} /> Accept plăți parțiale din bonusuri</label></div><form onSubmit={saveProfile} className="grid gap-6 lg:grid-cols-[1.3fr_0.8fr]">
         <Card ref={vacationsCardRef} className="scroll-mt-24 border-slate-200/70 bg-white shadow-sm ring-primary/0 transition-shadow">
           <CardHeader>
             <CardTitle>Informații publice</CardTitle>

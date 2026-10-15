@@ -10,6 +10,7 @@ use App\Models\Specialty;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use App\Services\PaymentVerification;
 use App\Services\ReferralProgram;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
@@ -31,6 +32,7 @@ class PatientReferralProgramTest extends TestCase
 
         config(['otp.demo_code_enabled' => true]);
         Mail::fake();
+        $this->mock(PaymentVerification::class)->shouldReceive('settled')->andReturnTrue();
 
         foreach (['admin', 'patient', 'doctor', 'operator'] as $name) {
             Role::firstOrCreate(['name' => $name], ['label' => ucfirst($name)]);

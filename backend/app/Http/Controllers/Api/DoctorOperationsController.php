@@ -22,7 +22,9 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\Response;
 
 class DoctorOperationsController extends Controller
 {
@@ -62,7 +64,7 @@ class DoctorOperationsController extends Controller
 
         $pendingRequests = ConsultationRequest::query()
             ->with(['patient', 'patientProfile', 'specialty'])
-            ->where('type', 'doctor')
+            ->whereIn('type', ['doctor', 'video'])
             ->where('status', 'new')
             ->where(function ($query) use ($doctor) {
                 $query->whereNull('doctor_id')->orWhere('doctor_id', $doctor->id);
@@ -106,7 +108,7 @@ class DoctorOperationsController extends Controller
 
     public function profile(Request $request): JsonResponse
     {
-        $doctor = $request->user()->loadMissing(['roles', 'doctorProfile.specialty', 'doctorProfile.investigationRequirements.investigationType', 'doctorVacations', 'doctorAvailabilities']);
+        $doctor = $request->user()->load(['roles', 'doctorProfile.specialty', 'doctorProfile.investigationRequirements.investigationType', 'doctorVacations', 'doctorAvailabilities']);
         abort_unless($doctor->hasRole('doctor') || $doctor->hasRole('admin'), 403, 'Ai nevoie de rol medic.');
 
         return response()->json([
@@ -139,6 +141,9 @@ class DoctorOperationsController extends Controller
             'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber],
             'specialty_id' => ['nullable', Rule::exists('specialties', 'id')],
             'license_number' => ['nullable', 'string', 'max:255'],
+            'clinic_name' => ['nullable', 'string', 'max:255'],
+            'clinic_details' => ['nullable', 'string', 'max:2000'],
+            'accepts_points' => ['sometimes', 'boolean'],
             'bio' => ['nullable', 'string', 'max:4000'],
             'experience_years' => ['nullable', 'integer', 'min:0', 'max:80'],
             'consultation_price' => ['nullable', 'integer', 'min:0'],
@@ -166,6 +171,9 @@ class DoctorOperationsController extends Controller
             [
                 'specialty_id' => $validated['specialty_id'] ?? null,
                 'license_number' => $validated['license_number'] ?? null,
+                'clinic_name' => $validated['clinic_name'] ?? null,
+                'clinic_details' => $validated['clinic_details'] ?? null,
+                'accepts_points' => $validated['accepts_points'] ?? $doctor->doctorProfile?->accepts_points ?? false,
                 'bio' => $validated['bio'] ?? null,
                 'experience_years' => $validated['experience_years'] ?? 0,
                 'consultation_price' => $validated['consultation_price'] ?? 0,
@@ -196,6 +204,32 @@ class DoctorOperationsController extends Controller
      * and keep the denormalized required_investigations JSON in sync (names only)
      * so existing patient/operator displays keep working.
      */
+    public function uploadSignature(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->hasRole('doctor'), 403);
+        $request->validate(['signature' => ['required', 'image', 'mimes:jpg,jpeg,png', 'max:2048', 'dimensions:max_width=3000,max_height=3000']]);
+        $profile = $request->user()->doctorProfile;
+        abort_unless($profile, 422, 'Salvează mai întâi profilul medicului.');
+        $file = $request->file('signature');
+        $path = $file->store('doctor-signatures', 'local');
+        $old = $profile->signature_path;
+        $profile->forceFill(['signature_path' => $path, 'signature_mime' => $file->getMimeType()])->save();
+        if ($old) {
+            Storage::disk('local')->delete($old);
+        }
+
+        return response()->json(['message' => 'Parafa și semnătura au fost salvate.']);
+    }
+
+    public function signature(Request $request): Response
+    {
+        abort_unless($request->user()->hasRole('doctor'), 403);
+        $profile = $request->user()->doctorProfile;
+        abort_unless($profile?->signature_path, 404);
+
+        return Storage::disk('local')->response($profile->signature_path, 'parafa', ['Content-Type' => $profile->signature_mime, 'Cache-Control' => 'no-store']);
+    }
+
     private function syncDoctorInvestigations(int $doctorId, DoctorProfile $profile, array $validated): void
     {
         DoctorInvestigationRequirement::where('doctor_id', $doctorId)->delete();

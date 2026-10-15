@@ -66,8 +66,8 @@ class RegistrationBonusTest extends TestCase
         $user = $this->registeredPatient();
 
         $this->verifyEmail($user)->assertOk();
-        // A doua verificare (link deschis de două ori) nu mai plătește.
-        $this->verifyEmail($user)->assertOk();
+        // Emailul deja verificat cere autentificare, fără să acorde bonusul din nou.
+        $this->verifyEmail($user)->assertUnprocessable();
 
         $this->assertSame(1, WalletTransaction::where('user_id', $user->id)->count());
         $this->assertSame(10000, (int) Wallet::where('user_id', $user->id)->value('balance_minor'));

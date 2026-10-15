@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\AdminPatientCardPackageController;
 use App\Http\Controllers\Api\AdminRegionController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CatalogController;
+use App\Http\Controllers\Api\ConsultationDocumentController;
 use App\Http\Controllers\Api\ConsultationVideoController;
 use App\Http\Controllers\Api\CoordinatorController;
 use App\Http\Controllers\Api\DoctorOperationsController;
@@ -36,6 +37,8 @@ Broadcast::routes(['middleware' => ['auth:sanctum']]);
 Route::prefix('v1')->group(function () {
     Route::get('/patient-investigations/{investigation}/file', [PatientMedicalRecordController::class, 'file'])->middleware('signed')->name('patient-investigation.file');
     Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:10,1');
+    Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
+    Route::post('/auth/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
     Route::post('/auth/verify-email-otp', [AuthController::class, 'verifyEmailOtp'])->middleware('throttle:10,1');
     Route::post('/auth/resend-email-otp', [AuthController::class, 'resendEmailOtp'])->middleware('throttle:5,1');
     Route::post('/auth/login', [AuthController::class, 'login']);
@@ -77,7 +80,18 @@ Route::prefix('v1')->group(function () {
     Route::post('/telegram/webhook/{secret}', [TelegramController::class, 'webhook'])
         ->middleware('throttle:120,1');
 
+    Route::get('/chat-attachments/{message}', [WorkflowController::class, 'attachmentFile'])->middleware('signed')->name('chat-attachment.file');
+    Route::get('/medical-documents/{document}/file', [ConsultationDocumentController::class, 'file'])->middleware('signed')->name('medical-document.file');
+    Route::get('/medical-documents/{document}/prescription', [ConsultationDocumentController::class, 'prescriptionFile'])->middleware('signed')->name('medical-document.prescription');
+
     Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/requests/{consultationRequest}/context', [WorkflowController::class, 'requestContext']);
+        Route::post('/requests/{consultationRequest}/higo-proposal', [WorkflowController::class, 'proposeHigo']);
+        Route::get('/requests/{consultationRequest}/higo-quote', [WorkflowController::class, 'higoQuote']);
+        Route::post('/requests/{consultationRequest}/higo-confirm', [WorkflowController::class, 'confirmHigo']);
+        Route::get('/requests/{consultationRequest}/documents', [ConsultationDocumentController::class, 'index']);
+        Route::post('/requests/{consultationRequest}/documents/preview', [ConsultationDocumentController::class, 'preview']);
+        Route::post('/requests/{consultationRequest}/documents/addendum', [ConsultationDocumentController::class, 'addendum']);
         Route::get('/auth/me', [AuthController::class, 'me']);
         Route::post('/auth/switch-role', [AuthController::class, 'switchRole']);
         Route::post('/auth/logout', [AuthController::class, 'logout']);
@@ -177,6 +191,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/requests/{consultationRequest}/reactivate-chat', [WorkflowController::class, 'reactivateChat']);
         Route::post('/requests/{consultationRequest}/complete', [WorkflowController::class, 'complete']);
 
+        Route::post('/conversations/{conversation}/read', [WorkflowController::class, 'readConversation']);
         Route::get('/conversations', [WorkflowController::class, 'conversations']);
         Route::get('/conversations/{conversation}', [WorkflowController::class, 'conversation']);
         Route::post('/conversations/{conversation}/messages', [WorkflowController::class, 'sendMessage']);
@@ -207,6 +222,8 @@ Route::prefix('v1')->group(function () {
         Route::post('/coordinator/requests/{consultationRequest}/claim', [CoordinatorController::class, 'claim']);
         Route::post('/coordinator/requests/{consultationRequest}/assign-provider', [CoordinatorController::class, 'assignProvider']);
 
+        Route::post('/doctor/signature', [DoctorOperationsController::class, 'uploadSignature']);
+        Route::get('/doctor/signature', [DoctorOperationsController::class, 'signature']);
         Route::get('/doctor/profile', [DoctorOperationsController::class, 'profile']);
         Route::put('/doctor/profile', [DoctorOperationsController::class, 'updateProfile']);
         Route::put('/doctor/availability', [DoctorOperationsController::class, 'updateAvailability']);

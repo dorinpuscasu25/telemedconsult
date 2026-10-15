@@ -13,7 +13,7 @@ export function VideoConsultationPage() {
   const { requestId } = useParams();
   const location = useLocation();
   const { role } = useAuth();
-  const returnTo = location.state?.returnTo || (role === 'doctor' ? '/doctor/consultations' : `/${role || 'patient'}/chat`);
+  const returnTo = location.state?.returnTo || (role === 'doctor' ? `/doctor/consultations?request=${requestId}` : `/${role || 'patient'}/chat?request=${requestId}`);
   const [status, setStatus] = useState<VideoStatus | null>(null);
   const [connection, setConnection] = useState<(VideoConnection & { attemptId: number }) | null>(null);
   const [joining, setJoining] = useState(false);

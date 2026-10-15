@@ -44,7 +44,7 @@ class SiteContentTest extends TestCase
 
         $this->assertSame(
             'Hai să începem!',
-            $this->getJson('/api/v1/catalog/site-content')->json('data.home.cta.title'),
+            $this->getJson('/api/v1/catalog/site-content')->json('data')['home.cta.title'],
         );
     }
 
@@ -70,7 +70,7 @@ class SiteContentTest extends TestCase
 
         $this->assertSame(
             $defaults['news.title'],
-            $this->getJson('/api/v1/catalog/site-content')->json('data.news.title'),
+            $this->getJson('/api/v1/catalog/site-content')->json('data')['news.title'],
         );
     }
 
@@ -107,7 +107,7 @@ class SiteContentTest extends TestCase
         $this->assertDatabaseCount('site_contents', 0);
         $this->assertSame(
             SiteContent::defaults()['home.cta.title'],
-            $this->getJson('/api/v1/catalog/site-content')->json('data.home.cta.title'),
+            $this->getJson('/api/v1/catalog/site-content')->json('data')['home.cta.title'],
         );
     }
 

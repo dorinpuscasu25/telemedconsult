@@ -13,7 +13,7 @@ use App\Models\ConsultationRequest;
 use App\Models\Conversation;
 use App\Models\DoctorInvestigationRequirement;
 use App\Models\HigoExamMedia;
-use App\Models\MedicalDocument;
+use App\Models\InvestigationType;
 use App\Models\Message;
 use App\Models\PatientProfile;
 use App\Models\User;
@@ -24,6 +24,7 @@ use App\Services\ConsultationCostEstimator;
 use App\Services\ConsultationStateMachine;
 use App\Services\FeatureFlags;
 use App\Services\FinancialBreakdown;
+use App\Services\MedicalDocumentPublisher;
 use App\Services\ObjectiveDataSchema;
 use App\Services\OperatorAssignmentService;
 use App\Services\PlatformConfig;
@@ -32,11 +33,14 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\Response;
 
 class WorkflowController extends Controller
 {
@@ -52,17 +56,19 @@ class WorkflowController extends Controller
         $user = $request->user()->loadMissing('roles');
 
         $this->expireStaleRequests();
+        $role = $user->activeRole?->name ?? $user->roles->first()?->name;
+        abort_unless($role && $user->hasRole($role), 403, 'Contul nu are un rol activ disponibil.');
 
         $requests = ConsultationRequest::with(['patient', 'patientProfile.investigations', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])
-            ->when($user->hasRole('patient') && ! $user->hasRole('admin'), fn ($query) => $query->where('patient_id', $user->id))
-            ->when($user->hasRole('doctor') && ! $user->hasRole('admin'), fn ($query) => $query->where(function ($q) use ($user) {
+            ->when($role === 'patient', fn ($query) => $query->where('patient_id', $user->id))
+            ->when($role === 'doctor', fn ($query) => $query->where(function ($q) use ($user) {
                 $q->where(fn ($pool) => $pool->where('type', 'doctor')->whereNull('doctor_id'))->orWhere('doctor_id', $user->id);
             }))
             // Operatorul își vede examinările atribuite indiferent de tipul
             // solicitării: la o consultație cu examinare, `type` e „doctor”, dar
             // deplasarea la domiciliu e tot a lui. Plus solicitările de operator
             // încă neatribuite, care rămân disponibile pentru preluare.
-            ->when($user->hasRole('operator') && ! $user->hasRole('admin'), fn ($query) => $query->where(function ($q) use ($user) {
+            ->when($role === 'operator', fn ($query) => $query->where(function ($q) use ($user) {
                 $q->where('operator_id', $user->id)
                     ->orWhere(fn ($pool) => $pool->where('type', 'operator')->whereNull('operator_id'));
             }))
@@ -162,7 +168,8 @@ class WorkflowController extends Controller
             'doctor_id' => ['nullable', 'exists:users,id'],
             'operator_id' => ['nullable', 'exists:users,id'],
             'specialty_id' => ['nullable', 'exists:specialties,id'],
-            'symptoms' => ['required', 'string', 'max:2000'],
+            'symptoms' => ['required', 'string', 'max:4000'],
+            'current_illness_history' => ['nullable', 'string', 'max:4000'],
             'selected_services' => ['nullable', 'array'],
             'scheduled_at' => ['nullable', 'date'],
             'points_percent' => ['nullable', 'integer', 'min:0', 'max:100'],
@@ -244,6 +251,7 @@ class WorkflowController extends Controller
                 'consultation_kind' => $validated['consultation_kind'],
                 'status' => 'new',
                 'symptoms' => $validated['symptoms'],
+                'current_illness_history' => $validated['current_illness_history'] ?? null,
                 'selected_services' => $validated['selected_services'] ?? [],
                 'scheduled_at' => $validated['scheduled_at'] ?? null,
                 'amount_minor' => $pricing['amount_minor'],
@@ -351,7 +359,7 @@ class WorkflowController extends Controller
         $consultationRequest->patient?->notify(new AppEventNotification(
             'Solicitare acceptată',
             $user->name.' a acceptat solicitarea ta.',
-            '/patient/chat',
+            '/patient/chat?request='.$consultationRequest->id,
             'success',
         ));
 
@@ -386,6 +394,9 @@ class WorkflowController extends Controller
             'recommendations' => ['nullable', 'string', 'max:4000'],
             'prescription_notes' => ['nullable', 'string', 'max:4000'],
             'current_illness_history' => ['nullable', 'string', 'max:4000'],
+            'objective_exam' => ['nullable', 'string', 'max:4000'],
+            'higo_reviewed' => ['nullable', 'boolean'],
+            'prescription' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
         ]);
 
         $provider = $consultationRequest->doctor_id
@@ -394,7 +405,9 @@ class WorkflowController extends Controller
 
         abort_unless($user->hasRole('admin') || (int) $user->id === (int) $provider->id, 403, 'Nu puteți finaliza această solicitare.');
 
-        $consultation = DB::transaction(function () use ($consultationRequest, $provider, $validated) {
+        $consultation = DB::transaction(function () use ($consultationRequest, $provider, $validated, $request) {
+            $consultationRequest = ConsultationRequest::lockForUpdate()->findOrFail($consultationRequest->id);
+            abort_unless(in_array($consultationRequest->status, ['new', 'accepted'], true), 422, 'Solicitarea a fost deja finalizată.');
             $doctorId = $provider->id;
             $chat = $this->chatWindows();
             $responseStartedAt = $consultationRequest->objective_data_completed_at
@@ -434,7 +447,10 @@ class WorkflowController extends Controller
                 'patient_profile_id' => $consultationRequest->patient_profile_id,
                 'doctor_id' => $doctorId,
                 'status' => 'completed',
-                'current_illness_history' => $validated['current_illness_history'] ?? $consultationRequest->symptoms,
+                'current_illness_history' => $validated['current_illness_history'] ?? $consultationRequest->current_illness_history,
+                'patient_complaints' => $consultationRequest->symptoms,
+                'objective_exam' => $validated['objective_exam'] ?? null,
+                'higo_reviewed' => $validated['higo_reviewed'] ?? false,
                 'objective_data_snapshot' => $objectiveData,
                 'diagnosis' => $validated['diagnosis'],
                 'treatment_plan' => $validated['treatment_plan'] ?? null,
@@ -449,18 +465,13 @@ class WorkflowController extends Controller
             $fhir = $doctorId ? $this->buildFhirEncounter($consultation->load(['patient', 'doctor'])) : null;
             $consultation->forceFill(['fhir_payload' => $fhir])->save();
 
-            MedicalDocument::create([
-                'consultation_id' => $consultation->id,
-                'patient_id' => $consultation->patient_id,
-                'patient_profile_id' => $consultation->patient_profile_id,
-                'consultation_request_id' => $consultationRequest->id,
-                'doctor_id' => $doctorId,
-                'type' => 'consultation_summary',
-                'title' => 'Sumar consultație #'.$consultation->id,
-                'status' => 'ready_for_signature',
-                'signature_provider' => 'm-sign',
-                'fhir_payload' => $fhir,
-            ]);
+            $document = app(MedicalDocumentPublisher::class)->publish($consultation);
+            if ($request->hasFile('prescription')) {
+                $document->forceFill([
+                    'prescription_path' => $request->file('prescription')->store('medical-prescriptions', 'local'),
+                    'prescription_mime' => $request->file('prescription')->getMimeType(),
+                ])->save();
+            }
 
             if (isset($conversation)) {
                 ConversationUpdated::dispatch($conversation->refresh()->load(['patient', 'doctor', 'operator', 'messages.sender']));
@@ -468,8 +479,8 @@ class WorkflowController extends Controller
 
             $consultationRequest->patient?->notify(new AppEventNotification(
                 'Consultație finalizată',
-                'Consultația a fost finalizată. Poți lăsa o recenzie din panoul pacient.',
-                '/patient',
+                'Consultația a fost finalizată. Documentul PDF este disponibil în fișa pacientului.',
+                '/patient/profile?patient_profile='.$consultationRequest->patient_profile_id,
                 'success',
             ));
 
@@ -546,12 +557,18 @@ class WorkflowController extends Controller
 
         $validated = $request->validate([
             'symptoms' => ['required', 'string', 'max:4000'],
+            'current_illness_history' => ['nullable', 'string', 'max:4000'],
         ]);
 
-        $consultationRequest->forceFill([
-            'symptoms' => $validated['symptoms'],
-            'anamnesis_completed_at' => now(),
-        ])->save();
+        DB::transaction(function () use ($consultationRequest, $validated) {
+            $item = ConsultationRequest::lockForUpdate()->findOrFail($consultationRequest->id);
+            abort_unless(in_array($item->status, ['new', 'accepted'], true) && ! $item->conclusion_sent_at, 422, 'Consultația nu mai acceptă modificarea istoricului și a acuzelor.');
+            $item->forceFill([
+                'symptoms' => $validated['symptoms'],
+                'current_illness_history' => $validated['current_illness_history'] ?? $item->current_illness_history,
+                'anamnesis_completed_at' => now(),
+            ])->save();
+        });
 
         $consultationRequest->doctor?->notify(new AppEventNotification(
             'Anamneză finalizată',
@@ -697,7 +714,7 @@ class WorkflowController extends Controller
             $consultationRequest->patient?->notify(new AppEventNotification(
                 'Consultația a început',
                 ($consultationRequest->doctor?->name ?? 'Medicul').' a preluat rezultatele examinării. Poți discuta acum în chat.',
-                '/patient/chat',
+                '/patient/chat?request='.$consultationRequest->id,
                 'success',
             ));
         }
@@ -814,6 +831,102 @@ class WorkflowController extends Controller
         ]);
     }
 
+    public function requestContext(Request $request, ConsultationRequest $consultationRequest): JsonResponse
+    {
+        abort_unless($request->user()->hasRole('admin') || in_array((int) $request->user()->id, array_map('intval', array_filter([$consultationRequest->patient_id, $consultationRequest->doctor_id, $consultationRequest->operator_id])), true), 403);
+
+        return response()->json(['request' => ['id' => (string) $consultationRequest->id, 'consultation_kind' => $consultationRequest->consultation_kind, 'status' => $consultationRequest->status, 'doctor' => $consultationRequest->doctor_id ? ['id' => (string) $consultationRequest->doctor_id] : null, 'current_illness_history' => $consultationRequest->current_illness_history, 'symptoms' => $consultationRequest->symptoms, 'anamnesis_completed_at' => $consultationRequest->anamnesis_completed_at, 'higo_proposal' => $consultationRequest->higo_proposal]])->header('Cache-Control', 'no-store');
+    }
+
+    public function proposeHigo(Request $request, ConsultationRequest $consultationRequest): JsonResponse
+    {
+        abort_unless($request->user()->hasRole('doctor') && (int) $consultationRequest->doctor_id === (int) $request->user()->id, 403);
+        $validated = $request->validate([
+            'investigation_ids' => ['required', 'array', 'min:1', 'max:30'],
+            'investigation_ids.*' => ['integer', Rule::exists('investigation_types', 'id')->where('is_active', true)],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+        $offered = DoctorInvestigationRequirement::where('doctor_id', $request->user()->id)->pluck('investigation_type_id')->map(fn ($id) => (int) $id)->all();
+        abort_if(array_diff($validated['investigation_ids'], $offered), 422, 'Alege investigații din serviciile configurate în profilul medicului.');
+        DB::transaction(function () use ($consultationRequest, $validated) {
+            $item = ConsultationRequest::lockForUpdate()->findOrFail($consultationRequest->id);
+            abort_unless(in_array($item->status, ['new', 'accepted'], true) && in_array($item->consultation_kind, ['video', 'preliminary'], true), 422, 'Solicitarea nu mai poate fi modificată.');
+            $ids = array_values(array_unique($validated['investigation_ids']));
+            $item->forceFill(['higo_proposal' => [
+                'id' => (string) Str::uuid(), 'status' => 'proposed', 'investigation_ids' => $ids,
+                'investigations' => InvestigationType::whereIn('id', $ids)->pluck('name')->all(),
+                'notes' => $validated['notes'] ?? null, 'expires_at' => now()->addDay()->toISOString(),
+            ]])->save();
+        });
+        $consultationRequest->patient?->notify(new AppEventNotification('Examinare HIGO propusă', 'Medicul recomandă o examinare. Verifică detaliile și costul înainte de confirmare.', '/patient/chat?request='.$consultationRequest->id));
+
+        return response()->json(['message' => 'Propunerea a fost trimisă. Pacientul confirmă înainte de rezervarea costului suplimentar.']);
+    }
+
+    public function higoQuote(Request $request, ConsultationRequest $consultationRequest): JsonResponse
+    {
+        abort_unless((int) $consultationRequest->patient_id === (int) $request->user()->id, 403);
+
+        return response()->json($this->calculateHigoQuote($consultationRequest));
+    }
+
+    public function confirmHigo(Request $request, ConsultationRequest $consultationRequest): JsonResponse
+    {
+        abort_unless((int) $consultationRequest->patient_id === (int) $request->user()->id, 403);
+        $validated = $request->validate(['proposal_id' => ['required', 'string'], 'additional_minor' => ['required', 'integer', 'min:0']]);
+        $item = DB::transaction(function () use ($consultationRequest, $validated) {
+            $item = ConsultationRequest::lockForUpdate()->findOrFail($consultationRequest->id);
+            $quote = $this->calculateHigoQuote($item);
+            abort_unless($quote['proposal_id'] === $validated['proposal_id'] && $quote['additional_minor'] === $validated['additional_minor'], 422, 'Oferta s-a schimbat. Reîncarcă și verifică noul cost.');
+            abort_unless($item->payment_status === 'held' || $item->amount_minor === 0, 422, 'Rezervarea inițială nu este activă.');
+            $ledger = app(WalletLedger::class);
+            $wallet = $ledger->locked($item->patient_id);
+            abort_if($wallet->balance_minor < $quote['additional_minor'], 422, 'Sold insuficient în portofelul de bază pentru examinare.');
+            if ($quote['additional_minor'] > 0) {
+                $ledger->move($wallet, -$quote['additional_minor'], 'service_hold', 'Rezervare suplimentară pentru examinare HIGO', ['proposal_id' => $quote['proposal_id']], $item->id);
+            }
+            $pricing = app(FinancialBreakdown::class)->forProvider($quote['additional_minor'], $item->doctor);
+            $item->forceFill([
+                'type' => 'doctor', 'consultation_kind' => 'with_exam', 'status' => 'new', 'operator_id' => $quote['operator_id'],
+                'payment_status' => ($item->amount_minor + $quote['additional_minor']) > 0 ? 'held' : $item->payment_status,
+                'selected_services' => $item->higo_proposal['investigation_ids'], 'doctor_started_at' => null,
+                'operator_accepted_at' => null, 'objective_data_completed_at' => null, 'acceptance_expires_at' => now()->addMinutes($this->acceptanceWindowMinutes()),
+                'amount_minor' => $item->amount_minor + $quote['additional_minor'], 'real_amount_minor' => $this->realAmountForRequest($item) + $quote['additional_minor'],
+                'points_percent' => ($item->amount_minor + $quote['additional_minor']) > 0 ? (int) floor($item->points_amount_minor * 100 / ($item->amount_minor + $quote['additional_minor'])) : 0,
+                'platform_fee_minor' => $item->platform_fee_minor + $pricing['platform_fee_minor'], 'provider_amount_minor' => $item->provider_amount_minor + $pricing['provider_amount_minor'],
+                'pricing_snapshot' => [...($item->pricing_snapshot ?? []), 'cost_breakdown' => $quote['cost'], 'higo_upgrade' => $pricing],
+                'higo_proposal' => [...$item->higo_proposal, 'status' => 'accepted', 'accepted_at' => now()->toISOString(), 'additional_minor' => $quote['additional_minor']],
+            ])->save();
+            Conversation::where('consultation_request_id', $item->id)->update(['operator_id' => $quote['operator_id'], 'status' => 'open']);
+
+            return $item;
+        });
+        $this->linkPatientToAssignedOperator($item);
+        $this->notifyOperatorAssignment($item);
+        $this->notifyPatientOperatorAssigned($item);
+        CloseConsultationVideo::dispatch($item->id);
+
+        return response()->json(['message' => 'Examinarea a fost confirmată. Operatorul va prelua solicitarea.']);
+    }
+
+    private function calculateHigoQuote(ConsultationRequest $item): array
+    {
+        abort_unless(app(FeatureFlags::class)->enabled('with_exam_consultations') && app(FeatureFlags::class)->enabled('operators'), 403, 'Examinările sunt momentan dezactivate.');
+        abort_unless(in_array($item->status, ['new', 'accepted'], true) && in_array($item->consultation_kind, ['video', 'preliminary'], true) && ($item->higo_proposal['status'] ?? null) === 'proposed', 422, 'Nu există o propunere activă de examinare.');
+        abort_if(now()->gte(Carbon::parse($item->higo_proposal['expires_at'])), 422, 'Propunerea a expirat. Medicul poate trimite una nouă.');
+        $item->loadMissing(['patientProfile', 'doctor.doctorProfile']);
+        abort_unless($item->patientProfile, 422, 'Solicitarea nu are un profil de pacient asociat.');
+        $this->ensureWithExamAddress($item->patientProfile);
+        $offered = DoctorInvestigationRequirement::where('doctor_id', $item->doctor_id)->pluck('investigation_type_id')->all();
+        abort_if(array_diff($item->higo_proposal['investigation_ids'], $offered), 422, 'Investigațiile medicului s-au schimbat. Solicită o propunere nouă.');
+        $ids = array_values(array_unique([...$this->doctorRequiredInvestigationIds($item->doctor_id), ...$item->higo_proposal['investigation_ids']]));
+        $operatorId = app(OperatorAssignmentService::class)->pickOperatorId($item->patientProfile, $ids);
+        abort_unless($operatorId, 422, 'Nu există un operator disponibil pentru examinările propuse.');
+        $cost = app(ConsultationCostEstimator::class)->estimate($item->doctor, $item->patientProfile, $operatorId, $item->higo_proposal['investigation_ids']);
+
+        return ['proposal_id' => $item->higo_proposal['id'], 'operator_id' => $operatorId, 'cost' => $cost, 'additional_minor' => max(0, $cost['total'] * 100 - $item->amount_minor)];
+    }
+
     public function requestAdditionalInvestigation(Request $request, ConsultationRequest $consultationRequest): JsonResponse
     {
         $user = $request->user()->loadMissing('roles');
@@ -847,7 +960,7 @@ class WorkflowController extends Controller
         $consultationRequest->patient?->notify(new AppEventNotification(
             'Investigație suplimentară',
             'Medicul a solicitat: '.$validated['title'],
-            '/patient/chat',
+            '/patient/chat?request='.$consultationRequest->id,
             'warning',
         ));
 
@@ -912,20 +1025,52 @@ class WorkflowController extends Controller
     public function conversations(Request $request): JsonResponse
     {
         $user = $request->user();
+        $role = $user->activeRole?->name ?? $user->roles->first()?->name ?? 'patient';
 
+        $reads = DB::table('conversation_reads')->where('user_id', $user->id)->pluck('last_message_id', 'conversation_id');
         $conversations = Conversation::with(['patient', 'patientProfile.investigations', 'doctor', 'operator', 'consultationRequest', 'messages.sender'])
-            ->where(function ($query) use ($user) {
+            ->where(function ($query) use ($user, $role) {
+                if (in_array($role, ['patient', 'doctor', 'operator'], true)) {
+                    $query->where($role.'_id', $user->id);
+
+                    return;
+                }
                 $query->where('patient_id', $user->id)
                     ->orWhere('doctor_id', $user->id)
                     ->orWhere('operator_id', $user->id);
             })
+            ->when($request->filled('patient_profile'), fn ($query) => $query->where('patient_profile_id', $request->integer('patient_profile')))
             ->latest()
             ->get()
-            ->map(fn (Conversation $conversation) => tap($conversation, function (Conversation $item) use ($user) {
+            ->map(fn (Conversation $conversation) => tap($conversation, function (Conversation $item) use ($user, $reads) {
                 $item->setAttribute('chat', $this->chatState($item, $user));
+                $read = $reads->get($item->id, 0);
+                $item->setAttribute('unread_count', $item->messages->where('id', '>', $read)->where('sender_id', '!=', $user->id)->count());
+                if ($item->patientProfile) {
+                    $item->patientProfile->append('display_name');
+                    if ($item->patientProfile->pseudonymized && (int) $item->patient_id !== (int) $user->id) {
+                        $item->patientProfile->makeHidden(['last_name', 'identity_number', 'address', 'address_details', 'emergency_contact']);
+                    }
+                }
             }));
 
         return response()->json(['data' => $conversations]);
+    }
+
+    public function readConversation(Request $request, Conversation $conversation): JsonResponse
+    {
+        abort_unless(in_array((int) $request->user()->id, array_map('intval', array_filter([$conversation->patient_id, $conversation->doctor_id, $conversation->operator_id])), true), 403);
+        $validated = $request->validate(['last_message_id' => ['required', 'integer', 'min:0']]);
+        if ($validated['last_message_id'] > 0) {
+            abort_unless($conversation->messages()->whereKey($validated['last_message_id'])->exists(), 422);
+        }
+        DB::transaction(function () use ($request, $conversation, $validated) {
+            Conversation::whereKey($conversation->id)->lockForUpdate()->firstOrFail();
+            $previous = DB::table('conversation_reads')->where('conversation_id', $conversation->id)->where('user_id', $request->user()->id)->value('last_message_id') ?? 0;
+            DB::table('conversation_reads')->updateOrInsert(['conversation_id' => $conversation->id, 'user_id' => $request->user()->id], ['last_message_id' => max($previous, $validated['last_message_id']), 'updated_at' => now(), 'created_at' => now()]);
+        });
+
+        return response()->json(['message' => 'Conversație citită.']);
     }
 
     public function conversation(Request $request, Conversation $conversation): JsonResponse
@@ -982,6 +1127,7 @@ class WorkflowController extends Controller
             'body' => $validated['body'],
         ]);
 
+        $this->notifyConversationMessage($conversation, $user);
         ConversationMessageSent::dispatch($conversation, $message->load('sender'));
         ConversationUpdated::dispatch($conversation->refresh()->load(['patient', 'doctor', 'operator', 'messages.sender']));
 
@@ -1023,8 +1169,7 @@ class WorkflowController extends Controller
         ]);
 
         $file = $validated['file'];
-        $path = $file->store('chat-attachments', 'public');
-        $url = Storage::disk('public')->url($path);
+        $path = $file->store('chat-attachments', 'local');
 
         $message = Message::create([
             'conversation_id' => $conversation->id,
@@ -1036,16 +1181,25 @@ class WorkflowController extends Controller
                 'file_size' => $file->getSize(),
                 'mime_type' => $file->getMimeType(),
                 'path' => $path,
-                'url' => $url,
+                'disk' => 'local',
             ],
         ]);
 
+        $this->notifyConversationMessage($conversation, $user);
         ConversationMessageSent::dispatch($conversation, $message->load('sender'));
         ConversationUpdated::dispatch($conversation->refresh()->load(['patient', 'doctor', 'operator', 'messages.sender']));
 
         return response()->json([
             'message' => $message->load('sender'),
         ], 201);
+    }
+
+    public function attachmentFile(Message $message): Response
+    {
+        $metadata = json_decode($message->getRawOriginal('metadata') ?? '{}', true);
+        abort_unless(($metadata['disk'] ?? null) === 'local' && ! empty($metadata['path']) && Storage::disk('local')->exists($metadata['path']), 404);
+
+        return Storage::disk('local')->response($metadata['path'], $metadata['file_name'] ?? 'fisier', ['Content-Type' => $metadata['mime_type'] ?? 'application/octet-stream', 'Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']);
     }
 
     public function proposeTime(Request $request, ConsultationRequest $consultationRequest): JsonResponse
@@ -1135,6 +1289,8 @@ class WorkflowController extends Controller
             'fsm_transitions' => $stateMachine->allowedNext($fsmState),
             'ready_for_doctor' => $stateMachine->readyForDoctor($item),
             'symptoms' => $item->symptoms,
+            'current_illness_history' => $item->current_illness_history,
+            'higo_proposal' => $item->higo_proposal,
             'selected_services' => $item->selected_services ?? [],
             'triage_notes' => $item->triage_notes,
             'scheduled_at' => $item->scheduled_at,
@@ -1168,7 +1324,7 @@ class WorkflowController extends Controller
                 'id' => (string) $item->patientProfile->id,
                 'name' => $item->patientProfile->display_name,
                 'patient_code' => $item->patientProfile->patient_code,
-                'identity_number' => $item->patientProfile->identity_number,
+                'identity_number' => $item->patientProfile->pseudonymized ? null : $item->patientProfile->identity_number,
                 'residential_environment' => $item->patientProfile->residential_environment,
                 'address_details' => $item->patientProfile->address_details,
                 'medical_record' => $item->patientProfile->medical_record ?? (object) [],
@@ -1449,6 +1605,12 @@ class WorkflowController extends Controller
 
     private function canWriteChat(ConsultationRequest $consultationRequest): bool
     {
+        if (! in_array($consultationRequest->status, ['new', 'accepted', 'completed'], true)) {
+            return false;
+        }
+        if (! $consultationRequest->conclusion_sent_at && ($consultationRequest->higo_proposal['status'] ?? null) === 'accepted') {
+            return true;
+        }
         if (! $consultationRequest->conclusion_sent_at && in_array($consultationRequest->consultation_kind, ['video', 'preliminary'], true)) {
             return true;
         }
@@ -1609,6 +1771,11 @@ class WorkflowController extends Controller
         ]);
     }
 
+    private function realAmountForRequest(ConsultationRequest $item): int
+    {
+        return (int) (($item->real_amount_minor + $item->points_amount_minor) > 0 ? $item->real_amount_minor : $item->amount_minor);
+    }
+
     private function reservePatientWallet(User $patient, ConsultationRequest $consultationRequest): void
     {
         if ($consultationRequest->amount_minor <= 0) {
@@ -1618,7 +1785,7 @@ class WorkflowController extends Controller
         $ledger = app(WalletLedger::class);
         $wallet = $ledger->locked($patient, WalletLedger::REAL);
         $pointsWallet = $ledger->locked($patient, WalletLedger::POINTS);
-        $realAmount = (int) ($consultationRequest->real_amount_minor ?: $consultationRequest->amount_minor);
+        $realAmount = $this->realAmountForRequest($consultationRequest);
         $pointsAmount = (int) $consultationRequest->points_amount_minor;
         abort_if($wallet->balance_minor < $realAmount, 422, 'Balanță insuficientă în portofelul de bani reali.');
         abort_if($pointsWallet->balance_minor < $pointsAmount, 422, 'Nu ai suficiente puncte pentru această plată.');
@@ -1694,7 +1861,7 @@ class WorkflowController extends Controller
         $ledger = app(WalletLedger::class);
         $patientWallet = $ledger->locked($consultationRequest->patient_id, WalletLedger::REAL);
         $pointsWallet = $ledger->locked($consultationRequest->patient_id, WalletLedger::POINTS);
-        $realAmount = (int) ($consultationRequest->real_amount_minor ?: $consultationRequest->amount_minor);
+        $realAmount = $this->realAmountForRequest($consultationRequest);
         $pointsAmount = (int) $consultationRequest->points_amount_minor;
         if ($realAmount > 0) {
             $ledger->move($patientWallet, $realAmount, 'service_refund', 'Returnare bani reali pentru consultație', ['reason' => $reason], $consultationRequest->id);
@@ -1723,7 +1890,7 @@ class WorkflowController extends Controller
         $declined = $declined->map(fn ($id) => (int) $id)->unique()->values();
 
         $patientProfile = $consultationRequest->patientProfile ?? $consultationRequest->patientProfile()->first();
-        $requiredIds = $this->doctorRequiredInvestigationIds($consultationRequest->doctor_id);
+        $requiredIds = array_values(array_unique([...$this->doctorRequiredInvestigationIds($consultationRequest->doctor_id), ...($consultationRequest->selected_services ?? [])]));
 
         $nextOperatorId = $patientProfile
             ? app(OperatorAssignmentService::class)->pickOperatorId($patientProfile, $requiredIds, $declined->all())
@@ -1802,7 +1969,7 @@ class WorkflowController extends Controller
         }
 
         $retainMinor = min($retainMinor, $consultationRequest->amount_minor);
-        $realHeld = (int) ($consultationRequest->real_amount_minor ?: $consultationRequest->amount_minor);
+        $realHeld = $this->realAmountForRequest($consultationRequest);
         $pointsHeld = (int) $consultationRequest->points_amount_minor;
         // Taxa de deplasare se achită către operator în bani reali; consumăm
         // întâi componenta reală a rezervării, apoi componenta de puncte.
@@ -1893,6 +2060,17 @@ class WorkflowController extends Controller
         }
     }
 
+    private function notifyConversationMessage(Conversation $conversation, User $sender): void
+    {
+        foreach (array_unique(array_filter([$conversation->patient_id, $conversation->doctor_id, $conversation->operator_id])) as $id) {
+            if ((int) $id === (int) $sender->id) {
+                continue;
+            }
+            $role = (int) $id === (int) $conversation->patient_id ? 'patient' : ((int) $id === (int) $conversation->doctor_id ? 'doctor' : 'operator');
+            User::find($id)?->notify(new AppEventNotification('Mesaj nou', 'Ai primit un mesaj nou în conversația unui pacient. Deschide platforma pentru a-l citi.', '/'.$role.'/chat?conversation='.$conversation->id));
+        }
+    }
+
     private function notifyRequestCreated(ConsultationRequest $item): void
     {
         $item->loadMissing(['patient', 'patientProfile.investigations', 'doctor', 'operator']);
@@ -1910,7 +2088,7 @@ class WorkflowController extends Controller
         $body = ($item->patient?->name ?? 'Un pacient').' a trimis o solicitare nouă.';
 
         if ($item->doctor_id && $item->doctor) {
-            $item->doctor->notify(new AppEventNotification($title, $body, '/doctor/consultations'));
+            $item->doctor->notify(new AppEventNotification($title, $body, '/doctor/consultations?request='.$item->id));
 
             return;
         }

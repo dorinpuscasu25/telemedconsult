@@ -20,7 +20,7 @@ class ActiveConsultationController extends Controller
         abort_unless($user->hasRole($validated['role']), 403);
         $column = $validated['role'].'_id';
         $consultations = ConsultationRequest::query()
-            ->with(['patient:id,name', 'doctor:id,name', 'patientProfile:id,first_name,last_name'])
+            ->with(['patient:id,name', 'doctor:id,name', 'patientProfile:id,first_name,last_name,pseudonymized,patient_code'])
             ->where($column, $user->id)
             ->whereIn('status', ['accepted', 'rescheduled'])
             ->whereNull('conclusion_sent_at')->whereNull('closed_at')->whereNull('cancelled_at')->whereNull('completed_at')
@@ -34,8 +34,9 @@ class ActiveConsultationController extends Controller
             'doctor_started_at' => $item->doctor_started_at,
             'scheduled_at' => $item->scheduled_at,
             'doctor_name' => $item->doctor?->name,
+            'patient_code' => $item->patientProfile?->patient_code,
             'patient_name' => $item->patientProfile
-                ? trim($item->patientProfile->first_name.' '.$item->patientProfile->last_name)
+                ? $item->patientProfile->display_name
                 : $item->patient?->name,
             'conversation_id' => $chats->get($item->id)?->id,
             'video_available' => $item->status === 'accepted' && $item->doctor_id !== null && $stateMachine->readyForDoctor($item)

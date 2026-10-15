@@ -184,7 +184,7 @@ export function LoginPage() {
                         Parolă
                       </Label>
                       <Link
-                        to="#"
+                        to="/forgot-password"
                         className="text-sm text-primary hover:text-primary/80 font-medium transition-colors">
                         Ați uitat parola?
                       </Link>

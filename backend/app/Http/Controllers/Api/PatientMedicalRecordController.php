@@ -7,6 +7,7 @@ use App\Http\Requests\UpdateMedicalRecordSectionRequest;
 use App\Models\Consultation;
 use App\Models\ConsultationRequest;
 use App\Models\Conversation;
+use App\Models\MedicalDocument;
 use App\Models\PatientInvestigation;
 use App\Models\PatientProfile;
 use App\Services\ObjectiveDataSchema;
@@ -22,21 +23,25 @@ class PatientMedicalRecordController extends Controller
     public function show(Request $request, PatientProfile $patientProfile): JsonResponse
     {
         $this->authorizeRead($request, $patientProfile);
-        $requests = ConsultationRequest::with(['doctor', 'operator', 'objectiveData', 'examMedia'])
+        $requests = ConsultationRequest::with(['specialty', 'doctor', 'operator', 'objectiveData', 'examMedia'])
             ->where('patient_profile_id', $patientProfile->id)->latest()->get();
         $conclusions = Consultation::where('patient_profile_id', $patientProfile->id)->get()->keyBy('consultation_request_id');
+        $documents = MedicalDocument::where('patient_profile_id', $patientProfile->id)->orderBy('id')->get()->groupBy('consultation_request_id');
         $chats = Conversation::where('patient_profile_id', $patientProfile->id)->get()->keyBy('consultation_request_id');
 
         return response()->json([
+            'patient_profile' => ['id' => (string) $patientProfile->id, 'name' => $patientProfile->display_name, 'patient_code' => $patientProfile->patient_code, 'birth_date' => $patientProfile->birth_date?->toDateString(), 'gender' => $patientProfile->gender, 'medical_record' => $patientProfile->medical_record ?? (object) []],
             'medical_record' => $patientProfile->medical_record ?? (object) [],
             'documents' => $patientProfile->investigations()->orderByDesc('performed_at')->latest()->get()->map(fn ($item) => self::document($item)),
-            'consultations' => $requests->map(function ($item) use ($conclusions, $chats) {
+            'consultations' => $requests->map(function ($item) use ($conclusions, $chats, $documents) {
                 $conclusion = $conclusions->get($item->id);
 
                 return [
                     'id' => $item->id, 'status' => $item->status,
                     'date' => $item->completed_at ?? $item->scheduled_at ?? $item->created_at,
-                    'doctor' => $item->doctor?->name, 'symptoms' => $item->symptoms,
+                    'doctor' => $item->doctor?->name, 'specialty' => $item->specialty?->name,
+                    'current_illness_history' => $conclusion?->current_illness_history ?? $item->current_illness_history,
+                    'documents' => ($documents->get($item->id) ?? collect())->map(fn ($document) => ConsultationDocumentController::serialize($document))->values(), 'symptoms' => $item->symptoms,
                     'diagnosis' => $conclusion?->diagnosis, 'recommendations' => $conclusion?->recommendations,
                     'treatment_plan' => $conclusion?->treatment_plan, 'conversation_id' => $chats->get($item->id)?->id,
                     'objective_data' => $item->objectiveData->map(fn ($entry) => [
@@ -48,7 +53,7 @@ class PatientMedicalRecordController extends Controller
                         'url' => URL::temporarySignedRoute('exam-media.show', now()->addHour(), ['media' => $media->id]),
                     ])->values(),
                 ];
-            }),
+            })->sortByDesc('date')->values(),
         ])->header('Cache-Control', 'no-store');
     }
 

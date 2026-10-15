@@ -117,7 +117,7 @@ class HigoResourceBuilder
                 // lor mobilă o caută, ca operatorul să găsească pacientul.
                 'value' => (string) $profile->patient_code,
             ],
-            'name' => $this->name($profile->first_name, $profile->last_name ?: $profile->user?->name),
+            'name' => $this->name($profile->first_name, $profile->pseudonymized ? mb_substr($profile->last_name ?: '', 0, 1).'.' : ($profile->last_name ?: $profile->user?->name)),
         ];
     }
 

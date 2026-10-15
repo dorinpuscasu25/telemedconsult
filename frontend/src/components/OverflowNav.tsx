@@ -1,3 +1,4 @@
+import { ChatPatientMenu } from './ChatPatientMenu';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { ChevronDown, MoreHorizontal, type LucideIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -149,7 +150,7 @@ export function OverflowNav({ items, isActive, onNavigate, className = '' }: Ove
               <ChevronDown className="h-3.5 w-3.5" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
-              {hidden.map((item) => (
+              {hidden.map((item) => item.path.endsWith('/chat') ? <ChatPatientMenu key={item.path} active={isActive(item.path)} /> : (
                 <DropdownMenuItem
                   key={item.path}
                   className="cursor-pointer gap-3 px-3 py-2.5"
@@ -232,6 +233,8 @@ function NavLink({
   if (as === 'span') {
     return <span className={className}>{content}</span>;
   }
+
+  if (item.path.endsWith('/chat')) return <ChatPatientMenu active={active} compact={compact} />;
 
   return (
     <Link to={item.path} className={className}>

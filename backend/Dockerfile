@@ -5,15 +5,23 @@ WORKDIR /var/www/html
 RUN apk add --no-cache \
         icu-libs \
         libzip \
+        libpng \
+        libjpeg-turbo \
+        freetype \
         su-exec \
     && apk add --no-cache --virtual .build-deps \
         $PHPIZE_DEPS \
         icu-dev \
         libzip-dev \
+        libpng-dev \
+        libjpeg-turbo-dev \
+        freetype-dev \
         linux-headers \
         oniguruma-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" \
         bcmath \
+        gd \
         intl \
         mbstring \
         opcache \

@@ -63,6 +63,7 @@ import { AppNewsListPage, AppNewsPostPage, LegacyBlogPostRedirect } from './page
 import { SiteContentPage } from './pages/admin/SiteContentPage';
 import { HigoSyncPage } from './pages/admin/HigoSyncPage';
 // Conectarea contului la botul de notificări — aceeași pagină pentru toate rolurile
+import { PasswordRecoveryPage } from './pages/PasswordRecoveryPage';
 import { TelegramPage } from './pages/TelegramPage';
 // Protected Route Wrapper
 function ProtectedRoute({
@@ -145,6 +146,8 @@ function AppRoutes() {
         } />
 
 
+      <Route path="/forgot-password" element={<PasswordRecoveryPage />} />
+      <Route path="/reset-password" element={<PasswordRecoveryPage />} />
       {/* Admin Routes */}
       <Route path="/consultations" element={<ProtectedRoute allowedRoles={['patient', 'doctor', 'operator', 'admin']}><AppLayout /></ProtectedRoute>}>
         <Route path=":requestId/video" element={<VideoConsultationPage />} />

@@ -79,6 +79,7 @@ services:
       - -lc
       - |
         php artisan migrate --force
+        php artisan patients:repair-contexts --no-interaction
         php artisan db:seed --class='Database\Seeders\RolesSeeder' --force
         php artisan storage:link --force
         if [ "$${RUN_SEEDERS}" = "true" ]; then

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ChatView } from '../pages/shared/ChatView';
+import { ConsultationDocuments } from './ConsultationDocuments';
 import { Check, FileUp, Plus, Save, Trash2 } from 'lucide-react';
 import { apiRequest } from '../lib/api';
 import { dateOnly } from '../lib/format';
@@ -11,6 +13,7 @@ import { ObjectiveDataForm, toObjectivePayload } from './ObjectiveDataForm';
 import { ConsultationVideoButton } from './ConsultationVideoButton';
 
 export interface MedicalProfile {
+  pseudonymized?: boolean; patient_code?: string | null;
   id: number; first_name?: string | null; last_name?: string | null; birth_date?: string | null;
   identity_number?: string | null; gender?: string | null; country?: string | null;
   region_id?: number | null; locality_id?: number | null; address?: string | null;
@@ -21,6 +24,7 @@ export interface MedicalProfile {
 type Region = { id: number; name: string; localities: Array<{ id: number; name: string }> };
 type RecordDocument = { id: number; title: string; type: string; performed_at?: string | null; created_at: string; url?: string | null; mime_type?: string | null; notes?: string | null; consultation_request_id?: number | null };
 type ConsultationHistory = {
+  specialty?: string | null; current_illness_history?: string | null;
   id: number; date: string; doctor?: string | null; status: string; symptoms?: string | null;
   diagnosis?: string | null; recommendations?: string | null; treatment_plan?: string | null; conversation_id?: number | null;
   objective_data: Array<{ id: number; source: string; completed_at: string; values: Array<{ label: string; unit?: string | null; value: unknown }> }>;
@@ -29,7 +33,7 @@ type ConsultationHistory = {
 type RecordResponse = { medical_record: MedicalRecord; documents: RecordDocument[]; consultations: ConsultationHistory[] };
 const extraSections = [
   ['personal', 'Date personale'], ['investigation', 'Investigații'], ['analysis', 'Analize'],
-  ['consultations', 'Consultații'], ['objective', 'Date obiective clinice']
+  ['consultations', 'Consultații'], ['chat', 'Chat-uri'], ['objective', 'Date obiective clinice']
 ];
 const STATUS_LABELS: Record<string, string> = { new: 'În așteptarea medicului', accepted: 'Acceptată', rescheduled: 'Reprogramată', completed: 'Finalizată', cancelled: 'Anulată', rejected: 'Respinsă', expired: 'Expirată', no_operator_available: 'Fără operator disponibil' };
 const PHOTO_LABELS: Record<string, string> = { nasal_left: 'Mucoasă nazală stângă', nasal_right: 'Mucoasă nazală dreaptă', eye_left: 'Conjunctivă ochi stâng', eye_right: 'Conjunctivă ochi drept' };
@@ -38,6 +42,10 @@ const EXAM_LABELS: Record<string, string> = { SKIN_EXAM: 'Dermatoscopie', THROAT
 export function PatientMedicalRecord({ profile, regions, onSaved, onDirtyChange }: {
   profile: MedicalProfile; regions: Region[]; onSaved: () => void; onDirtyChange: (dirty: boolean) => void;
 }) {
+  const [specialtyFilter, setSpecialtyFilter] = useState('');
+  const [doctorFilter, setDoctorFilter] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
+  const [pseudonymized, setPseudonymized] = useState(profile.pseudonymized ?? false);
   const [record, setRecord] = useState<MedicalRecord>({});
   const [documents, setDocuments] = useState<RecordDocument[]>([]);
   const [consultations, setConsultations] = useState<ConsultationHistory[]>([]);
@@ -108,7 +116,7 @@ export function PatientMedicalRecord({ profile, regions, onSaved, onDirtyChange 
     try {
       if (active === 'personal') {
         await apiRequest(`/patient/profiles/${profile.id}`, { method: 'PUT', body: JSON.stringify({ ...personal,
-          birth_date: personal.birth_date || null, gender: personal.gender || null,
+          pseudonymized, birth_date: personal.birth_date || null, gender: personal.gender || null,
           region_id: personal.region_id ? Number(personal.region_id) : null,
           locality_id: personal.locality_id ? Number(personal.locality_id) : null, address_details: address }) });
       } else {
@@ -148,6 +156,7 @@ export function PatientMedicalRecord({ profile, regions, onSaved, onDirtyChange 
   const currentRequest = consultations.find((item) => String(item.id) === selectedRequest);
   const editableRequest = currentRequest && ['new', 'accepted'].includes(currentRequest.status);
   const shownDocuments = documents.filter((item) => active === 'objective' ? item.consultation_request_id === currentRequest?.id && Boolean(PHOTO_LABELS[item.type]) : active === 'analysis' ? item.type === 'analysis' : !PHOTO_LABELS[item.type] && item.type !== 'analysis');
+  const history = consultations.filter((item) => (!specialtyFilter || item.specialty === specialtyFilter) && (!doctorFilter || item.doctor === doctorFilter) && (!dateFilter || item.date.slice(0, 10) === dateFilter));
   const nav = [extraSections[0], ...MEDICAL_SECTIONS.map((item) => [item.key, item.title]), ...extraSections.slice(1)];
 
   return <div className="space-y-5">
@@ -177,7 +186,8 @@ export function PatientMedicalRecord({ profile, regions, onSaved, onDirtyChange 
               {Object.entries({ building: 'Bloc', entrance: 'Scară', apartment: 'Apartament', floor: 'Etaj' }).map(([key, label]) => <MedicalInput key={key} field={{ key, label }} value={address[key] ?? ''} onChange={(value) => { setAddress({ ...address, [key]: value }); setDirty(true); }} />)}
               <MedicalInput field={{ key: 'emergency_contact', label: 'Contact de urgență' }} value={personal.emergency_contact} onChange={(value) => { setPersonal({ ...personal, emergency_contact: value }); setDirty(true); }} />
             </div>
-            <MedicalInput field={{ key: 'medical_summary', label: 'Sumar medical existent', type: 'textarea' }} value={personal.medical_summary} onChange={(value) => { setPersonal({ ...personal, medical_summary: value }); setDirty(true); }} />
+            <MedicalInput field={{ key: 'medical_summary', label: 'Istoricul vieții / antecedente — rezumat', type: 'textarea' }} value={personal.medical_summary} onChange={(value) => { setPersonal({ ...personal, medical_summary: value }); setDirty(true); }} />
+            <div className="rounded-xl bg-blue-50 p-3 text-sm"><p className="font-semibold">Cod pacient: {profile.patient_code || '—'}</p><label className="mt-2 flex items-center gap-2"><input type="checkbox" checked={pseudonymized} onChange={(event) => { setPseudonymized(event.target.checked); setDirty(true); }} />Afișează pseudonimul în chat, liste și documentele noi</label><p className="mt-1 text-xs text-slate-500">Previzualizare: {personal.first_name || 'Pacient'} {personal.last_name ? personal.last_name.charAt(0) + '.' : ''} · {profile.patient_code}. Datele complete rămân în profilul gestionat de tine. Documentele publicate anterior se păstrează.</p></div>
             {(profile.life_history ?? []).length > 0 && <details className="rounded-xl border p-3"><summary className="cursor-pointer text-sm font-medium">Înregistrări din fișa anterioară</summary>{profile.life_history?.map((entry, i) => <p key={i} className="mt-2 text-sm"><strong>{entry.category}:</strong> {entry.note}</p>)}</details>}
           </> : section?.repeated ? <>
             {active === 'vaccinations' && <Choice label="Opțiunea privind vaccinarea" value={vaccination?.refusal ?? 'unknown'} options={[[ 'unknown', 'Nu am precizat' ], [ 'none', 'Fără refuz declarat' ], [ 'temporary', 'Refuz temporar' ], [ 'categorical', 'Refuz categoric' ]]} onChange={(value) => { setRecord({ ...record, vaccinations: { ...vaccination, refusal: value, items: entries } }); setDirty(true); }} />}
@@ -207,17 +217,22 @@ export function PatientMedicalRecord({ profile, regions, onSaved, onDirtyChange 
           <div className="grid gap-4 sm:grid-cols-2"><MedicalInput field={{ key: 'title', label: 'Denumire', required: true, placeholder: active === 'analysis' ? 'De exemplu: hemoleucogramă, biochimie' : 'De exemplu: ECG, radiografie, USG, RMN' }} value={documentForm.title} onChange={(value) => setDocumentForm({ ...documentForm, title: value })} />
           <MedicalInput field={{ key: 'performed_at', label: 'Data efectuării', type: 'date', required: true }} value={documentForm.performed_at} onChange={(value) => setDocumentForm({ ...documentForm, performed_at: value })} /></div>
           <MedicalInput field={{ key: 'notes', label: 'Observații (opțional)', type: 'textarea' }} value={documentForm.notes} onChange={(value) => setDocumentForm({ ...documentForm, notes: value })} />
+          {active === 'investigation' && <label className="block space-y-2"><span className="text-sm font-medium">Categoria investigației</span><select className="w-full rounded-xl border p-2" value={documentForm.type} onChange={(event) => setDocumentForm({ ...documentForm, type: event.target.value })}><option value="investigation">Investigație generală</option><option value="imaging">Investigație imagistică</option><option value="functional">Investigație funcțională</option></select></label>}
           <label className="block space-y-2"><span className="text-sm font-medium">Fotografie sau document</span><Input ref={fileInput} type="file" required accept={active === 'objective' ? 'image/jpeg,image/png,image/webp' : '.jpg,.jpeg,.png,.webp,.pdf,.doc,.docx'} /><span className="block text-xs text-slate-500">{active === 'objective' ? 'JPG, PNG sau WebP' : 'JPG, PNG, WebP, PDF sau Word'} · maximum 20 MB</span></label>
           <Button disabled={saving}><FileUp className="mr-2 h-4 w-4" />{saving ? 'Se încarcă...' : 'Adaugă fișier'}</Button>
         </fieldset></form>}
         <div className="space-y-3"><p className="text-sm font-semibold">{active === 'analysis' ? 'Analize' : active === 'objective' ? 'Fotografii clinice' : 'Investigații'} · cele mai recente întâi</p>
           {shownDocuments.length === 0 && <p className="text-sm text-slate-500">Nu sunt fișiere în această secțiune.</p>}
-          {shownDocuments.map((item) => <div key={item.id} className="flex items-start justify-between gap-3 rounded-xl border bg-slate-50 p-4"><div className="min-w-0"><p className="font-semibold">{item.title}</p><p className="mt-1 text-xs text-slate-500">{item.performed_at ? `Efectuată: ${dateOnly(item.performed_at)}` : 'Data efectuării nu era precizată în fișa anterioară'}</p>{item.notes && <p className="mt-2 whitespace-pre-wrap text-sm">{item.notes}</p>}{item.url && <a href={item.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm font-semibold text-blue-700">Deschide fișierul</a>}</div><Button type="button" variant="ghost" size="icon" aria-label={`Șterge ${item.title}`} disabled={saving} onClick={() => void removeDocument(item)}><Trash2 className="h-4 w-4 text-red-600" /></Button></div>)}
+          {shownDocuments.map((item) => <div key={item.id} className="flex items-start justify-between gap-3 rounded-xl border bg-slate-50 p-4"><div className="min-w-0"><p className="font-semibold">{item.title}</p><p className="text-xs text-blue-700">{item.type === 'imaging' ? 'Investigație imagistică' : item.type === 'functional' ? 'Investigație funcțională' : item.type === 'analysis' ? 'Analiză de laborator' : 'Investigație'}</p><p className="mt-1 text-xs text-slate-500">{item.performed_at ? `Efectuată: ${dateOnly(item.performed_at)}` : 'Data efectuării nu era precizată în fișa anterioară'}</p>{item.notes && <p className="mt-2 whitespace-pre-wrap text-sm">{item.notes}</p>}{item.url && <a href={item.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm font-semibold text-blue-700">Deschide fișierul</a>}</div><Button type="button" variant="ghost" size="icon" aria-label={`Șterge ${item.title}`} disabled={saving} onClick={() => void removeDocument(item)}><Trash2 className="h-4 w-4 text-red-600" /></Button></div>)}
         </div>
       </>}
+      {active === 'chat' && <ChatView patientProfileId={profile.id} emptyTitle="Nu ai conversații pentru acest pacient" />}
       {active === 'consultations' && <div className="space-y-4"><div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-semibold">Istoricul consultațiilor</h3><Button asChild><Link to={`/patient/doctors?patient_profile=${profile.id}`}><Plus className="mr-2 h-4 w-4" />Consultație nouă</Link></Button></div>
         {!consultations.length && <p className="text-sm text-slate-500">Nu ai consultații pentru acest pacient.</p>}
-        {consultations.map((item) => <article key={item.id} className="space-y-3 rounded-xl border p-4"><div className="flex flex-wrap justify-between gap-2"><div><p className="font-semibold">{item.doctor ?? 'Medic neatribuit'}</p><p className="text-xs text-slate-500">{dateOnly(item.date)}</p></div><span className="text-xs font-medium text-blue-700">{STATUS_LABELS[item.status] ?? item.status}</span></div><details><summary className="cursor-pointer text-sm font-medium">Istoricul bolii actuale și simptome</summary><p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{item.symptoms || 'Fără detalii.'}</p></details>
+        <div className="flex flex-wrap gap-2"><select aria-label="Specialitate" className="rounded-xl border p-2 text-sm" value={specialtyFilter} onChange={(event) => setSpecialtyFilter(event.target.value)}><option value="">Toate specialitățile</option>{[...new Set(consultations.map((item) => item.specialty).filter(Boolean))].map((value) => <option key={value} value={value || ''}>{value}</option>)}</select><select aria-label="Medic" className="rounded-xl border p-2 text-sm" value={doctorFilter} onChange={(event) => setDoctorFilter(event.target.value)}><option value="">Toți medicii</option>{[...new Set(consultations.map((item) => item.doctor).filter(Boolean))].map((value) => <option key={value} value={value || ''}>{value}</option>)}</select><input aria-label="Data consultației" type="date" className="rounded-xl border p-2 text-sm" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} /></div><Button asChild variant="outline"><Link to={`/patient/chat?patient_profile=${profile.id}`}>Toate conversațiile acestui pacient</Link></Button>
+        {history.map((item) => <article key={item.id} className="space-y-3 rounded-xl border p-4"><div className="flex flex-wrap justify-between gap-2"><div><p className="font-semibold">{item.doctor ?? 'Medic neatribuit'}</p><p className="text-xs text-slate-500">{dateOnly(item.date)}</p></div><span className="text-xs font-medium text-blue-700">{STATUS_LABELS[item.status] ?? item.status}</span></div><details><summary className="cursor-pointer text-sm font-medium">Acuze / simptome</summary><p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{item.symptoms || 'Fără detalii.'}</p></details>
+          {item.current_illness_history && <p className="whitespace-pre-wrap text-sm"><strong>Istoricul bolii actuale: </strong>{item.current_illness_history}</p>}
+          <ConsultationDocuments requestId={item.id} />
           {item.diagnosis && <p className="whitespace-pre-wrap text-sm"><strong>Diagnosticul medicului: </strong>{item.diagnosis}</p>}
           {item.recommendations && <p className="whitespace-pre-wrap text-sm"><strong>Recomandări: </strong>{item.recommendations}</p>}
           {item.treatment_plan && <p className="whitespace-pre-wrap text-sm"><strong>Plan de tratament: </strong>{item.treatment_plan}</p>}

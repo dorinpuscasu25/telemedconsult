@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\FeatureFlags;
+use App\Services\PaymentVerification;
 use App\Services\PlatformConfig;
 use App\Services\ReferralProgram;
 use App\Services\WalletLedger;
@@ -30,6 +31,8 @@ class WalletController extends Controller
         $points = $this->walletFor($request->user(), WalletLedger::POINTS);
 
         return response()->json([
+            'topup_bonus_percent' => min(100, max(0, app(PlatformConfig::class)->number('wallet.topup_bonus_percent', 0))),
+            'max_bonus_payment_percent' => app(PlatformConfig::class)->number('wallet.max_points_payment_percent', 30),
             'wallet' => $this->serializeWallet($wallet),
             'points_wallet' => $this->serializeWallet($points),
             'transactions' => $wallet->transactions()->latest()->limit(50)->get()->map(fn (WalletTransaction $transaction) => [
@@ -137,21 +140,25 @@ class WalletController extends Controller
     public function callback(Request $request): JsonResponse
     {
         $payload = $request->all();
-        $providerPaymentId = $payload['payId'] ?? $payload['pay_id'] ?? null;
+        $data = is_array($payload['result'] ?? null) ? $payload['result'] : $payload;
+        $providerPaymentId = $data['payId'] ?? $data['pay_id'] ?? null;
         $payment = $providerPaymentId
             ? Payment::where('provider_payment_id', $providerPaymentId)->first()
             : null;
 
-        if (! $payment && $request->filled('orderId')) {
-            $payment = Payment::find($request->input('orderId'));
+        if (! $payment && ! empty($data['orderId'])) {
+            $payment = Payment::find($data['orderId']);
         }
 
         if ($payment) {
             $this->recordPaymentEvent($payment, 'maib.callback', $payload, $providerPaymentId);
         }
 
-        $status = strtolower((string) ($payload['status'] ?? $payload['result'] ?? ''));
+        $status = strtolower((string) ($data['status'] ?? (is_string($payload['result'] ?? null) ? $payload['result'] : '')));
         if ($payment && in_array($status, ['ok', 'paid', 'succeeded', 'success', 'approved'], true)) {
+            if ($payment->status !== 'paid' && ! app(PaymentVerification::class)->settled($payment)) {
+                return response()->json(['message' => 'Confirmarea plății trebuie reîncercată.'], 503);
+            }
             $this->markPaymentPaid($payment);
         }
 
@@ -164,10 +171,12 @@ class WalletController extends Controller
 
         if ($payment) {
             $this->recordPaymentEvent($payment, 'maib.ok_redirect', $request->all(), $payment->provider_payment_id);
-            $this->markPaymentPaid($payment);
+            if (app(PaymentVerification::class)->settled($payment)) {
+                $this->markPaymentPaid($payment);
+            }
         }
 
-        return redirect()->away(rtrim((string) env('FRONTEND_URL', 'http://localhost:5173'), '/').'/patient/wallet?payment=ok');
+        return redirect()->away(rtrim((string) config('services.frontend_url'), '/').'/patient/wallet?payment='.($payment?->fresh()->status === 'paid' ? 'ok' : 'pending'));
     }
 
     public function fail(Request $request): RedirectResponse
@@ -179,13 +188,13 @@ class WalletController extends Controller
             $payment->update(['status' => 'failed']);
         }
 
-        return redirect()->away(rtrim((string) env('FRONTEND_URL', 'http://localhost:5173'), '/').'/patient/wallet?payment=fail');
+        return redirect()->away(rtrim((string) config('services.frontend_url'), '/').'/patient/wallet?payment=fail');
     }
 
     private function maibAuth(): false|object
     {
-        $projectId = env('MAIB_PROJECT_ID');
-        $projectSecret = env('MAIB_PROJECT_SECRET');
+        $projectId = config('services.maib.project_id');
+        $projectSecret = config('services.maib.project_secret');
 
         if (! $projectId || ! $projectSecret) {
             return false;
@@ -203,7 +212,7 @@ class WalletController extends Controller
     private function markPaymentPaid(Payment $payment): void
     {
         DB::transaction(function () use ($payment) {
-            $payment->refresh();
+            $payment = Payment::lockForUpdate()->findOrFail($payment->id);
 
             if ($payment->status === 'paid') {
                 return;
@@ -227,6 +236,15 @@ class WalletController extends Controller
                 'description' => 'Alimentare cont',
                 'metadata' => ['payment_id' => $payment->id, 'provider_payment_id' => $payment->provider_payment_id],
             ]);
+
+            $rate = min(100, max(0, app(PlatformConfig::class)->number('wallet.topup_bonus_percent', 0)));
+            $bonusMinor = (int) round($payment->amount_minor * $rate / 100);
+            if ($bonusMinor > 0 && $payment->purpose === 'wallet_top_up') {
+                $ledger = app(WalletLedger::class);
+                $bonusWallet = $ledger->locked($payment->user_id, WalletLedger::POINTS, $payment->currency);
+                $transaction = $ledger->move($bonusWallet, $bonusMinor, 'topup_bonus', 'Bonus la alimentare '.$rate.'%', ['payment_id' => $payment->id, 'bonus_percent' => $rate]);
+                $transaction->forceFill(['rate_snapshot' => ['wallet.topup_bonus_percent' => $rate]])->save();
+            }
 
             // Afiliere pacient: procent din alimentare către cel care a invitat
             // utilizatorul prin linkul de referral. Legătura vine din tabela
@@ -299,7 +317,10 @@ class WalletController extends Controller
 
     private function paymentReturnUrl(string $envKey, Payment $payment): ?string
     {
-        $url = env($envKey);
+        $key = match ($envKey) {
+            'MAIB_OK_URL' => 'ok_url', 'MAIB_FAIL_URL' => 'fail_url', 'MAIB_CALLBACK_URL' => 'callback_url'
+        };
+        $url = config('services.maib.'.$key);
 
         if (! $url) {
             return null;

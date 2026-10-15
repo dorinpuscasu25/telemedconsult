@@ -63,6 +63,7 @@ export interface InvestigationSummary {
 
 interface PatientChartProps {
   profile?: PatientProfileSummary | null;
+  illnessHistory?: string | null;
   symptoms?: string | null;
   triageNotes?: string | null;
   objectiveData?: ObjectiveDataEntry[];
@@ -178,6 +179,7 @@ function Empty({ children }: { children: React.ReactNode }) {
 export function PatientChart({
   profile,
   symptoms,
+  illnessHistory,
   triageNotes,
   objectiveData = [],
   examMedia = [],
@@ -260,8 +262,9 @@ export function PatientChart({
         <MedicalRecordDetails record={profile.medical_record} documents={profile.documents} />
         <div className="mt-3"><MedicalConsultationHistory key={profile.id} profileId={profile.id} /></div>
       </Section>}
+      {illnessHistory && <Section title="Istoricul bolii actuale" icon={ClipboardList}><p className="whitespace-pre-wrap text-sm text-slate-700">{illnessHistory}</p></Section>}
       <Section
-        title="Acuze și anamneză"
+        title="Acuze / simptome"
         icon={ClipboardList}
         meta={
           anamnesisCompletedAt ? (
@@ -301,7 +304,7 @@ export function PatientChart({
           <Empty>
             {objectiveDataCompletedAt
               ? 'Operatorul a încheiat examinarea, dar măsurătorile din aparat încă nu au ajuns.'
-              : 'Operatorul nu a încărcat încă datele examinării.'}
+              : 'Nu sunt încă înregistrate date obiective pentru această consultație.'}
           </Empty>
         ) : (
           <div className="space-y-3">

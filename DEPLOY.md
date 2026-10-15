@@ -46,6 +46,16 @@ docker compose ps
 
 Toate serviciile trebuie să fie `running` (`init` rămâne `exited (0)` — asta e normal, e o rulare unică).
 
+## Funcționalitățile medicale și portofelele
+
+Noua imagine backend instalează biblioteca PDF și suportul GD pentru imaginile parafelor. După migrări, serviciul `init` rulează `patients:repair-contexts`: reface asocierile istorice sigure și copiază atașamentele medicale recunoscute în stocarea privată înainte de eliminarea copiei publice.
+
+În admin, setează bonusul procentual la alimentare (implicit 0%, dezactivat). Procentul acordat la alimentare, procentul maxim achitabil din bonusuri și comisionul de afiliere sunt setări separate. Medicii completează denumirea/datele clinicii și încarcă parafa/semnătura în profil înainte de folosirea documentelor cu aceste elemente.
+
+Callbackul MAIB și revenirea de la procesator nu creditează portofelul fără verificarea plății la MAIB. Asigură-te că `MAIB_PROJECT_ID`, `MAIB_PROJECT_SECRET`, adresele callback/retur și `FRONTEND_URL` sunt configurate. Callbackul întoarce un răspuns care permite reîncercarea când confirmarea nu poate fi verificată. Notificările Telegram se livrează prin serviciul `queue` în configurațiile cu cozi.
+
+PDF-urile, rețetele și imaginile parafelor sunt în stocarea privată din volumul `app-storage`; backupul volumului trebuie să le includă.
+
 ## Actualizări
 
 ```bash

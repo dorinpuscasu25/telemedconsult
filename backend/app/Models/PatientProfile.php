@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['identity_number', 'residential_environment', 'address_details', 'medical_record', 'user_id', 'higo_patient_id', 'first_name', 'last_name', 'birth_date', 'gender', 'country', 'region', 'region_id', 'locality', 'locality_id', 'address', 'emergency_contact', 'medical_summary', 'life_history', 'status', 'active_until'])]
+#[Fillable(['pseudonymized', 'identity_number', 'residential_environment', 'address_details', 'medical_record', 'user_id', 'higo_patient_id', 'first_name', 'last_name', 'birth_date', 'gender', 'country', 'region', 'region_id', 'locality', 'locality_id', 'address', 'emergency_contact', 'medical_summary', 'life_history', 'status', 'active_until'])]
 class PatientProfile extends Model
 {
     /**
@@ -65,6 +65,10 @@ class PatientProfile extends Model
 
     public function getDisplayNameAttribute(): string
     {
+        if ($this->pseudonymized) {
+            return trim(($this->first_name ?: 'Pacient').' '.($this->last_name ? mb_substr($this->last_name, 0, 1).'.' : ''));
+        }
+
         return trim(implode(' ', array_filter([$this->first_name, $this->last_name]))) ?: $this->user?->name ?: 'Pacient';
     }
 
@@ -76,6 +80,7 @@ class PatientProfile extends Model
     protected function casts(): array
     {
         return [
+            'pseudonymized' => 'boolean',
             'birth_date' => 'date',
             'life_history' => 'array',
             'address_details' => 'array',

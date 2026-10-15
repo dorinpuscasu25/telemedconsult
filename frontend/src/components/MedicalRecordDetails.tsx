@@ -31,10 +31,10 @@ export function MedicalRecordDetails({ record, documents = [] }: { record?: Medi
         </div>
       </details>;
     })}
-    {(['investigation', 'analysis', 'clinical'] as const).map((type) => {
-      const items = documents.filter((doc) => type === 'clinical' ? !['investigation', 'analysis'].includes(doc.type) : doc.type === type);
+    {(['investigation', 'analysis', 'imaging', 'functional', 'clinical'] as const).map((type) => {
+      const items = documents.filter((doc) => type === 'clinical' ? !['investigation', 'analysis', 'imaging', 'functional'].includes(doc.type) : doc.type === type);
       if (!items.length) return null;
-      return <details key={type} className="rounded-xl border p-3"><summary className="cursor-pointer text-sm font-semibold">{type === 'analysis' ? 'Analize' : type === 'clinical' ? 'Fotografii clinice' : 'Investigații'} ({items.length})</summary><div className="mt-3 space-y-3">{items.map((item) => <div key={item.id} className="rounded-lg bg-slate-50 p-3 text-sm"><p className="font-medium">{item.title}</p><p className="text-xs text-slate-500">{item.performed_at ? dateOnly(item.performed_at) : 'Data efectuării neprecizată'}</p>{item.notes && <p className="mt-1 whitespace-pre-wrap">{item.notes}</p>}{item.url && <a href={item.url} target="_blank" rel="noreferrer" className="mt-2 inline-block font-semibold text-blue-700">Deschide documentul</a>}</div>)}</div></details>;
+      return <details key={type} className="rounded-xl border p-3"><summary className="cursor-pointer text-sm font-semibold">{type === 'imaging' ? 'Investigații imagistice' : type === 'functional' ? 'Investigații funcționale' : type === 'analysis' ? 'Analize de laborator' : type === 'clinical' ? 'Fotografii clinice' : 'Investigații'} ({items.length})</summary><div className="mt-3 space-y-3">{items.map((item) => <div key={item.id} className="rounded-lg bg-slate-50 p-3 text-sm"><p className="font-medium">{item.title}</p><p className="text-xs text-slate-500">{item.performed_at ? dateOnly(item.performed_at) : 'Data efectuării neprecizată'}</p>{item.notes && <p className="mt-1 whitespace-pre-wrap">{item.notes}</p>}{item.url && <a href={item.url} target="_blank" rel="noreferrer" className="mt-2 inline-block font-semibold text-blue-700">Deschide documentul</a>}</div>)}</div></details>;
     })}
   </div>;
 }

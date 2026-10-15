@@ -34,6 +34,9 @@ class PlatformConfig
         ],
         // Bonusul de bun-venit: se creditează în portofelul utilizatorului la
         // confirmarea emailului, o singură dată per cont.
+        'wallet.topup_bonus_percent' => ['value' => 0, 'group' => 'wallet', 'type' => 'number'],
+        'consultations.addendum_days' => ['value' => 14, 'group' => 'consultations', 'type' => 'number'],
+        'prescription.instructions' => ['value' => 'Comunicați medicului rețeaua de farmacii din care veți ridica medicamentul pentru transmiterea rețetei originale.', 'group' => 'consultations', 'type' => 'string'],
         'wallet.registration_bonus_enabled' => ['value' => false, 'group' => 'wallet', 'type' => 'boolean'],
         'wallet.registration_bonus' => ['value' => 0, 'group' => 'wallet', 'type' => 'number'],
         'wallet.max_points_payment_percent' => ['value' => 30, 'group' => 'wallet', 'type' => 'number'],

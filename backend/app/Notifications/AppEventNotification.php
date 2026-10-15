@@ -50,10 +50,11 @@ class AppEventNotification extends Notification
 
     public function toTelegram(object $notifiable): array
     {
-        $text = '<b>'.e($this->title).'</b>'."\n".e($this->body);
+        $text = '<b>'.e($this->title).'</b>'."\n".'Ai o actualizare în platformă. Deschide contul pentru detalii.';
 
         if ($this->url) {
-            $text .= "\n".$this->url;
+            $url = str_starts_with($this->url, '/') ? rtrim(config('services.frontend_url'), '/').$this->url : $this->url;
+            $text .= "\n".e($url);
         }
 
         return ['text' => $text];

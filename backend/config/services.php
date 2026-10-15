@@ -1,6 +1,8 @@
 <?php
 
 return [
+    'frontend_url' => env('FRONTEND_URL', 'http://localhost:5173'),
+    'maib' => ['project_id' => env('MAIB_PROJECT_ID'), 'project_secret' => env('MAIB_PROJECT_SECRET'), 'ok_url' => env('MAIB_OK_URL'), 'fail_url' => env('MAIB_FAIL_URL'), 'callback_url' => env('MAIB_CALLBACK_URL')],
 
     /*
     |--------------------------------------------------------------------------

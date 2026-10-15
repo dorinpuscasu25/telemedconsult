@@ -2,9 +2,11 @@
 
 namespace App\Notifications\Channels;
 
+use App\Jobs\SendTelegramEvent;
 use App\Services\FeatureFlags;
 use App\Services\TelegramBot;
 use Illuminate\Notifications\Notification;
+use Illuminate\Support\Facades\DB;
 
 class TelegramChannel
 {
@@ -41,6 +43,13 @@ class TelegramChannel
             return;
         }
 
-        $this->bot->sendMessage((string) $chatId, $text);
+        DB::afterCommit(function () use ($notifiable, $chatId, $text) {
+            if (config('queue.default') === 'sync') {
+                $this->bot->sendMessage((string) $chatId, $text);
+
+                return;
+            }
+            SendTelegramEvent::dispatch((int) $notifiable->id, (string) $chatId, $text);
+        });
     }
 }

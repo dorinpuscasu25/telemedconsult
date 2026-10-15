@@ -245,7 +245,7 @@ class PatientProfileController extends Controller
 
         $validated = $request->validate([
             'consultation_request_id' => ['nullable', Rule::exists('consultation_requests', 'id')->where(fn ($query) => $query->where('patient_profile_id', $patientProfile->id))],
-            'type' => ['nullable', Rule::in(['investigation', 'analysis', 'nasal_left', 'nasal_right', 'eye_left', 'eye_right'])],
+            'type' => ['nullable', Rule::in(['investigation', 'analysis', 'imaging', 'functional', 'nasal_left', 'nasal_right', 'eye_left', 'eye_right'])],
             'performed_at' => ['required', 'date_format:Y-m-d', 'before_or_equal:today'],
             'title' => ['required', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:2000'],
@@ -377,6 +377,7 @@ class PatientProfileController extends Controller
             'address' => [$required, 'string', 'max:255'],
             'emergency_contact' => ['nullable', 'string', 'max:255'],
             'medical_summary' => ['nullable', 'string', 'max:4000'],
+            'pseudonymized' => ['sometimes', 'boolean'],
             'identity_number' => ['nullable', 'regex:/^[0-9]{13}$/'],
             'residential_environment' => ['nullable', Rule::in(['rural', 'urban'])],
             'address_details' => ['nullable', 'array:building,entrance,apartment,floor'],

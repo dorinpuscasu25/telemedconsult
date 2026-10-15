@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
+import { Avatar, AvatarFallback } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
 import { ScrollArea } from '../../components/ui/scroll-area';
 import { CheckCircle2, Clock, FileText, Paperclip, Send } from 'lucide-react';
@@ -11,6 +11,11 @@ import { motion } from 'framer-motion';
 import { apiRequest } from '../../lib/api';
 import { getEcho } from '../../lib/realtime';
 import { ConsultationVideoButton } from '../../components/ConsultationVideoButton';
+import { PatientChart } from '../../components/PatientChart';
+import { ConsultationAnamnesis } from '../../components/ConsultationAnamnesis';
+import { HigoConsultationProposal } from '../../components/HigoConsultationProposal';
+import { ConsultationDocuments } from '../../components/ConsultationDocuments';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface ChatUser {
@@ -51,6 +56,9 @@ const CHAT_BADGES: Record<ChatState['state'], { label: string; className: string
 };
 
 interface Conversation {
+  patient_profile_id?: number | null;
+  patient_profile?: { id: number; display_name: string; patient_code?: string; birth_date?: string; gender?: string; medical_record?: Record<string, unknown> };
+  unread_count?: number;
   chat?: ChatState;
   id: number;
   status: string;
@@ -73,9 +81,13 @@ interface Conversation {
 
 type Participant = ChatUser & { role: string };
 
-export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTitle?: string }) {
-  const { user } = useAuth();
-  const [searchParams] = useSearchParams();
+export function ChatView({ emptyTitle = 'Nu ai conversații încă', patientProfileId }: { emptyTitle?: string; patientProfileId?: number }) {
+  const { user, role } = useAuth();
+  const currentUserId = user ? Number(user.id) : null;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [showChart, setShowChart] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [newMessage, setNewMessage] = useState('');
@@ -87,10 +99,11 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
   const subscribedChannels = useRef<Set<string>>(new Set());
 
   const upsertConversation = useCallback((nextConversation: Conversation) => {
+    if ((role === 'patient' && nextConversation.patient_id !== currentUserId) || (role === 'doctor' && nextConversation.doctor_id !== currentUserId) || (role === 'operator' && nextConversation.operator_id !== currentUserId)) return;
     setConversations((current) => {
       const exists = current.some((conversation) => conversation.id === nextConversation.id);
       const nextList = exists
-        ? current.map((conversation) => conversation.id === nextConversation.id ? nextConversation : conversation)
+        ? current.map((conversation) => conversation.id === nextConversation.id ? { ...nextConversation, chat: nextConversation.chat || conversation.chat, unread_count: nextConversation.unread_count ?? ((conversation.unread_count || 0) + nextConversation.messages.filter((message) => Number(message.sender_id) !== Number(user?.id) && !conversation.messages.some((previous) => previous.id === message.id)).length) } : conversation)
         : [nextConversation, ...current];
 
       return [...nextList].sort((first, second) => {
@@ -100,7 +113,7 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
       });
     });
     setActiveId((current) => current ?? nextConversation.id);
-  }, []);
+  }, [user?.id, role, currentUserId]);
 
   const appendMessage = useCallback((conversationId: number, message: Message) => {
     setConversations((current) => current.map((conversation) => {
@@ -111,13 +124,14 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
 
       return {
         ...conversation,
+        unread_count: (conversation.unread_count || 0) + (message.sender_id !== currentUserId ? 1 : 0),
         messages: [...conversation.messages, message]
       };
     }));
-  }, []);
+  }, [currentUserId]);
 
   const loadConversations = useCallback(() => {
-    apiRequest<{data: Conversation[]}>('/conversations').then((response) => {
+    apiRequest<{data: Conversation[]}>(patientProfileId ? `/conversations?patient_profile=${patientProfileId}` : '/conversations').then((response) => {
       setConversations(response.data);
       setActiveId((current) => {
         const requestedId = Number(searchParams.get('conversation'));
@@ -128,21 +142,45 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
         const consultationChat = response.data.find((conversation) => conversation.consultation_request_id === requestedConsultation);
         if (requestedConsultation && consultationChat) return consultationChat.id;
 
-        return current ?? response.data[0]?.id ?? null;
+        const requestedPatient = Number(patientProfileId || searchParams.get('patient_profile'));
+        return (requestedPatient ? response.data.find((item) => Number(item.patient_profile_id) === requestedPatient)?.id : current) ?? response.data[0]?.id ?? null;
       });
-    });
-  }, [searchParams]);
+    }).catch((err) => setError(err instanceof Error ? err.message : 'Conversațiile nu au putut fi încărcate.')).finally(() => setLoading(false));
+  }, [searchParams, patientProfileId]);
 
   useEffect(() => {
     loadConversations();
+    const refresh = () => { if (document.visibilityState === 'visible') loadConversations(); };
+    const timer = window.setInterval(refresh, 15000);
+    window.addEventListener('focus', refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); };
   }, [loadConversations]);
 
-  const activeChat = useMemo(
-    () => conversations.find((conversation) => conversation.id === activeId) || conversations[0],
-    [conversations, activeId]
-  );
-
-  const currentUserId = user ? Number(user.id) : null;
+  const requestedPatient = Number(patientProfileId || searchParams.get('patient_profile'));
+  const requestedAccount = Number(searchParams.get('account'));
+  const requestedDoctor = Number(searchParams.get('doctor'));
+  const filteredConversations = useMemo(() => conversations.filter((item) =>
+    (!requestedPatient || Number(item.patient_profile_id) === requestedPatient) &&
+    (!requestedAccount || item.patient_id === requestedAccount) &&
+    (!requestedDoctor || item.doctor_id === requestedDoctor)), [conversations, requestedPatient, requestedAccount, requestedDoctor]);
+  const activeChat = filteredConversations.find((item) => item.id === activeId) || filteredConversations[0];
+  const patientGroups = Array.from(new Map(conversations.filter((item) => !requestedAccount || item.patient_id === requestedAccount).filter((item) => !requestedDoctor || item.doctor_id === requestedDoctor).map((item) => [item.patient_profile_id, item.patient_profile])).entries()).filter(([id]) => id);
+  const counterparts = Array.from(new Map(conversations.map((item) => currentUserId === item.patient_id ? [item.doctor_id, item.doctor] : [item.patient_id, item.patient])).entries()).filter(([id]) => id);
+  const selectConversation = (conversation: Conversation) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('conversation', String(conversation.id));
+    if (conversation.patient_profile_id) next.set('patient_profile', String(conversation.patient_profile_id));
+    setSearchParams(next); setActiveId(conversation.id); setError('');
+  };
+  const readConversationId = activeChat?.id;
+  const readMessageId = activeChat?.messages[activeChat.messages.length - 1]?.id;
+  useEffect(() => {
+    if (!readConversationId || !readMessageId) return;
+    apiRequest(`/conversations/${readConversationId}/read`, { method: 'POST', body: JSON.stringify({ last_message_id: readMessageId }) }).then(() => {
+      setConversations((current) => current.map((item) => item.id === readConversationId ? { ...item, unread_count: 0 } : item));
+      window.dispatchEvent(new Event('conversation-read'));
+    }).catch(() => undefined);
+  }, [readConversationId, readMessageId]);
 
   useEffect(() => {
     window.setTimeout(() => {
@@ -152,10 +190,11 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
 
   useEffect(() => {
     const echo = getEcho();
+    const channels = subscribedChannels.current;
     if (!echo || !currentUserId) return;
 
     const userChannelName = `App.Models.User.${currentUserId}`;
-    if (!subscribedChannels.current.has(userChannelName)) {
+    if (!channels.has(userChannelName)) {
       echo.private(userChannelName)
         .listen('.conversation.updated', (event: { conversation: Conversation }) => {
           upsertConversation(event.conversation);
@@ -163,22 +202,23 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
         .listen('.conversation.message.sent', (event: { conversation_id: number; message: Message }) => {
           appendMessage(Number(event.conversation_id), event.message);
         });
-      subscribedChannels.current.add(userChannelName);
+      channels.add(userChannelName);
     }
 
     return () => {
       echo.leave(userChannelName);
-      subscribedChannels.current.delete(userChannelName);
+      channels.delete(userChannelName);
     };
   }, [appendMessage, currentUserId, upsertConversation]);
 
   useEffect(() => {
     const echo = getEcho();
+    const channels = subscribedChannels.current;
     if (!echo) return;
 
     conversations.forEach((conversation) => {
       const channelName = `conversation.${conversation.id}`;
-      if (subscribedChannels.current.has(channelName)) return;
+      if (channels.has(channelName)) return;
 
       echo.private(channelName)
         .listen('.conversation.updated', (event: { conversation: Conversation }) => {
@@ -193,21 +233,21 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
           if (typingTimeoutRef.current) window.clearTimeout(typingTimeoutRef.current);
           typingTimeoutRef.current = window.setTimeout(() => setTypingName(''), 2200);
         });
-      subscribedChannels.current.add(channelName);
+      channels.add(channelName);
     });
 
     return () => {
       conversations.forEach((conversation) => {
         const channelName = `conversation.${conversation.id}`;
         echo.leave(channelName);
-        subscribedChannels.current.delete(channelName);
+        channels.delete(channelName);
       });
     };
-  }, [appendMessage, conversations, upsertConversation]);
+  }, [appendMessage, conversations, upsertConversation, currentUserId]);
 
   const participantFor = (conversation: Conversation): Participant => {
     if (currentUserId && conversation.patient_id !== currentUserId && conversation.patient) {
-      return { ...conversation.patient, role: 'Pacient' };
+      return { ...conversation.patient, role: 'Titularul contului' };
     }
 
     if (currentUserId && conversation.doctor_id !== currentUserId && conversation.doctor) {
@@ -233,7 +273,7 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
       });
       setNewMessage('');
       loadConversations();
-    } finally {
+    } catch (err) { setError(err instanceof Error ? err.message : 'Mesajul nu a putut fi trimis.'); } finally {
       setIsSending(false);
     }
   };
@@ -261,7 +301,7 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
         body: formData
       });
       loadConversations();
-    } finally {
+    } catch (err) { setError(err instanceof Error ? err.message : 'Mesajul nu a putut fi trimis.'); } finally {
       setIsSending(false);
       event.target.value = '';
     }
@@ -277,7 +317,9 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
   if (!activeChat) {
     return (
       <Card className="glass-card border-0 p-10 text-center">
-        <h1 className="text-2xl font-bold text-slate-900 mb-2">{emptyTitle}</h1>
+        {error && <p role="alert" className="text-red-600">{error}</p>}
+        <h1 className="text-2xl font-bold text-slate-900 mb-2">{loading ? 'Se încarcă conversațiile…' : emptyTitle}</h1>
+        <Button variant="outline" onClick={() => setSearchParams({})}>Toate conversațiile</Button>
         <p className="text-slate-500">
           Conversațiile apar automat după crearea sau preluarea unei solicitări.
         </p>
@@ -297,31 +339,31 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
   const chatBadge = CHAT_BADGES[chat.state] ?? CHAT_BADGES.closed;
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex gap-6">
-      <Card className="w-80 glass-card border-0 hidden md:flex flex-col overflow-hidden">
+    <div className={`${patientProfileId ? 'h-[600px]' : 'h-[calc(100vh-8rem)]'} flex gap-6`}>
+      <Card className={`${patientProfileId ? '!hidden' : ''} w-80 glass-card border-0 hidden md:flex flex-col overflow-hidden`}>
         <div className="p-4 border-b border-slate-200/50 bg-white/50">
-          <h2 className="font-bold text-lg text-slate-900">Conversații</h2>
+          <h2 className="font-bold text-lg text-slate-900">Conversații pe pacienți</h2>
+          <div className="mt-2 space-y-1">{counterparts.map(([id, counterpart]) => <button key={id} className="block w-full rounded-lg px-2 py-1 text-left text-sm hover:bg-blue-50" onClick={() => { const next = new URLSearchParams(); next.set(role === 'patient' ? 'doctor' : 'account', String(id)); setSearchParams(next); }}>{counterpart?.name}</button>)}</div>
         </div>
         <ScrollArea className="flex-1">
           <div className="p-2 space-y-1">
-            {conversations.map((conversation) => {
+            {filteredConversations.map((conversation) => {
               const participant = participantFor(conversation);
               const lastMessage = conversation.messages[conversation.messages.length - 1];
               return (
                 <button
                   key={conversation.id}
-                  onClick={() => setActiveId(conversation.id)}
+                  onClick={() => selectConversation(conversation)}
                   className={`w-full flex items-start p-3 rounded-xl transition-all text-left ${activeChat.id === conversation.id ? 'bg-primary/10' : 'hover:bg-slate-50/80'}`}>
                   <div className="relative">
                     <Avatar className="h-12 w-12 border border-white shadow-sm">
-                      <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${participant.email}`} />
                       <AvatarFallback>{participant.name.charAt(0)}</AvatarFallback>
                     </Avatar>
                     {(conversation.chat?.can_write ?? conversation.status === 'open') && <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />}
                   </div>
                   <div className="ml-3 flex-1 overflow-hidden">
                     <div className="flex justify-between items-center mb-0.5">
-                      <span className="font-semibold text-slate-900 truncate">{participant.name}</span>
+                      <span className="font-semibold text-slate-900 truncate">{conversation.patient_profile?.display_name || participant.name}{Boolean(conversation.unread_count) && <span className="ml-1 rounded-full bg-blue-600 px-2 text-xs text-white">{conversation.unread_count}</span>}</span>
                       <span className="text-xs text-slate-500">
                         {lastMessage ? new Date(lastMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                       </span>
@@ -337,19 +379,27 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
         </ScrollArea>
       </Card>
 
-      <Card className="flex-1 glass-card border-0 flex flex-col overflow-hidden relative">
+      <Card className="min-w-0 flex-1 glass-card border-0 flex flex-col overflow-hidden relative">
+        <div className="flex flex-wrap gap-2 border-b p-3">
+          {!patientProfileId && <select aria-label="Pacient" className="max-w-full rounded-lg border p-2 text-sm" value={requestedPatient || ''} onChange={(event) => { const next = new URLSearchParams(searchParams); next.delete('conversation'); next.delete('request'); if (event.target.value) next.set('patient_profile', event.target.value); else next.delete('patient_profile'); setSearchParams(next); }}><option value="">Toți pacienții</option>{patientGroups.map(([id, patient]) => <option key={id} value={id ?? ''}>{patient?.display_name || `Pacient ${id}`} · {patient?.patient_code}</option>)}</select>}
+          <select aria-label="Conversație" className="max-w-full rounded-lg border p-2 text-sm" value={activeChat.id} onChange={(event) => { const item = conversations.find((item) => item.id === Number(event.target.value)); if (item) selectConversation(item); }}>{filteredConversations.map((item) => <option key={item.id} value={item.id}>{participantFor(item).name} · Consultație #{item.consultation_request_id} · {new Date(item.created_at).toLocaleDateString('ro-RO')}</option>)}</select>
+          <Button variant="ghost" size="sm" onClick={() => setSearchParams({})}>Toate conversațiile</Button>
+        </div>
+        {error && <p role="alert" className="p-3 text-sm text-red-600">{error}</p>}
         <div className="min-h-16 gap-2 flex-wrap py-2 border-b border-slate-200/50 bg-white/60 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-10">
           <div className="flex items-center">
             <Avatar className="h-10 w-10 border border-white shadow-sm mr-3">
-              <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${activeParticipant.email}`} />
               <AvatarFallback>{activeParticipant.name.charAt(0)}</AvatarFallback>
             </Avatar>
             <div>
-              <h3 className="font-bold text-slate-900 leading-tight">{activeParticipant.name}</h3>
-              <p className="text-xs text-primary font-medium">{activeParticipant.role}</p>
+              <h3 className="font-bold text-slate-900 leading-tight">{activeChat.patient_profile?.display_name || activeParticipant.name}{activeChat.patient_profile?.patient_code && ` · ${activeChat.patient_profile.patient_code}`}</h3>
+              <p className="text-xs text-primary font-medium">{activeParticipant.name} · {activeParticipant.role}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
+          {role === 'patient' && activeChat.patient_profile_id && <Button asChild variant="outline" size="sm"><Link to={`/patient/profile?patient_profile=${activeChat.patient_profile_id}`}>Fișa pacientului</Link></Button>}
+          {role !== 'patient' && activeChat.patient_profile_id && <Button variant="outline" size="sm" onClick={() => setShowChart(true)}>Fișa pacientului</Button>}
+          {role === 'doctor' && activeChat.consultation_request_id && <Button asChild variant="outline" size="sm"><Link to={`/doctor/consultations?request=${activeChat.consultation_request_id}`}>Consultație</Link></Button>}
           {activeChat.consultation_request_id && <ConsultationVideoButton key={activeChat.consultation_request_id} requestId={activeChat.consultation_request_id} />}
           <Badge variant="outline" className={chatBadge.className}>
             <Clock className="w-3 h-3 mr-1" /> {chatBadge.label}
@@ -357,6 +407,10 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
           </div>
         </div>
 
+        {activeChat.consultation_request_id && <div className="px-3 pt-2"><ConsultationAnamnesis key={activeChat.consultation_request_id} requestId={activeChat.consultation_request_id} /></div>}
+        {activeChat.consultation_request_id && <div className="px-3 pt-2"><HigoConsultationProposal key={activeChat.consultation_request_id} requestId={activeChat.consultation_request_id} /></div>}
+        {activeChat.consultation_request_id && <details className="border-b p-3"><summary className="cursor-pointer text-sm font-medium">Documentele consultației</summary><ConsultationDocuments requestId={activeChat.consultation_request_id} /></details>}
+        <Dialog open={showChart} onOpenChange={setShowChart}><DialogContent className="max-h-[85vh] max-w-3xl overflow-auto"><DialogHeader><DialogTitle>Fișa pacientului</DialogTitle></DialogHeader>{activeChat.patient_profile_id && <ChatPatientRecord id={activeChat.patient_profile_id} name={activeChat.patient_profile?.display_name} />}</DialogContent></Dialog>
         <ScrollArea className="flex-1 p-6 bg-slate-50/30">
           <div className="space-y-6 flex flex-col">
             <div className="text-center my-4">
@@ -454,4 +508,11 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă' }: { emptyTi
       </Card>
     </div>
   );
+}
+
+function ChatPatientRecord({ id }: { id: number; name?: string }) {
+  const [data, setData] = useState<React.ComponentProps<typeof PatientChart>['profile'] | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => { apiRequest<{ patient_profile: React.ComponentProps<typeof PatientChart>['profile'] }>(`/patient/profiles/${id}/medical-record`).then((response) => setData(response.patient_profile)).catch((err) => setError(err.message)); }, [id]);
+  return error ? <p role="alert">{error}</p> : data ? <PatientChart profile={data} /> : <p>Se încarcă fișa…</p>;
 }

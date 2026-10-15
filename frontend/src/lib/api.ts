@@ -89,10 +89,24 @@ export async function apiRequest<T>(
   if (!response.ok) {
     const payload = data as { message?: string; errors?: Record<string, string[]> } | null;
     const firstValidationError = Object.values(payload?.errors ?? {}).flat()[0];
-    const message = payload?.message || firstValidationError || 'A apărut o eroare. Încercați din nou.';
+    const message = firstValidationError || payload?.message || 'A apărut o eroare. Încercați din nou.';
 
     throw buildError(String(message), { status: response.status, data });
   }
 
   return data as T;
+}
+
+export async function apiBlob(path: string, options: RequestInit = {}): Promise<Blob> {
+  const headers = new Headers(options.headers);
+  const token = getToken();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  if (options.body && !(options.body instanceof FormData)) headers.set('Content-Type', 'application/json');
+  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    const first = Object.values(payload.errors ?? {}).flat()[0];
+    throw new Error(String(first || payload.message || 'Fișierul nu a putut fi încărcat.'));
+  }
+  return response.blob();
 }

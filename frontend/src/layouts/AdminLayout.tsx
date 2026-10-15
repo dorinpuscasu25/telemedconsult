@@ -25,6 +25,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Button } from '../components/ui/button';
 import { Sheet, SheetContent } from '../components/ui/sheet';
 import { NotificationBell } from '../components/NotificationBell';
+import { TelegramConnectionBanner } from '../components/TelegramConnectionBanner';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 
 const ROLE_LABELS: Record<RoleName, string> = {
@@ -275,7 +276,8 @@ export function AdminLayout() {
           {/* Boundary per pagină: o pagină de admin care crapă nu mai lasă
               ecranul alb, iar navigația rămâne funcțională. */}
           <ErrorBoundary inline key={location.pathname} label={`admin:${location.pathname}`}>
-            <Outlet />
+            <TelegramConnectionBanner />
+          <Outlet />
           </ErrorBoundary>
         </div>
       </main>

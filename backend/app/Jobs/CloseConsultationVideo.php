@@ -23,7 +23,7 @@ class CloseConsultationVideo implements ShouldQueue
     public function handle(LiveKitService $livekit): void
     {
         $consultation = ConsultationRequest::find($this->consultationRequestId);
-        if ($consultation && in_array($consultation->status, ['completed', 'cancelled', 'rejected', 'expired'], true)) {
+        if ($consultation && (in_array($consultation->status, ['completed', 'cancelled', 'rejected', 'expired'], true) || ($consultation->consultation_kind === 'with_exam' && ($consultation->higo_proposal['status'] ?? null) === 'accepted' && ! $consultation->objective_data_completed_at))) {
             $livekit->closeRoom($consultation);
         }
     }

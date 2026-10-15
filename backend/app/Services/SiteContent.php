@@ -164,7 +164,7 @@ class SiteContent
                     'value' => 'O platformă completă, gândită pentru pacienți, medici și operatori.',
                     'max' => 200,
                 ],
-                'home.features.1.title' => ['label' => 'Cartonaș 1 · titlu', 'type' => self::TYPE_TEXT, 'value' => 'Consultații video și chat', 'max' => 80],
+                'home.features.1.title' => ['label' => 'Cartonaș 1 · titlu', 'type' => self::TYPE_TEXT, 'value' => 'Consultații video și clarificări în chat', 'max' => 80],
                 'home.features.1.text' => ['label' => 'Cartonaș 1 · text', 'type' => self::TYPE_TEXTAREA, 'value' => 'Discută cu medici verificați prin video sau mesagerie, fără să pierzi timp în sala de așteptare.', 'max' => 300],
                 'home.features.2.title' => ['label' => 'Cartonaș 2 · titlu', 'type' => self::TYPE_TEXT, 'value' => 'Operatori la domiciliu', 'max' => 80],
                 'home.features.2.text' => ['label' => 'Cartonaș 2 · text', 'type' => self::TYPE_TEXTAREA, 'value' => 'Recoltări și examinări cu dispozitive medicale, direct acasă la tine, în regiunea ta.', 'max' => 300],

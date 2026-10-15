@@ -31,6 +31,9 @@ import { apiRequest } from '../../lib/api';
 import { dateTime, money, num } from '../../lib/format';
 
 interface WalletData {
+  topup_bonus_percent: number;
+  max_bonus_payment_percent: number;
+  points_transactions: WalletData['transactions'];
   wallet: {
     id: number;
     balance: number;
@@ -65,7 +68,8 @@ export function WalletPage() {
   const [error, setError] = useState('');
 
   const loadWallet = () => {
-    apiRequest<WalletData>('/wallet').then(setWalletData).catch(() => setWalletData(null));
+    setError('');
+    apiRequest<WalletData>('/wallet').then(setWalletData).catch((err) => { setWalletData(null); setError(err instanceof Error ? err.message : 'Portofelele nu au putut fi încărcate.'); });
   };
 
   useEffect(() => {
@@ -103,7 +107,7 @@ export function WalletPage() {
 
   const wallet = walletData?.wallet;
   const pointsWallet = walletData?.points_wallet;
-  const transactions = walletData?.transactions ?? [];
+  const transactions = [...(walletData?.transactions ?? []).map((tx) => ({ ...tx, pocket: 'Bază' })), ...(walletData?.points_transactions ?? []).map((tx) => ({ ...tx, pocket: 'Bonusuri' }))].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto relative">
@@ -116,6 +120,7 @@ export function WalletPage() {
         </p>
       </div>
 
+      {error && !isTopUpOpen && <div role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}<Button variant="outline" size="sm" className="ml-3" onClick={loadWallet}>Reîncearcă</Button></div>}
       <div className="grid gap-6 md:grid-cols-3">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="md:col-span-2">
           <Card className="border-0 h-full bg-gradient-to-br from-primary to-purple-700 text-white shadow-xl shadow-primary/20 relative overflow-hidden">
@@ -124,9 +129,9 @@ export function WalletPage() {
             <CardContent className="p-8 flex flex-col h-full justify-between relative z-10">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-white/80 font-medium mb-1">Balanță Curentă</p>
+                  <p className="text-white/80 font-medium mb-1">Portofel de bază</p>
                   <h2 className="text-5xl font-bold tracking-tight">
-                    {(wallet?.balance ?? 0).toFixed(2)}
+                    {wallet ? wallet.balance.toFixed(2) : '…'}
                     <span className="text-2xl font-medium text-white/80 ml-2">{wallet?.currency ?? 'MDL'}</span>
                   </h2>
                 </div>
@@ -143,6 +148,7 @@ export function WalletPage() {
                 </div>
 
                 <Button
+                  disabled={!walletData}
                   onClick={() => setIsTopUpOpen(true)}
                   className="bg-white text-primary hover:bg-white/90 rounded-xl font-semibold px-6 shadow-lg shadow-black/10">
                   <Plus className="mr-2 h-4 w-4" /> Alimentează
@@ -156,11 +162,11 @@ export function WalletPage() {
           <Card className="h-full border-0 bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-xl">
             <CardContent className="flex h-full flex-col justify-between p-8">
               <div>
-                <p className="mb-1 font-medium text-white/80">Puncte bonus</p>
-                <h2 className="text-4xl font-bold">{(pointsWallet?.balance ?? 0).toFixed(2)}</h2>
-                <p className="mt-2 text-sm text-white/80">Puncte din referral și bonusuri</p>
+                <p className="mb-1 font-medium text-white/80">Portofel de bonusuri</p>
+                <h2 className="text-4xl font-bold">{pointsWallet ? pointsWallet.balance.toFixed(2) : '…'} <span className="text-lg">MDL</span></h2>
+                <p className="mt-2 text-sm text-white/80">Bonusuri acordate separat de banii depuși</p>
               </div>
-              <p className="mt-6 text-sm font-medium">Folosibile la plata consultațiilor eligibile</p>
+              <p className="mt-6 text-sm font-medium">Până la {walletData?.max_bonus_payment_percent ?? 30}% din consultațiile eligibile</p>
             </CardContent>
           </Card>
         </motion.div>
@@ -204,7 +210,7 @@ export function WalletPage() {
               <TableHeader>
                 <TableRow className="hover:bg-transparent border-slate-200/50">
                   <TableHead>Data</TableHead>
-                  <TableHead>Detalii</TableHead>
+                  <TableHead>Detalii / portofel</TableHead>
                   <TableHead className="text-right">Suma</TableHead>
                 </TableRow>
               </TableHeader>
@@ -264,7 +270,8 @@ export function WalletPage() {
                 ))}
               </div>
             </div>
-            <DialogFooter>
+            <p className="rounded-xl bg-amber-50 p-3 text-sm">Portofel de bază: +{money(Number(amount) || 0)}<br />Portofel de bonusuri (estimare): +{money((Number(amount) || 0) * (walletData?.topup_bonus_percent ?? 0) / 100)} ({walletData?.topup_bonus_percent ?? 0}%). Procentul aplicat se salvează la confirmarea plății.</p>
+          <DialogFooter>
               <Button
                 type="submit"
                 disabled={isSubmitting}

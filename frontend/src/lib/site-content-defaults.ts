@@ -32,7 +32,7 @@ export const SITE_CONTENT_DEFAULTS = {
   // Pagina principală · beneficii
   'home.features.title': 'Tot ce ai nevoie într-un singur loc',
   'home.features.subtitle': 'O platformă completă, gândită pentru pacienți, medici și operatori.',
-  'home.features.1.title': 'Consultații video și chat',
+  'home.features.1.title': 'Consultații video și clarificări în chat',
   'home.features.1.text':
     'Discută cu medici verificați prin video sau mesagerie, fără să pierzi timp în sala de așteptare.',
   'home.features.2.title': 'Operatori la domiciliu',

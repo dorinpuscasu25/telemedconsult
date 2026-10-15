@@ -14,6 +14,7 @@ use App\Notifications\AppEventNotification;
 use App\Services\PlatformConfig;
 use App\Services\ReferralProgram;
 use App\Services\RegistrationBonus;
+use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -21,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -28,6 +30,32 @@ use Throwable;
 
 class AuthController extends Controller
 {
+    public function forgotPassword(Request $request): JsonResponse
+    {
+        $validated = $request->validate(['email' => ['required', 'email']]);
+        Password::sendResetLink(['email' => mb_strtolower(trim($validated['email']))]);
+
+        return response()->json(['message' => 'Dacă există un cont cu această adresă, vei primi un link de resetare a parolei.']);
+    }
+
+    public function resetPassword(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email' => ['required', 'email'], 'token' => ['required', 'string'],
+            'password' => ['required', 'confirmed', \Illuminate\Validation\Rules\Password::min(8)],
+        ]);
+        $status = Password::reset($validated, function (User $user, string $password): void {
+            $user->forceFill(['password' => Hash::make($password), 'remember_token' => Str::random(60)])->save();
+            $user->tokens()->delete();
+            event(new PasswordReset($user));
+        });
+        if ($status !== Password::PasswordReset) {
+            throw ValidationException::withMessages(['email' => ['Linkul este invalid sau a expirat. Solicită un link nou.']]);
+        }
+
+        return response()->json(['message' => 'Parola a fost schimbată. Te poți autentifica.']);
+    }
+
     public function register(RegisterRequest $request, ReferralProgram $referralProgram): JsonResponse
     {
         $validated = $request->validated();

@@ -53,7 +53,7 @@ class OperatorReassignmentTest extends TestCase
         $consultationRequest->refresh();
         $this->assertSame('no_operator_available', $consultationRequest->status);
         $this->assertSame('refunded', $consultationRequest->payment_status);
-        $this->assertSame(71000, Wallet::where('user_id', $patient->user->id)->value('balance_minor'));
+        $this->assertSame(71000, Wallet::where('user_id', $patient->user->id)->where('type', 'real')->value('balance_minor'));
     }
 
     public function test_cancellation_after_operator_accepted_retains_travel_fee(): void
@@ -71,9 +71,9 @@ class OperatorReassignmentTest extends TestCase
         $this->postJson("/api/v1/requests/{$consultationRequest->id}/cancel", ['reason' => 'M-am răzgândit'])->assertOk();
 
         // Patient refunded 710 - 50 = 660 MDL.
-        $this->assertSame(66000, Wallet::where('user_id', $patient->user->id)->value('balance_minor'));
+        $this->assertSame(66000, Wallet::where('user_id', $patient->user->id)->where('type', 'real')->value('balance_minor'));
         // Operator compensated the 50 MDL travel fee.
-        $this->assertSame(5000, Wallet::where('user_id', $operator->id)->value('balance_minor'));
+        $this->assertSame(5000, Wallet::where('user_id', $operator->id)->where('type', 'real')->value('balance_minor'));
         $this->assertDatabaseHas('wallet_transactions', ['user_id' => $operator->id, 'type' => 'operator_travel_income', 'amount_minor' => 5000]);
     }
 
@@ -89,7 +89,7 @@ class OperatorReassignmentTest extends TestCase
         Sanctum::actingAs($patient->user);
         $this->postJson("/api/v1/requests/{$consultationRequest->id}/cancel", ['reason' => 'Anulare'])->assertOk();
 
-        $this->assertSame(71000, Wallet::where('user_id', $patient->user->id)->value('balance_minor'));
+        $this->assertSame(71000, Wallet::where('user_id', $patient->user->id)->where('type', 'real')->value('balance_minor'));
         $this->assertSame(0, WalletTransaction::where('type', 'operator_travel_income')->count());
     }
 

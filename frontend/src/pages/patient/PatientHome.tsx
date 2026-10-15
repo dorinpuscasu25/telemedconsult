@@ -10,6 +10,7 @@ import { apiRequest } from '../../lib/api';
 import { dateTime } from '../../lib/format';
 
 interface WalletData {
+  points_wallet?: { balance: number; currency: string };
   wallet: {
     balance: number;
     currency: string;
@@ -56,6 +57,7 @@ export function PatientHome() {
   const { user } = useAuth();
   const { isEnabled } = useFeatureFlags();
   const navigate = useNavigate();
+  const [bonusBalance, setBonusBalance] = useState(0);
   const [wallet, setWallet] = useState<WalletData['wallet'] | null>(null);
   const [requests, setRequests] = useState<ConsultationRequest[]>([]);
   const [patientProfiles, setPatientProfiles] = useState<PatientProfile[]>([]);
@@ -73,6 +75,7 @@ export function PatientHome() {
     ])
       .then(([walletResponse, profileResponse, requestsResponse, doctorsResponse, operatorsResponse]) => {
         setWallet(walletResponse.wallet);
+        setBonusBalance(walletResponse.points_wallet?.balance || 0);
         setPatientProfiles(profileResponse.patient_profiles ?? []);
         setRequests(requestsResponse.data);
         setDoctorsCount(doctorsResponse.data.length);
@@ -132,9 +135,9 @@ export function PatientHome() {
 
           <div className={`mt-6 grid gap-3 ${paymentsEnabled ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
             {paymentsEnabled && <MetricCard
-              label="Balanță"
+              label="Portofel de bază"
               value={isLoading ? '...' : `${balance.toFixed(2)} ${currency}`}
-              detail={balance >= 450 ? 'Disponibil pentru consultații' : 'Necesită alimentare'}
+              detail={`Bonusuri separate: ${bonusBalance.toFixed(2)} MDL`}
               icon={Wallet}
               tone="bg-blue-50 text-blue-700"
             />}

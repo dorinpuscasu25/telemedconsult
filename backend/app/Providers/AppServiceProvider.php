@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Broadcasting\ResilientBroadcaster;
 use Carbon\CarbonImmutable;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -30,6 +31,8 @@ class AppServiceProvider extends ServiceProvider
         Broadcast::extend('resilient', fn ($app, array $config) => new ResilientBroadcaster(
             Broadcast::connection($config['inner'] ?? 'reverb_raw')
         ));
+
+        ResetPassword::createUrlUsing(fn ($user, string $token) => rtrim(config('services.frontend_url'), '/').'/reset-password?'.http_build_query(['token' => $token, 'email' => $user->email]));
 
         $this->configureDefaults();
     }
