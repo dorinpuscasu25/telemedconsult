@@ -52,11 +52,11 @@ interface DoctorProfileResponse {
     video_price?: number | null;
     video_duration_minutes?: number | null;
     google_meet_account?: string | null;
-    service_catalog?: Array<{ name: string }> | null;
+    service_catalog?: Array<{ name: string } | string> | null;
     required_investigations?: Array<{ name: string }> | null;
     required_investigation_ids?: number[] | null;
     optional_investigation_ids?: number[] | null;
-    platforms?: Platform[] | null;
+    platforms?: Array<Platform | string> | null;
     is_available?: boolean;
   } | null;
   vacations: Vacation[];
@@ -110,15 +110,15 @@ export function DoctorProfilePage() {
     bio: '',
     experience_years: 0,
     consultation_price: 0,
-    video_price: 300,
-    video_duration_minutes: 15,
+    video_price: 500,
+    video_duration_minutes: 10,
     google_meet_account: '',
     service_catalog_text: '',
     required_investigation_ids: [] as number[],
     optional_investigation_ids: [] as number[],
     is_available: true
   });
-  const [platforms, setPlatforms] = useState<Platform[]>([]);
+  const [platforms, setPlatforms] = useState<Array<Platform | string>>([]);
   const [investigationsCatalog, setInvestigationsCatalog] = useState<CatalogInvestigation[]>([]);
   const [vacations, setVacations] = useState<Vacation[]>([]);
   const [availability, setAvailability] = useState<AvailabilitySlot[]>(defaultAvailability);
@@ -129,11 +129,13 @@ export function DoctorProfilePage() {
   });
   const [isPlatformModalOpen, setIsPlatformModalOpen] = useState(false);
   const [newPlatform, setNewPlatform] = useState<Platform>({ name: '', value: '' });
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
   const loadProfile = () => {
-    apiRequest<DoctorProfileResponse>('/doctor/profile').then((response) => {
+    return apiRequest<DoctorProfileResponse>('/doctor/profile').then((response) => {
       setSpecialties(response.specialties);
       setForm({
         clinic_name: response.profile?.clinic_name || '',
@@ -147,10 +149,10 @@ export function DoctorProfilePage() {
         bio: response.profile?.bio || '',
         experience_years: response.profile?.experience_years ?? 0,
         consultation_price: response.profile?.consultation_price ?? 0,
-        video_price: response.profile?.video_price ?? 300,
-        video_duration_minutes: response.profile?.video_duration_minutes ?? 15,
+        video_price: response.profile?.video_price ?? 500,
+        video_duration_minutes: response.profile?.video_duration_minutes ?? 10,
         google_meet_account: response.profile?.google_meet_account ?? '',
-        service_catalog_text: (response.profile?.service_catalog ?? []).map((item) => item.name).join('\n'),
+        service_catalog_text: (response.profile?.service_catalog ?? []).map((item) => typeof item === 'string' ? item : item.name).join('\n'),
         required_investigation_ids: response.profile?.required_investigation_ids ?? [],
         optional_investigation_ids: response.profile?.optional_investigation_ids ?? [],
         is_available: response.profile?.is_available ?? true
@@ -162,7 +164,7 @@ export function DoctorProfilePage() {
         starts_at: slot.starts_at.slice(0, 5),
         ends_at: slot.ends_at.slice(0, 5)
       })));
-    });
+    }).catch((err) => setError(err instanceof Error ? err.message : 'Profilul nu a putut fi încărcat.')).finally(() => setIsLoading(false));
   };
 
   useEffect(() => {
@@ -208,6 +210,8 @@ export function DoctorProfilePage() {
 
   const saveProfile = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (isSaving || isLoading) return;
+    setIsSaving(true);
     setError('');
     setMessage('');
 
@@ -229,10 +233,10 @@ export function DoctorProfilePage() {
         })
       });
       setMessage('Profilul medicului a fost salvat.');
-      loadProfile();
+      await loadProfile();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nu am putut salva profilul.');
-    }
+    } finally { setIsSaving(false); }
   };
 
   const addPlatform = (event: React.FormEvent) => {
@@ -309,7 +313,7 @@ export function DoctorProfilePage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Profil medic</h1>
-          <p className="mt-1 text-sm text-slate-500">Date publice și setări salvate în backend.</p>
+          <p className="mt-1 text-sm text-slate-500">Actualizează informațiile afișate pacienților și preferințele pentru consultații.</p>
         </div>
         <div className="flex items-center gap-3 rounded-xl border border-slate-200/70 bg-white px-4 py-3 shadow-sm">
           <Label htmlFor="available-mode" className="cursor-pointer font-medium">
@@ -330,6 +334,7 @@ export function DoctorProfilePage() {
       )}
 
       <DoctorSignature />
+      <DoctorSignature kind="logo" />
       <div className="grid gap-3 rounded-xl border p-4"><label>Denumirea clinicii<Input value={form.clinic_name} onChange={(event) => setForm({ ...form, clinic_name: event.target.value })} /></label><label>Date clinică pentru antet<Textarea value={form.clinic_details} onChange={(event) => setForm({ ...form, clinic_details: event.target.value })} /></label><label><input type="checkbox" checked={form.accepts_points} onChange={(event) => setForm({ ...form, accepts_points: event.target.checked })} /> Accept plăți parțiale din bonusuri</label></div><form onSubmit={saveProfile} className="grid gap-6 lg:grid-cols-[1.3fr_0.8fr]">
         <Card ref={vacationsCardRef} className="scroll-mt-24 border-slate-200/70 bg-white shadow-sm ring-primary/0 transition-shadow">
           <CardHeader>
@@ -378,10 +383,10 @@ export function DoctorProfilePage() {
               </Field>
             </div>
             <Field label="Descriere / spectru de probleme">
-              <Textarea value={form.bio} onChange={(event) => setForm({ ...form, bio: event.target.value })} className="min-h-32 rounded-xl" />
+              <Textarea aria-label="Descriere / spectru de probleme" maxLength={4000} value={form.bio} onChange={(event) => setForm({ ...form, bio: event.target.value })} className="min-h-32 rounded-xl" />
             </Field>
             <Field label="Servicii oferite (unul pe linie)">
-              <Textarea value={form.service_catalog_text} onChange={(event) => setForm({ ...form, service_catalog_text: event.target.value })} className="min-h-24 rounded-xl" />
+              <Textarea aria-label="Servicii oferite (unul pe linie)" value={form.service_catalog_text} onChange={(event) => setForm({ ...form, service_catalog_text: event.target.value })} className="min-h-24 rounded-xl" />
             </Field>
             <Field label="Investigații pentru consultația cu examinare">
               <p className="mb-2 text-xs text-slate-500">Alege din catalog ce se efectuează la domiciliu. Obligatoriile condiționează consultația; cele opționale pot fi alese de pacient.</p>
@@ -423,9 +428,11 @@ export function DoctorProfilePage() {
                 )}
               </div>
             </Field>
-            <Button type="submit" className="h-11 rounded-xl">
-              Salvează modificările
+            <Button type="submit" disabled={isSaving || isLoading} className="h-11 rounded-xl">
+              {isSaving ? 'Se salvează…' : isLoading ? 'Se încarcă…' : 'Salvează modificările'}
             </Button>
+            {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+            {message && <p role="status" className="text-sm text-emerald-700">{message}</p>}
           </CardContent>
         </Card>
 
@@ -494,10 +501,10 @@ export function DoctorProfilePage() {
               </div>
             )}
             {platforms.map((platform, index) => (
-              <div key={`${platform.name}-${index}`} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
+              <div key={`${typeof platform === 'string' ? platform : platform.name}-${index}`} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
                 <div className="min-w-0">
-                  <p className="font-semibold text-slate-950">{platform.name}</p>
-                  <p className="truncate text-sm text-slate-500">{platform.value}</p>
+                  <p className="font-semibold text-slate-950">{typeof platform === 'string' ? platform : platform.name}</p>
+                  <p className="truncate text-sm text-slate-500">{typeof platform === 'string' ? 'Canal disponibil în platformă' : platform.value}</p>
                 </div>
                 <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600" onClick={() => setPlatforms(platforms.filter((_, itemIndex) => itemIndex !== index))}>
                   <Trash2 className="h-4 w-4" />

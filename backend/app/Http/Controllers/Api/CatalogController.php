@@ -60,7 +60,7 @@ class CatalogController extends Controller
                     'consultation_price' => $profile->consultation_price,
                     'video_price' => $profile->video_price,
                     'video_duration_minutes' => $profile->video_duration_minutes,
-                    'platforms' => $profile->platforms ?? [],
+                    'platforms' => collect($profile->platforms ?? [])->map(fn ($platform) => is_string($platform) ? $platform : ($platform['name'] ?? null))->filter()->unique()->values()->all(),
                     'service_catalog' => $profile->service_catalog ?? [],
                     'required_investigations' => $profile->required_investigations ?? [],
                     'investigation_requirements' => [

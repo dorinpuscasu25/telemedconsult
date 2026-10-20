@@ -135,3 +135,9 @@
     background-attachment: fixed;
   }
 }
+
+/* Validation feedback is shared by native fields and custom select controls. */
+input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="true"], button[aria-invalid="true"] {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 2px rgb(239 68 68 / 12%);
+}

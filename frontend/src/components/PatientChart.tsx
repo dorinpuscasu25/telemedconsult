@@ -38,7 +38,6 @@ export interface PatientProfileSummary {
   id: string;
   name: string;
   patient_code?: string | null;
-  identity_number?: string | null;
   residential_environment?: string | null;
   address_details?: Record<string, string | null> | null;
   medical_record?: MedicalRecord | null;
@@ -62,6 +61,7 @@ export interface InvestigationSummary {
 }
 
 interface PatientChartProps {
+  consultationOnly?: boolean;
   profile?: PatientProfileSummary | null;
   illnessHistory?: string | null;
   symptoms?: string | null;
@@ -185,7 +185,8 @@ export function PatientChart({
   examMedia = [],
   investigations = [],
   anamnesisCompletedAt,
-  objectiveDataCompletedAt
+  objectiveDataCompletedAt,
+  consultationOnly = false
 }: PatientChartProps) {
   // Otoscopia dă zeci de cadre aproape identice: medicul trebuie să le poată
   // mări și parcurge una după alta, nu să deschidă câte un tab pentru fiecare.
@@ -225,7 +226,6 @@ export function PatientChart({
         {profile ? (
           <div className="space-y-2 text-sm">
             <p className="font-semibold text-slate-900">{profile.name}</p>
-            {profile.identity_number && <p className="text-slate-600">IDNP: {profile.identity_number}</p>}
             {profile.residential_environment && <p className="text-slate-600">Mediul: {profile.residential_environment === 'rural' ? 'Rural' : 'Urban'}</p>}
             {profile.address_details && <p className="text-slate-600">{Object.entries({ building: 'Bloc', entrance: 'Scară', apartment: 'Apartament', floor: 'Etaj' }).filter(([key]) => profile.address_details?.[key]).map(([key, label]) => `${label} ${profile.address_details?.[key]}`).join(', ')}</p>}
             {identity.length > 0 && <p className="text-slate-600">{identity.join(' • ')}</p>}
@@ -237,13 +237,13 @@ export function PatientChart({
             {profile.emergency_contact && (
               <p className="text-slate-600">Contact de urgență: {profile.emergency_contact}</p>
             )}
-            {profile.medical_summary && (
+            {!consultationOnly && profile.medical_summary && (
               <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-amber-900">
-                <p className="text-xs font-semibold uppercase tracking-wide">Antecedente</p>
+                <p className="text-xs font-semibold uppercase tracking-wide">Istoricul vieții</p>
                 <p className="mt-0.5 whitespace-pre-wrap">{profile.medical_summary}</p>
               </div>
             )}
-            {(profile.life_history ?? []).length > 0 && (
+            {!consultationOnly && (profile.life_history ?? []).length > 0 && (
               <ul className="mt-2 space-y-1">
                 {(profile.life_history ?? []).map((entry, index) => (
                   <li key={index} className="text-slate-600">
@@ -258,12 +258,12 @@ export function PatientChart({
         )}
       </Section>
 
-      {profile && <Section title="Fișa medicală și antecedente" icon={ClipboardList}>
+      {!consultationOnly && profile && <Section title="Istoricul vieții și fișa electronică" icon={ClipboardList}>
         <MedicalRecordDetails record={profile.medical_record} documents={profile.documents} />
         <div className="mt-3"><MedicalConsultationHistory key={profile.id} profileId={profile.id} /></div>
       </Section>}
-      {illnessHistory && <Section title="Istoricul bolii actuale" icon={ClipboardList}><p className="whitespace-pre-wrap text-sm text-slate-700">{illnessHistory}</p></Section>}
-      <Section
+      {!consultationOnly && illnessHistory && <Section title="Istoricul bolii actuale" icon={ClipboardList}><p className="whitespace-pre-wrap text-sm text-slate-700">{illnessHistory}</p></Section>}
+      {!consultationOnly && <Section
         title="Acuze / simptome"
         icon={ClipboardList}
         meta={
@@ -284,9 +284,9 @@ export function PatientChart({
             <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-700">{triageNotes}</p>
           </div>
         )}
-      </Section>
+      </Section>}
 
-      <Section
+      {(!consultationOnly || objectiveData.length > 0 || objectiveDataCompletedAt) && <Section
         title="Date obiective"
         icon={Activity}
         meta={
@@ -340,7 +340,7 @@ export function PatientChart({
             ))}
           </div>
         )}
-      </Section>
+      </Section>}
 
       {examMedia.length > 0 && (
         <Section

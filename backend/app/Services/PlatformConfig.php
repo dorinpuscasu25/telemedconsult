@@ -22,7 +22,7 @@ class PlatformConfig
         'rate.affiliate_operator' => ['value' => 6, 'group' => 'affiliate', 'type' => 'number'],
         // Procentul pe care îl primește invitatorul din FIECARE alimentare de
         // portofel făcută de utilizatorul pe care l-a invitat.
-        'rate.affiliate_patient_topup' => ['value' => 10, 'group' => 'affiliate', 'type' => 'number'],
+        'rate.affiliate_patient_topup' => ['value' => 3, 'group' => 'affiliate', 'type' => 'number'],
         // Alimentările sub această sumă (MDL) nu generează comision.
         'affiliate.patient_topup_min_amount' => ['value' => 0, 'group' => 'affiliate', 'type' => 'number'],
         // true = comision doar la prima alimentare; false = la fiecare alimentare.
@@ -35,6 +35,8 @@ class PlatformConfig
         // Bonusul de bun-venit: se creditează în portofelul utilizatorului la
         // confirmarea emailului, o singură dată per cont.
         'wallet.topup_bonus_percent' => ['value' => 0, 'group' => 'wallet', 'type' => 'number'],
+        'wallet.first_topup_promo_enabled' => ['value' => false, 'group' => 'wallet', 'type' => 'boolean'],
+        'wallet.first_topup_promo_doctor_ids' => ['value' => [], 'group' => 'wallet', 'type' => 'json'],
         'consultations.addendum_days' => ['value' => 14, 'group' => 'consultations', 'type' => 'number'],
         'prescription.instructions' => ['value' => 'Comunicați medicului rețeaua de farmacii din care veți ridica medicamentul pentru transmiterea rețetei originale.', 'group' => 'consultations', 'type' => 'string'],
         'wallet.registration_bonus_enabled' => ['value' => false, 'group' => 'wallet', 'type' => 'boolean'],
@@ -46,8 +48,8 @@ class PlatformConfig
         'chat.reactivation_price' => ['value' => 50, 'group' => 'chat', 'type' => 'number'],
         'chat.reactivation_hours' => ['value' => 24, 'group' => 'chat', 'type' => 'number'],
         'chat.total_days' => ['value' => 14, 'group' => 'chat', 'type' => 'number'],
-        'video.default_price' => ['value' => 300, 'group' => 'video', 'type' => 'number'],
-        'video.default_duration_minutes' => ['value' => 15, 'group' => 'video', 'type' => 'number'],
+        'video.default_price' => ['value' => 500, 'group' => 'video', 'type' => 'number'],
+        'video.default_duration_minutes' => ['value' => 10, 'group' => 'video', 'type' => 'number'],
         'payout.request_day_start' => ['value' => 1, 'group' => 'payout', 'type' => 'number'],
         'payout.request_day_end' => ['value' => 10, 'group' => 'payout', 'type' => 'number'],
         'post_consultation_window_hours' => ['value' => 72, 'group' => 'consultations', 'type' => 'number'],

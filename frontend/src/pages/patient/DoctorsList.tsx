@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '../../components/ui/select';
-import { Textarea } from '../../components/ui/textarea';
+import { ConsultationComplaintFields } from '../../components/ConsultationComplaintFields';
 import { apiRequest } from '../../lib/api';
 import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 
@@ -66,6 +66,15 @@ interface CostPreview {
   reason?: string;
   message?: string;
   operator?: { id: string; name?: string; region?: string | null };
+  payment?: {
+    total: number;
+    real_amount: number;
+    points_amount: number;
+    promo_amount: number;
+    promo_eligible: boolean;
+    max_points_percent: number;
+    promo_max_payment_percent: number;
+  };
   cost?: {
     doctor_base: number;
     investigations: CostLine[];
@@ -104,9 +113,9 @@ export function DoctorsList() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const requestedProfileId = searchParams.get('patient_profile');
-  const { isEnabled } = useFeatureFlags();
-  const withExamEnabled = isEnabled('with_exam_consultations') && isEnabled('operators');
-  const videoEnabled = isEnabled('video_consultations');
+  const { isEnabled, isLoading: featuresLoading } = useFeatureFlags();
+  const withExamEnabled = !featuresLoading && isEnabled('with_exam_consultations') && isEnabled('operators');
+  const videoEnabled = !featuresLoading && isEnabled('video_consultations');
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [patientProfiles, setPatientProfiles] = useState<PatientProfile[]>([]);
@@ -117,6 +126,7 @@ export function DoctorsList() {
   const [doctorReviews, setDoctorReviews] = useState<DoctorReview[]>([]);
   const [patientProfileId, setPatientProfileId] = useState('');
   const [consultationKind, setConsultationKind] = useState<'with_exam' | 'video'>('with_exam');
+  const effectiveKind = consultationKind === 'with_exam' && withExamEnabled ? 'with_exam' : consultationKind === 'video' && videoEnabled ? 'video' : videoEnabled ? 'video' : withExamEnabled ? 'with_exam' : null;
   const [symptoms, setSymptoms] = useState('');
   const [illnessHistory, setIllnessHistory] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
@@ -146,7 +156,7 @@ export function DoctorsList() {
         setPatientProfileId(requestedProfile ? String(requestedProfile.id) : requestableProfiles[0]?.id ? String(requestableProfiles[0].id) : '');
       })
       .catch(() => undefined);
-  }, []);
+  }, [requestedProfileId]);
 
   useEffect(() => {
     if (!detailDoctor || !isDetailOpen) return;
@@ -178,6 +188,7 @@ export function DoctorsList() {
     setSelectedDoctor(doctor);
     setConsultationKind(availableKind);
     setSymptoms('');
+    setIllnessHistory('');
     setScheduledAt('');
     setError('');
     setIsSuccess(false);
@@ -189,29 +200,30 @@ export function DoctorsList() {
   };
 
   useEffect(() => {
-    if (!isRequestOpen || !selectedDoctor || !patientProfileId) {
+    if (!isRequestOpen || !selectedDoctor || !patientProfileId || !effectiveKind) {
       setPreview(null);
       return;
     }
 
     let cancelled = false;
+    setPreview(null);
     setPreviewLoading(true);
     apiRequest<CostPreview>('/requests/preview', {
       method: 'POST',
       body: JSON.stringify({
-        consultation_kind: consultationKind,
+        consultation_kind: effectiveKind,
         patient_profile_id: Number(patientProfileId),
         doctor_id: selectedDoctor.id,
-        selected_services: selectedOptionalIds,
+        selected_services: effectiveKind === 'with_exam' ? selectedOptionalIds : [],
         points_percent: pointsPercent
       })
     })
       .then((response) => { if (!cancelled) setPreview(response); })
-      .catch(() => { if (!cancelled) setPreview(null); })
+      .catch((err) => { if (!cancelled) setPreview({ eligible: false, message: err instanceof Error ? err.message : 'Costul nu a putut fi calculat.' }); })
       .finally(() => { if (!cancelled) setPreviewLoading(false); });
 
     return () => { cancelled = true; };
-  }, [isRequestOpen, selectedDoctor, patientProfileId, consultationKind, selectedOptionalIds, pointsPercent]);
+  }, [isRequestOpen, selectedDoctor, patientProfileId, effectiveKind, selectedOptionalIds, pointsPercent]);
 
   const toggleOptional = (id: number) => {
     setSelectedOptionalIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
@@ -219,7 +231,7 @@ export function DoctorsList() {
 
   const handleRequest = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!selectedDoctor) return;
+    if (!selectedDoctor || !effectiveKind) return;
     if (!patientProfileId) {
       setError('Alege un profil de pacient activ înainte de confirmare.');
       return;
@@ -231,16 +243,16 @@ export function DoctorsList() {
       const response = await apiRequest<{conversation?: { id: number }}>('/requests', {
         method: 'POST',
         body: JSON.stringify({
-          type: consultationKind === 'video' ? 'video' : 'doctor',
-          consultation_kind: consultationKind,
+          type: effectiveKind === 'video' ? 'video' : 'doctor',
+          consultation_kind: effectiveKind,
           patient_profile_id: patientProfileId ? Number(patientProfileId) : null,
           doctor_id: selectedDoctor.id,
           specialty_id: selectedDoctor.specialty_id,
           symptoms,
           current_illness_history: illnessHistory,
-          selected_services: selectedOptionalIds,
+          selected_services: effectiveKind === 'with_exam' ? selectedOptionalIds : [],
           points_percent: pointsPercent,
-          scheduled_at: scheduledAt || null
+          scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null
         })
       });
 
@@ -313,7 +325,7 @@ export function DoctorsList() {
               </CardHeader>
               <CardContent className="flex-1 pb-4">
                 <div className="mb-4 flex flex-wrap gap-1">
-                  {doctor.platforms.map((platform) => (
+                  {normalizeList(doctor.platforms).map((platform) => (
                     <Badge key={platform} variant="secondary" className="bg-slate-100 text-[10px] text-slate-600">{platform}</Badge>
                   ))}
                 </div>
@@ -324,8 +336,8 @@ export function DoctorsList() {
                     <span className="ml-1 font-normal text-slate-400">({doctor.reviews_count})</span>
                   </div>
                   <div className="text-right font-bold text-slate-900">
-                    {withExamEnabled ? `${doctor.consultation_price} MDL` : videoEnabled ? `${doctor.video_price || 300} MDL` : 'Indisponibil'}
-                    {withExamEnabled && videoEnabled && <div className="text-xs font-medium text-slate-500">Video {doctor.video_price || 300} MDL</div>}
+                    {withExamEnabled ? `${doctor.consultation_price} MDL` : videoEnabled ? `${doctor.video_price ?? 500} MDL / ${doctor.video_duration_minutes ?? 10} min` : 'Indisponibil'}
+                    {withExamEnabled && videoEnabled && <div className="text-xs font-medium text-slate-500">Video {doctor.video_price ?? 500} MDL / {doctor.video_duration_minutes ?? 10} min</div>}
                   </div>
                 </div>
               </CardContent>
@@ -363,20 +375,11 @@ export function DoctorsList() {
                   </div>}
                   {videoEnabled && <div className={`${withExamEnabled ? 'mt-2' : ''} flex justify-between text-sm`}>
                     <span>Video / preliminară</span>
-                    <strong>{detailDoctor.video_price || 300} MDL</strong>
+                    <strong>{detailDoctor.video_price ?? 500} MDL / {detailDoctor.video_duration_minutes ?? 10} min</strong>
                   </div>}
                   {!withExamEnabled && !videoEnabled && <p className="text-sm text-slate-500">Consultațiile sunt momentan dezactivate.</p>}
                 </div>
                 <InfoList title="Recenzii recente" items={doctorReviews.map((review) => `${review.rating}/5 ${review.comment || ''}`)} empty="Nu există recenzii încă." />
-                {detailDoctor.accepts_points && (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
-                    <label className="flex items-center justify-between gap-4 font-medium text-amber-900">
-                      <span>Achită din portofelul de bonusuri (%)</span>
-                      <input type="number" min={0} max={100} value={pointsPercent} onChange={(event) => setPointsPercent(Math.min(100, Math.max(0, Number(event.target.value) || 0)))} className="w-20 rounded-lg border border-amber-300 bg-white px-2 py-1 text-right" />
-                    </label>
-                    <p className="mt-1 text-xs text-amber-700">Procentul final este limitat de setarea platformei și de soldul disponibil.</p>
-                  </div>
-                )}
               </div>
               <DialogFooter>
                 <Button variant="outline" className="rounded-xl" onClick={() => setIsDetailOpen(false)}>Închide</Button>
@@ -420,24 +423,23 @@ export function DoctorsList() {
                   )}
                 </Field>
                 <Field label="Tip consultație">
-                  {withExamEnabled && videoEnabled ? <Select value={consultationKind} onValueChange={(value) => setConsultationKind(value as 'with_exam' | 'video')}>
+                  {withExamEnabled && videoEnabled ? <Select value={effectiveKind || undefined} onValueChange={(value) => setConsultationKind(value as 'with_exam' | 'video')}>
                     <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="with_exam">Cu examinare la domiciliu</SelectItem>
                       <SelectItem value="video">Video / preliminară</SelectItem>
                     </SelectContent>
                   </Select> : <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-700">
-                    {withExamEnabled ? 'Cu examinare la domiciliu' : 'Video / preliminară'}
+                    {withExamEnabled ? 'Cu examinare la domiciliu' : videoEnabled ? 'Consultație directă la medic (video)' : 'Consultațiile sunt momentan dezactivate.'}
                   </div>}
                 </Field>
-                <Field label="Istoricul bolii actuale"><Textarea value={illnessHistory} onChange={(event) => setIllnessHistory(event.target.value)} maxLength={4000} placeholder="De când a apărut problema și cum a evoluat?" className="min-h-[90px] rounded-xl" /></Field>
-                <Field label="Acuze / simptome">
-                  <Textarea value={symptoms} onChange={(event) => setSymptoms(event.target.value)} required className="min-h-[120px] rounded-xl" />
-                </Field>
-                <Field label="Data și ora preferată">
-                  <Input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} required className="rounded-xl" />
-                </Field>
-                {consultationKind === 'with_exam' && (selectedDoctor.investigation_requirements?.optional?.length ?? 0) > 0 && (
+                <ConsultationComplaintFields history={illnessHistory} symptoms={symptoms} onHistoryChange={setIllnessHistory} onSymptomsChange={setSymptoms} />
+                <div className="space-y-2">
+                  <label htmlFor="consultation-requested-time" className="block text-sm font-medium text-slate-700">Data și ora solicitată</label>
+                  <Input id="consultation-requested-time" type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} required className="rounded-xl" />
+                  <p className="text-xs text-slate-500">Medicul confirmă ora sau îți propune un alt interval. Consultația începe când medicul o deschide la ora stabilită.</p>
+                </div>
+                {effectiveKind === 'with_exam' && (selectedDoctor.investigation_requirements?.optional?.length ?? 0) > 0 && (
                   <div className="rounded-xl border border-slate-200 bg-white p-3">
                     <p className="mb-2 text-sm font-medium text-slate-700">Investigații opționale</p>
                     <div className="space-y-1">
@@ -458,12 +460,9 @@ export function DoctorsList() {
                   </div>
                 )}
 
-                {consultationKind === 'with_exam' ? (
+                {effectiveKind === 'with_exam' ? (
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
-                    {previewLoading && <p className="text-slate-500">Se calculează costul...</p>}
-                    {!previewLoading && preview && !preview.eligible && (
-                      <p className="font-medium text-amber-700">{preview.message}</p>
-                    )}
+                    {previewLoading && <p className="text-slate-500">Se verifică plata...</p>}
                     {!previewLoading && preview?.eligible && preview.cost && (
                       <div className="space-y-1.5">
                         {preview.operator?.name && (
@@ -484,14 +483,30 @@ export function DoctorsList() {
                   </div>
                 ) : (
                   <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm text-slate-600">
-                    Cost estimat: <strong>{selectedDoctor.video_price || 300} MDL</strong>
+                    Preț stabilit de medic: <strong>{selectedDoctor.video_price ?? 500} MDL / {selectedDoctor.video_duration_minutes ?? 10} min</strong>
                   </div>
                 )}
+                {!previewLoading && preview && !preview.eligible && <div className="space-y-2 rounded-xl bg-amber-50 p-3 text-sm"><p>{preview.message || 'Verifică datele solicitării înainte de confirmare.'}</p></div>}
+                {selectedDoctor.accepts_points && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
+                    <label className="flex items-center justify-between gap-4 font-medium text-amber-900">
+                      <span>Achită din portofelul de bonusuri (%)</span>
+                      <input aria-label="Procent din bonusurile obișnuite" type="number" min={0} max={preview?.payment?.max_points_percent ?? 100} value={pointsPercent} onChange={(event) => setPointsPercent(Math.min(preview?.payment?.max_points_percent ?? 100, Math.max(0, Number(event.target.value) || 0)))} className="w-20 rounded-lg border border-amber-300 bg-white px-2 py-1 text-right" />
+                    </label>
+                    <p className="mt-1 text-xs text-amber-700">Procentul final este limitat de setarea platformei și de soldul disponibil.</p>
+                  </div>
+                )}
+                {preview?.eligible && preview.payment && <div className="space-y-1.5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
+                  <p className="mb-2 font-semibold">Cum se achită consultația</p>
+                  <Row label="Din portofelul de bază" value={preview.payment.real_amount} />
+                  {preview.payment.points_amount > 0 && <Row label="Din bonusurile obișnuite" value={preview.payment.points_amount} />}
+                  {preview.payment.promo_amount > 0 && <><Row label="Bonus promoțional aplicat automat" value={preview.payment.promo_amount} /><p className="text-xs text-blue-800">Maximum 50% din tariful medicului eligibil. Examinările și deplasarea operatorului se achită separat.</p></>}
+                </div>}
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" className="rounded-xl" onClick={closeRequest}>Anulare</Button>
                 <Button
-                  disabled={isSubmitting || !patientProfileId || (consultationKind === 'with_exam' && (previewLoading || preview?.eligible === false))}
+                  disabled={isSubmitting || !effectiveKind || !patientProfileId || previewLoading || !preview?.eligible}
                   className="rounded-xl"
                 >
                   {isSubmitting ? 'Se trimite...' : 'Confirmă și achită'}

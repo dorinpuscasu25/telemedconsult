@@ -14,7 +14,7 @@ class MedicalRecordSchema
         $date = ['nullable', 'date_format:Y-m-d', 'before_or_equal:today'];
         $birth = [
             'birth_method' => ['nullable', Rule::in(['natural', 'cesarean', 'forceps', 'vacuum'])],
-            'gestational_weeks' => ['nullable', 'integer', 'min:24', 'max:42'],
+            'gestational_weeks' => ['nullable', 'integer', 'min:24', 'max:43'],
             'birth_weight' => ['nullable', 'numeric', 'min:1', 'max:10000'],
             'head_circumference' => ['nullable', 'numeric', 'min:1', 'max:100'],
             'apgar' => ['nullable', 'integer', 'min:1', 'max:10'],

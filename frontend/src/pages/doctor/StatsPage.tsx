@@ -1,3 +1,4 @@
+import { DoctorPerformanceCard, type DoctorPerformance } from '../../components/DoctorPerformanceCard';
 import React, { useEffect, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { CheckCircle2, Clock3, Star, TrendingUp, Users, Wallet } from 'lucide-react';
@@ -26,6 +27,7 @@ import { dateTime, money } from '../../lib/format';
 
 interface DoctorStats {
   summary: {
+    performance?: DoctorPerformance | null;
     current_month_revenue: number;
     previous_month_revenue: number;
     revenue_change_percent: number | null;
@@ -133,6 +135,7 @@ export function StatsPage() {
         />
       </div>
 
+      <DoctorPerformanceCard performance={summary?.performance} />
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="border-slate-200/70 bg-white shadow-sm">
           <CardHeader>

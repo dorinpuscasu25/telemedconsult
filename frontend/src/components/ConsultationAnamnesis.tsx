@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { apiRequest } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from './ui/button';
-import { Textarea } from './ui/textarea';
+import { ConsultationComplaintFields } from './ConsultationComplaintFields';
 
 type Context = { status: string; current_illness_history?: string; symptoms?: string; anamnesis_completed_at?: string };
 export function ConsultationAnamnesis({ requestId }: { requestId: string | number }) {
@@ -21,5 +21,5 @@ export function ConsultationAnamnesis({ requestId }: { requestId: string | numbe
     finally { setBusy(false); }
   };
   if (role !== 'patient' || !context || !['new', 'accepted'].includes(context.status)) return null;
-  return <details className="rounded-xl border bg-white p-3"><summary className="cursor-pointer text-sm font-medium">Istoricul bolii și acuzele pentru această consultație</summary><form onSubmit={save} className="mt-3 space-y-3 text-sm"><label className="block space-y-2"><span>Istoricul bolii actuale</span><Textarea value={history} onChange={(event) => setHistory(event.target.value)} maxLength={4000} placeholder="De când a apărut problema și cum a evoluat?" /></label><label className="block space-y-2"><span>Acuze / simptome</span><Textarea value={symptoms} onChange={(event) => setSymptoms(event.target.value)} maxLength={4000} required /></label><Button disabled={busy || !symptoms.trim()}>{busy ? 'Se salvează…' : 'Confirmă istoricul și acuzele'}</Button>{error && <p role="alert" className="text-red-600">{error}</p>}{message && <p role="status" className="text-green-700">{message}</p>}</form></details>;
+  return <details className="rounded-xl border bg-white p-3"><summary className="cursor-pointer text-sm font-medium">Istoricul bolii și acuzele pentru această consultație</summary><form onSubmit={save} className="mt-3 space-y-3 text-sm"><ConsultationComplaintFields history={history} symptoms={symptoms} onHistoryChange={setHistory} onSymptomsChange={setSymptoms} /><Button disabled={busy || !symptoms.trim()}>{busy ? 'Se salvează…' : 'Confirmă istoricul și acuzele'}</Button>{error && <p role="alert" className="text-red-600">{error}</p>}{message && <p role="status" className="text-green-700">{message}</p>}</form></details>;
 }

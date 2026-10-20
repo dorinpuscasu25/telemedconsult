@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { apiRequest } from '../lib/api';
 
 export type FeatureKey =
@@ -39,17 +39,23 @@ export function FeatureFlagsProvider({ children }: { children: ReactNode }) {
   const [features, setFeatures] = useState<FeatureMap>(defaultFeatures);
   const [isLoading, setIsLoading] = useState(true);
 
+  const latestRefresh = useRef(0);
   const refresh = useCallback(async () => {
+    const generation = ++latestRefresh.current;
     try {
       const response = await apiRequest<{ data: Partial<FeatureMap> }>('/catalog/features', { auth: false });
-      setFeatures((current) => ({ ...current, ...response.data }));
+      if (generation === latestRefresh.current) setFeatures((current) => ({ ...current, ...response.data }));
     } finally {
-      setIsLoading(false);
+      if (generation === latestRefresh.current) setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    refresh().catch(() => undefined);
+    const reload = () => { if (document.visibilityState === 'visible') void refresh().catch(() => undefined); };
+    reload();
+    window.addEventListener('focus', reload);
+    document.addEventListener('visibilitychange', reload);
+    return () => { window.removeEventListener('focus', reload); document.removeEventListener('visibilitychange', reload); };
   }, [refresh]);
 
   const value = useMemo<FeatureFlagsContextValue>(() => ({

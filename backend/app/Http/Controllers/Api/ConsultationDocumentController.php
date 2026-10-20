@@ -9,7 +9,6 @@ use App\Models\MedicalDocument;
 use App\Notifications\AppEventNotification;
 use App\Services\ConsultationPdf;
 use App\Services\MedicalDocumentPublisher;
-use App\Services\PlatformConfig;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,13 +24,13 @@ class ConsultationDocumentController extends Controller
         $consultation = Consultation::where('consultation_request_id', $consultationRequest->id)->first();
         $documents = $consultation ? MedicalDocument::where('consultation_id', $consultation->id)->orderBy('id')->get() : collect();
         $base = $documents->first(fn ($item) => $item->type === 'consultation_summary' && $item->published_at);
-        $deadline = $base?->published_at?->addDays((int) ($base->content_snapshot['addendum_days'] ?? app(PlatformConfig::class)->number('consultations.addendum_days', 14)));
+        $deadline = $base?->published_at?->copy()->addDays(MedicalDocumentPublisher::ADDENDUM_DAYS);
 
         return response()->json([
             'documents' => $documents->map(fn ($item) => self::serialize($item)),
             'can_addendum' => (bool) ($deadline && now()->lt($deadline) && (int) $consultationRequest->doctor_id === (int) $request->user()->id),
             'addendum_until' => $deadline,
-            'prescription_instructions' => app(PlatformConfig::class)->get('prescription.instructions'),
+            'prescription_instructions' => MedicalDocumentPublisher::PRESCRIPTION_INSTRUCTIONS,
         ])->header('Cache-Control', 'no-store');
     }
 
@@ -42,11 +41,11 @@ class ConsultationDocumentController extends Controller
         $document = DB::transaction(function () use ($consultationRequest, $validated) {
             $consultation = Consultation::where('consultation_request_id', $consultationRequest->id)->lockForUpdate()->firstOrFail();
             $base = MedicalDocument::where('consultation_id', $consultation->id)->where('type', 'consultation_summary')->whereNotNull('published_at')->firstOrFail();
-            abort_unless(now()->lt($base->published_at->addDays((int) ($base->content_snapshot['addendum_days'] ?? app(PlatformConfig::class)->number('consultations.addendum_days', 14)))), 422, 'Fereastra completărilor s-a încheiat. Creează o consultație nouă.');
+            abort_unless(now()->lt($base->published_at->copy()->addDays(MedicalDocumentPublisher::ADDENDUM_DAYS)), 422, 'Fereastra completărilor s-a încheiat. Creează o consultație nouă.');
 
             return app(MedicalDocumentPublisher::class)->publish($consultation, $validated, $base);
         });
-        $consultationRequest->patient?->notify(new AppEventNotification('Completare consultație', 'Medicul a publicat o completare. O poți consulta în fișa pacientului.', '/patient/profile?patient_profile='.$consultationRequest->patient_profile_id));
+        $consultationRequest->patient?->notify(new AppEventNotification('Completare consultație', 'Medicul a publicat o completare. O poți consulta în fișa pacientului.', '/patient/profile?patient_profile='.$consultationRequest->patient_profile_id.'&section=consultations&request='.$consultationRequest->id));
 
         return response()->json(['document' => self::serialize($document)], 201);
     }
@@ -55,14 +54,14 @@ class ConsultationDocumentController extends Controller
     {
         abort_unless($document->status === 'published' && $document->pdf_path && Storage::disk('local')->exists($document->pdf_path), 404);
 
-        return Storage::disk('local')->response($document->pdf_path, 'consultatie-'.$document->id.'.pdf', ['Content-Type' => 'application/pdf', 'Cache-Control' => 'private, no-store']);
+        return Storage::disk('local')->response($document->pdf_path, 'consultatie-'.$document->id.'.pdf', ['Content-Type' => 'application/pdf', 'Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']);
     }
 
     public function prescriptionFile(MedicalDocument $document): Response
     {
         abort_unless($document->prescription_path && Storage::disk('local')->exists($document->prescription_path), 404);
 
-        return Storage::disk('local')->response($document->prescription_path, 'reteta-'.$document->id.'.'.($document->prescription_mime === 'application/pdf' ? 'pdf' : ($document->prescription_mime === 'image/png' ? 'png' : 'jpg')), ['Content-Type' => $document->prescription_mime, 'Cache-Control' => 'private, no-store']);
+        return Storage::disk('local')->response($document->prescription_path, 'reteta-'.$document->id.'.'.($document->prescription_mime === 'application/pdf' ? 'pdf' : ($document->prescription_mime === 'image/png' ? 'png' : 'jpg')), ['Content-Type' => $document->prescription_mime, 'Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']);
     }
 
     public function preview(Request $request, ConsultationRequest $consultationRequest): Response
@@ -70,16 +69,20 @@ class ConsultationDocumentController extends Controller
         abort_unless($request->user()->hasRole('doctor') && (int) $request->user()->id === (int) $consultationRequest->doctor_id, 403);
         $content = $request->validate([
             'diagnosis' => ['required', 'string', 'max:4000'], 'treatment_plan' => ['nullable', 'string', 'max:4000'],
-            'recommendations' => ['nullable', 'string', 'max:4000'], 'prescription_notes' => ['nullable', 'string', 'max:4000'],
+            'recommendations' => ['nullable', 'string', 'max:4000'],
+            'investigation_recommendations' => ['nullable', 'string', 'max:4000'], 'prescription_notes' => ['nullable', 'string', 'max:4000'],
             'current_illness_history' => ['nullable', 'string', 'max:4000'], 'objective_exam' => ['nullable', 'string', 'max:4000'],
-            'higo_reviewed' => ['nullable', 'boolean'],
+            'higo_reviewed' => ['nullable', 'boolean'], 'has_prescription' => ['sometimes', 'boolean'],
         ]);
+        $hasPrescription = (bool) ($content['has_prescription'] ?? false);
+        unset($content['has_prescription']);
         $consultation = new Consultation([
             ...$content, 'patient_id' => $consultationRequest->patient_id, 'doctor_id' => $consultationRequest->doctor_id,
+            'current_illness_history' => $content['current_illness_history'] ?? $consultationRequest->current_illness_history,
             'patient_profile_id' => $consultationRequest->patient_profile_id, 'patient_complaints' => $consultationRequest->symptoms,
             'objective_data_snapshot' => $consultationRequest->objectiveData()->pluck('payload')->all(),
         ]);
-        $snapshot = app(MedicalDocumentPublisher::class)->snapshot($consultation);
+        $snapshot = app(MedicalDocumentPublisher::class)->snapshot($consultation, ['has_prescription' => $hasPrescription]);
         $snapshot['consultation_id'] = $consultationRequest->id;
         $snapshot['document_id'] = 'PREVIZUALIZARE';
 
@@ -92,6 +95,7 @@ class ConsultationDocumentController extends Controller
             'id' => $item->id, 'title' => $item->title, 'type' => $item->type, 'status' => $item->status,
             'parent_document_id' => $item->parent_document_id, 'published_at' => $item->published_at,
             'url' => $item->status === 'published' && $item->pdf_path ? URL::temporarySignedRoute('medical-document.file', now()->addMinutes(15), ['document' => $item->id]) : null,
+            'prescription_instructions' => $item->content_snapshot['prescription_instructions'] ?? MedicalDocumentPublisher::PRESCRIPTION_INSTRUCTIONS,
             'prescription_url' => $item->prescription_path ? URL::temporarySignedRoute('medical-document.prescription', now()->addMinutes(15), ['document' => $item->id]) : null,
         ];
     }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { DisconnectButton, GridLayout, LiveKitRoom, MediaDeviceSelect, ParticipantTile, PreJoin, RoomAudioRenderer, StartAudio, useConnectionState, useParticipants, useTracks, useTrackToggle, type LocalUserChoices } from '@livekit/components-react';
 import { ConnectionState, Track } from 'livekit-client';
-import { Camera, CameraOff, Mic, MicOff, MonitorUp, MessageSquare, Settings2 } from 'lucide-react';
+import { Phone, Camera, CameraOff, Mic, MicOff, MonitorUp, MessageSquare, Settings2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { ConsultationCallChat } from './ConsultationCallChat';
 import type { VideoConnection, VideoContext, VideoParticipant } from '../lib/consultation-video';
@@ -28,7 +28,7 @@ function CallRoom({ onDeviceError, context }: { onDeviceError: () => void; conte
   return <div className="video-room">
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-3 text-sm">
       <span className={`inline-flex items-center gap-2 font-medium ${connected ? 'text-emerald-700' : 'text-amber-700'}`}><span className={`h-2 w-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-amber-500'}`} /> {stateLabel} · {participants.length} {participants.length === 1 ? 'participant' : 'participanți'}</span>
-      {connected && participants.length < 2 && <span className="text-slate-500">Așteptăm celălalt participant...</span>}
+      {connected && participants.length < 2 && <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-emerald-700"><Phone size={16} className="motion-safe:animate-pulse" />Ești în apel. Așteptăm celălalt participant.</span>}
     </div>
     <div className={`video-stage ${chatOpen ? 'video-stage-with-chat' : ''}`}>
       <GridLayout tracks={tracks}><ParticipantTile /></GridLayout>
@@ -65,10 +65,10 @@ export default function VideoCallPanel({ connection, joining, onJoin, onDisconne
     onDisconnected={onDisconnected} onError={onConnectionError} onMediaDeviceFailure={onDeviceError}>
     <CallRoom onDeviceError={onDeviceError} context={context} />
   </LiveKitRoom> : <div data-lk-theme="default" className="telemed-video video-prejoin" aria-busy={joining} style={{ pointerEvents: joining ? 'none' : undefined }}>
-    <div className="mx-auto mb-6 max-w-lg text-center"><h2 className="text-xl font-semibold text-slate-900">Pregătește-te pentru consultație</h2><p className="mt-2 text-sm text-slate-500">Verifică imaginea și sunetul. Poți intra și cu camera sau microfonul oprite.</p></div>
+    <div className="mx-auto mb-6 max-w-lg text-center"><h2 className="text-xl font-semibold text-slate-900">Pregătește-te pentru consultație</h2><p className="mt-2 text-sm text-slate-500">Apasă „Intră în apel și sună”. Camera și microfonul sunt oprite inițial; le poți porni când dorești.</p></div>
     <div className="video-identity"><span className="text-xs font-medium uppercase tracking-wide text-primary">{participant.role_label}</span><p className="mt-1 text-lg font-semibold text-slate-900">{participant.name}</p><p className="mt-1 text-xs text-slate-500">Vei apărea cu acest nume în apel.</p></div>
-    <PreJoin defaults={{ username: participant.name, audioEnabled: !rejoining, videoEnabled: !rejoining }} persistUserChoices={false}
-      joinLabel={joining ? 'Se conectează...' : 'Intră în apel'} micLabel="Microfon" camLabel="Cameră" userLabel="Nume afișat local"
+    <PreJoin defaults={{ username: participant.name, audioEnabled: false, videoEnabled: false }} persistUserChoices={false}
+      joinLabel={joining ? 'Se conectează...' : rejoining ? 'Revino în apel' : 'Intră în apel și sună'} micLabel="Microfon" camLabel="Cameră" userLabel="Nume afișat local"
       onSubmit={(choices) => onJoin({ ...choices, username: participant.name })} onError={onDeviceError} />
   </div>;
 }

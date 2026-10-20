@@ -80,7 +80,7 @@ class PatientCardsAndConsultationFlowTest extends TestCase
 
         $this->postJson('/api/v1/requests', $this->requestPayload($profile))
             ->assertUnprocessable()
-            ->assertJsonPath('message', 'Profilul de pacient este incomplet. Completează numele și IDNP-ul înainte de consultație.');
+            ->assertJsonPath('message', 'Profilul de pacient este incomplet. Completează numele și prenumele înainte de consultație.');
     }
 
     public function test_request_creation_links_to_selected_patient_profile(): void
@@ -101,6 +101,28 @@ class PatientCardsAndConsultationFlowTest extends TestCase
                 ->where('patient_profile_id', $profile->id)
                 ->exists(),
         );
+    }
+
+    public function test_request_keeps_illness_history_complaints_and_operator_logistics_separate(): void
+    {
+        $patient = $this->userWithRole('patient');
+        $profile = $this->activeProfile($patient);
+        $this->seedEligibleOperator($profile->region_id);
+        Wallet::create(['user_id' => $patient->id, 'balance_minor' => 100000, 'currency' => 'MDL']);
+        Sanctum::actingAs($patient);
+
+        $this->postJson('/api/v1/requests', [
+            ...$this->requestPayload($profile),
+            'symptoms' => 'Simptome descrise de titular.',
+            'current_illness_history' => 'Problema a început cu trei zile în urmă.',
+            'triage_notes' => 'Etajul 2, cod de acces 123.',
+        ])->assertCreated()
+            ->assertJsonPath('request.symptoms', 'Simptome descrise de titular.')
+            ->assertJsonPath('request.current_illness_history', 'Problema a început cu trei zile în urmă.');
+
+        $saved = ConsultationRequest::where('patient_profile_id', $profile->id)->firstOrFail();
+        $this->assertSame('Etajul 2, cod de acces 123.', $saved->triage_notes);
+        $this->assertStringNotContainsString('cod de acces', $saved->symptoms);
     }
 
     public function test_card_purchase_debits_wallet_and_profile_creation_consumes_slots(): void
@@ -269,7 +291,6 @@ class PatientCardsAndConsultationFlowTest extends TestCase
             'user_id' => $user->id,
             'first_name' => 'Ion',
             'last_name' => 'Popescu',
-            'identity_number' => '2000000000000',
             'birth_date' => '1990-01-01',
             'gender' => 'M',
             'country' => 'Republica Moldova',
@@ -328,7 +349,6 @@ class PatientCardsAndConsultationFlowTest extends TestCase
         return [
             'first_name' => $firstName,
             'last_name' => 'Popescu',
-            'identity_number' => fake()->unique()->numerify('2############'),
             'birth_date' => '1990-01-01',
             'gender' => 'F',
             'country' => 'Republica Moldova',

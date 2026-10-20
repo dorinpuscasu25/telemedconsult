@@ -122,7 +122,6 @@ const emptyPatient = {
   last_name: '',
   birth_date: '',
   gender: '',
-  identity_number: '',
   residential_environment: '',
   country: 'Republica Moldova',
   region_id: '',
@@ -528,7 +527,7 @@ export function ProfilePage() {
             </CardHeader>
             <CardContent className="space-y-6">
               {!selectedProfile && <p className="text-sm text-slate-500">Selectează un profil.</p>}
-              {selectedProfile && <PatientMedicalRecord key={selectedProfile.id} profile={selectedProfile} regions={regionsCatalog} onSaved={loadProfile} onDirtyChange={setMedicalDirty} />}
+              {selectedProfile && <PatientMedicalRecord key={selectedProfile.id} profile={selectedProfile} initialSection={searchParams.get('section')} requestedConsultationId={searchParams.get('request')} regions={regionsCatalog} onSaved={loadProfile} onDirtyChange={setMedicalDirty} />}
             </CardContent>
           </Card>
         </TabsContent>
@@ -765,7 +764,6 @@ export function ProfilePage() {
               <Field label="Prenume"><Input value={patientForm.first_name} onChange={(event) => setPatientForm({ ...patientForm, first_name: event.target.value })} required className="rounded-xl" /></Field>
               <Field label="Nume"><Input value={patientForm.last_name} onChange={(event) => setPatientForm({ ...patientForm, last_name: event.target.value })} required className="rounded-xl" /></Field>
               <Field label="Data nașterii"><Input type="date" value={patientForm.birth_date} onChange={(event) => setPatientForm({ ...patientForm, birth_date: event.target.value })} className="rounded-xl" /></Field>
-              <Field label="IDNP (opțional)"><Input inputMode="numeric" pattern="[0-9]{13}" maxLength={13} value={patientForm.identity_number} onChange={(event) => setPatientForm({ ...patientForm, identity_number: event.target.value })} placeholder="13 cifre" /></Field>
               <Field label="Sex"><select className="h-11 w-full rounded-xl border bg-white px-3" value={patientForm.gender} onChange={(event) => setPatientForm({ ...patientForm, gender: event.target.value })}><option value="">Necompletat</option><option value="M">Masculin</option><option value="F">Feminin</option></select></Field>
               <Field label="Mediul de trai"><select className="h-11 w-full rounded-xl border bg-white px-3" value={patientForm.residential_environment} onChange={(event) => setPatientForm({ ...patientForm, residential_environment: event.target.value })}><option value="">Necompletat</option><option value="rural">Rural</option><option value="urban">Urban</option></select></Field>
               <p className="flex items-end rounded-xl bg-slate-50 p-3 text-sm">Vârsta: {patientAge(patientForm.birth_date)}</p>
@@ -798,7 +796,7 @@ export function ProfilePage() {
               </Field>
               <Field label="Adresă (stradă și număr)"><Input value={patientForm.address} onChange={(event) => setPatientForm({ ...patientForm, address: event.target.value })} required className="rounded-xl" /></Field>
               <div className="md:col-span-2">
-                <Field label="Sumar medical"><Textarea value={patientForm.medical_summary} onChange={(event) => setPatientForm({ ...patientForm, medical_summary: event.target.value })} className="rounded-xl" /></Field>
+                <Field label="Istoricul vieții"><Textarea placeholder="Naștere și dezvoltare, boli anterioare, accidente, operații și antecedente familiale. Detaliile se completează în compartimentele fișei." value={patientForm.medical_summary} onChange={(event) => setPatientForm({ ...patientForm, medical_summary: event.target.value })} className="rounded-xl" /></Field>
               </div>
             </div>
             <DialogFooter>

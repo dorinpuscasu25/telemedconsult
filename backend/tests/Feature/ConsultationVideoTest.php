@@ -9,6 +9,8 @@ use App\Models\DoctorProfile;
 use App\Models\PatientProfile;
 use App\Models\Role;
 use App\Models\User;
+use App\Models\VideoCallInvitation;
+use App\Notifications\AppEventNotification;
 use App\Services\FeatureFlags;
 use App\Services\LiveKitService;
 use App\Services\PlatformConfig;
@@ -16,6 +18,7 @@ use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -32,6 +35,48 @@ class ConsultationVideoTest extends TestCase
         config(['services.livekit.url' => 'wss://test.livekit.cloud', 'services.livekit.api_key' => 'test-key', 'services.livekit.api_secret' => self::SECRET]);
         Queue::fake();
         Http::preventStrayRequests();
+    }
+
+    public function test_patient_and_doctor_can_invite_each_other_without_automatically_starting_video(): void
+    {
+        [$patient, $doctor, $consultation] = $this->scenario();
+        $consultation->update(['doctor_started_at' => null]);
+        Notification::fake();
+        Sanctum::actingAs($patient);
+        $this->postJson('/api/v1/requests/'.$consultation->id.'/video/invite')->assertOk();
+        Notification::assertSentTo($doctor, AppEventNotification::class, function ($notification) use ($doctor, $consultation) {
+            return $notification->toArray($doctor)['url'] === '/consultations/'.$consultation->id.'/video';
+        });
+        $this->assertNull($consultation->refresh()->doctor_started_at);
+        $this->getJson($this->endpoint($consultation, false))->assertOk()->assertJsonPath('available', false);
+        Sanctum::actingAs($doctor);
+        $call = VideoCallInvitation::latest('id')->firstOrFail();
+        $this->postJson('/api/v1/video-calls/'.$call->id.'/respond', ['action' => 'decline'])->assertOk();
+        $this->postJson('/api/v1/requests/'.$consultation->id.'/video/invite')->assertOk();
+        Notification::assertSentTo($patient, AppEventNotification::class);
+        $consultation->update(['status' => 'completed']);
+        $this->postJson('/api/v1/requests/'.$consultation->id.'/video/invite')->assertUnprocessable();
+        Sanctum::actingAs($this->userWithRole('patient'));
+        $this->postJson('/api/v1/requests/'.$consultation->id.'/video/invite')->assertForbidden();
+    }
+
+    public function test_loopback_video_server_is_allowed_only_in_local_environment(): void
+    {
+        $originalEnvironment = app()->environment();
+        try {
+            app()->instance('env', 'local');
+            config(['services.livekit.url' => 'ws://localhost:7880']);
+            $this->assertTrue(app(LiveKitService::class)->configured());
+            config(['services.livekit.url' => 'ws://untrusted.example']);
+            $this->assertFalse(app(LiveKitService::class)->configured());
+            app()->instance('env', 'production');
+            config(['services.livekit.url' => 'ws://localhost:7880']);
+            $this->assertFalse(app(LiveKitService::class)->configured());
+            config(['services.livekit.url' => 'wss://test.livekit.cloud']);
+            $this->assertTrue(app(LiveKitService::class)->configured());
+        } finally {
+            app()->instance('env', $originalEnvironment);
+        }
     }
 
     public function test_participants_receive_signed_tokens_for_same_room(): void
@@ -75,7 +120,11 @@ class ConsultationVideoTest extends TestCase
             $this->getJson($this->endpoint($consultation, false))->assertOk()
                 ->assertJsonPath('participant.name', $name)->assertJsonPath('participant.role', $role)
                 ->assertJsonPath('consultation.participants.0.name', 'Ana Exemplu')
-                ->assertJsonMissingPath('consultation.patient_profile')->assertJsonMissingPath('consultation.participants.0.email');
+                ->assertJsonPath('consultation.patient_profile.id', $consultation->patient_profile_id)
+                ->assertJsonPath('consultation.patient_profile.display_name', 'Ana Exemplu')
+                ->assertJsonPath('consultation.patient_profile.patient_code', $consultation->patientProfile->patient_code)
+                ->assertJsonMissingPath('consultation.patient_profile.medical_record')
+                ->assertJsonMissingPath('consultation.participants.0.email');
             $response = $this->postJson($this->endpoint($consultation), ['username' => 'Nume fals', 'role' => 'admin'])->assertOk()->assertJsonPath('participant.name', $name);
             $claims = JWT::decode($response->json('participant_token'), new Key(self::SECRET, 'HS256'));
             $this->assertSame($name, $claims->name);
@@ -138,6 +187,21 @@ class ConsultationVideoTest extends TestCase
         $this->postJson($this->endpoint($consultation))->assertUnprocessable();
     }
 
+    public function test_patient_waits_until_doctor_starts_at_confirmed_time(): void
+    {
+        [$patient, $doctor, $consultation] = $this->scenario();
+        $consultation->update(['doctor_started_at' => null, 'scheduled_at' => now()->addHour()]);
+        Sanctum::actingAs($patient);
+        $this->getJson($this->endpoint($consultation, false))->assertOk()->assertJsonPath('available', false);
+        $this->postJson($this->endpoint($consultation))->assertUnprocessable();
+        $this->travelTo($consultation->scheduled_at);
+        $this->postJson($this->endpoint($consultation))->assertUnprocessable();
+        Sanctum::actingAs($doctor);
+        $this->postJson('/api/v1/requests/'.$consultation->id.'/start')->assertOk();
+        Sanctum::actingAs($patient);
+        $this->postJson($this->endpoint($consultation))->assertOk();
+    }
+
     public function test_missing_configuration_is_reported_without_credentials(): void
     {
         [$patient, , $consultation] = $this->scenario();
@@ -171,7 +235,7 @@ class ConsultationVideoTest extends TestCase
     public function test_only_selected_doctor_can_accept_direct_consultation(): void
     {
         [$patient, $doctor, $consultation] = $this->scenario();
-        $consultation->forceFill(['status' => 'new', 'acceptance_expires_at' => now()->addMinutes(15)])->save();
+        $consultation->forceFill(['status' => 'new', 'doctor_started_at' => null, 'acceptance_expires_at' => now()->addMinutes(15)])->save();
         foreach (['doctor', 'operator'] as $role) {
             Sanctum::actingAs($this->userWithRole($role));
             $this->postJson('/api/v1/requests/'.$consultation->id.'/accept')->assertForbidden();
@@ -179,6 +243,7 @@ class ConsultationVideoTest extends TestCase
         $this->assertSame($doctor->id, $consultation->refresh()->doctor_id);
         Sanctum::actingAs($doctor);
         $this->postJson('/api/v1/requests/'.$consultation->id.'/accept')->assertOk();
+        $this->postJson('/api/v1/requests/'.$consultation->id.'/start')->assertOk();
         Sanctum::actingAs($patient);
         $this->postJson($this->endpoint($consultation))->assertOk();
     }
@@ -266,7 +331,7 @@ class ConsultationVideoTest extends TestCase
         $profile = PatientProfile::create(['user_id' => $patient->id, 'first_name' => 'A', 'last_name' => 'B', 'identity_number' => '2', 'status' => 'active']);
         $consultation = ConsultationRequest::create([
             'patient_id' => $patient->id, 'patient_profile_id' => $profile->id, 'doctor_id' => $doctor->id,
-            'type' => 'video', 'consultation_kind' => 'video', 'status' => 'accepted', 'symptoms' => 'Test',
+            'type' => 'video', 'consultation_kind' => 'video', 'status' => 'accepted', 'symptoms' => 'Test', 'doctor_started_at' => now(),
         ]);
 
         return [$patient, $doctor, $consultation];

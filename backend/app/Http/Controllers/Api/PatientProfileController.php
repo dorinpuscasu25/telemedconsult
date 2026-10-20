@@ -378,7 +378,7 @@ class PatientProfileController extends Controller
             'emergency_contact' => ['nullable', 'string', 'max:255'],
             'medical_summary' => ['nullable', 'string', 'max:4000'],
             'pseudonymized' => ['sometimes', 'boolean'],
-            'identity_number' => ['nullable', 'regex:/^[0-9]{13}$/'],
+            'identity_number' => ['prohibited'],
             'residential_environment' => ['nullable', Rule::in(['rural', 'urban'])],
             'address_details' => ['nullable', 'array:building,entrance,apartment,floor'],
             'address_details.building' => ['nullable', 'string', 'max:50'],

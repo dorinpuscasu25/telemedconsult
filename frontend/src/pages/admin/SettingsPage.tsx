@@ -29,11 +29,13 @@ const defaultSettings: SettingsMap = {
   'rate.bank_transaction': 3.2,
   'rate.affiliate_doctor_topup': 5,
   'rate.affiliate_operator': 6,
-  'rate.affiliate_patient_topup': 10,
+  'rate.affiliate_patient_topup': 3,
   'affiliate.patient_topup_min_amount': 0,
   'affiliate.patient_topup_first_only': false,
   'affiliate.patient_registration_rules': 'Invită o persoană folosind linkul tău personal. Când persoana invitată alimentează portofelul, primești automat procentul afișat mai sus din suma alimentată, direct în portofelul tău. Comisionul se acordă doar pentru plăți confirmate, nu la simpla înregistrare. Conturile proprii, duplicate sau frauduloase nu sunt eligibile. Comisionul este credit de platformă și poate fi folosit pentru serviciile disponibile pe telemedconsult.md.',
   'wallet.topup_bonus_percent': 0,
+  'wallet.first_topup_promo_enabled': false,
+  'wallet.first_topup_promo_doctor_ids': [],
   'consultations.addendum_days': 14,
   'wallet.registration_bonus_enabled': false,
   'wallet.registration_bonus': 0,
@@ -44,8 +46,8 @@ const defaultSettings: SettingsMap = {
   'chat.reactivation_price': 50,
   'chat.reactivation_hours': 24,
   'chat.total_days': 14,
-  'video.default_price': 300,
-  'video.default_duration_minutes': 15,
+  'video.default_price': 500,
+  'video.default_duration_minutes': 10,
   'payout.request_day_start': 1,
   'payout.request_day_end': 10,
   post_consultation_window_hours: 72,
@@ -119,6 +121,7 @@ function settingLabel(key: string): string {
 export function SettingsPage() {
   const [settings, setSettings] = useState<SettingsMap>(defaultSettings);
   const [topDoctors, setTopDoctors] = useState<TopDoctor[]>([]);
+  const [promoDoctors, setPromoDoctors] = useState<Array<{ id: string; name: string }>>([]);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -131,13 +134,16 @@ export function SettingsPage() {
     apiRequest<{data: TopDoctor[]}>('/admin/top-doctors')
       .then((response) => setTopDoctors(response.data ?? []))
       .catch(() => setTopDoctors([]));
+    apiRequest<{ data: Array<{ id: string; name: string }> }>('/catalog/doctors')
+      .then((response) => setPromoDoctors(response.data))
+      .catch(() => setPromoDoctors([]));
   };
 
   useEffect(() => {
     loadAll();
   }, []);
 
-  const update = (key: string, value: string | number | boolean) => {
+  const update = (key: string, value: string | number | boolean | unknown[]) => {
     setSettings((current) => ({ ...current, [key]: value }));
   };
 
@@ -149,7 +155,7 @@ export function SettingsPage() {
       await apiRequest('/admin/settings', {
         method: 'PUT',
         body: JSON.stringify({
-          settings: Object.entries(settings).map(([key, value]) => ({
+          settings: Object.entries({ ...settings, 'consultations.addendum_days': 14 }).map(([key, value]) => ({
             key,
             value,
             // Setările structurate (de ex. regulile de mapare HIGO, editate din
@@ -207,8 +213,24 @@ export function SettingsPage() {
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
             {commissionSettingKeys.map((key) => (
-              <NumberField key={key} label={settingLabel(key)} value={Number(settings[key])} onChange={(value) => update(key, value)} />
+              <NumberField key={key} disabled={key === 'consultations.addendum_days'} label={settingLabel(key)} value={key === 'consultations.addendum_days' ? 14 : Number(settings[key])} onChange={(value) => update(key, value)} />
             ))}
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card border-0 lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Promoție la prima alimentare: 500 + 500 MDL</CardTitle>
+            <CardDescription>Prima alimentare confirmată de minimum 500 MDL aduce o singură dată 500 MDL bonus promoțional. Bonusul se folosește automat pentru maximum 50% din consultația medicului eligibil.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <label className="flex items-center justify-between gap-4 rounded-xl border bg-white/50 p-4"><span className="text-sm font-medium">Activează promoția pentru alimentările viitoare</span><Switch checked={Boolean(settings['wallet.first_topup_promo_enabled'])} onCheckedChange={(value) => update('wallet.first_topup_promo_enabled', value)} /></label>
+            <div className="space-y-2"><p className="text-sm font-medium">Medic eligibil</p><p className="text-xs text-slate-500">Selectează medicul care oferă promoția. Modificările se aplică bonusurilor acordate ulterior; bonusurile deja primite își păstrează condițiile.</p>
+              {promoDoctors.map((doctor) => <label key={doctor.id} className="flex items-center gap-2 rounded-xl border p-3 text-sm"><input type="checkbox" checked={(Array.isArray(settings['wallet.first_topup_promo_doctor_ids']) ? settings['wallet.first_topup_promo_doctor_ids'] : []).map(Number).includes(Number(doctor.id))} onChange={(event) => { const ids = (Array.isArray(settings['wallet.first_topup_promo_doctor_ids']) ? settings['wallet.first_topup_promo_doctor_ids'] : []).map(Number); update('wallet.first_topup_promo_doctor_ids', event.target.checked ? [...ids, Number(doctor.id)] : ids.filter((id) => id !== Number(doctor.id))); }} />{doctor.name}</label>)}
+              {!promoDoctors.length && <p className="text-sm text-amber-700">Nu sunt medici aprobați disponibili pentru selectare.</p>}
+            </div>
+            <div className="rounded-xl bg-blue-50 p-4 text-sm text-blue-900">Exemplu: depui 500 MDL și primești separat 500 MDL bonus promoțional. La o consultație eligibilă de 500 MDL se folosesc automat 250 MDL din banii depuși și 250 MDL din bonus. După două asemenea consultații, ai consumat 500 MDL din fiecare sold.</div>
+            <p className="text-xs text-slate-500">Bonusul promoțional nu achită deplasarea operatorului sau examinările suplimentare. Nu se acordă retroactiv conturilor care au avut deja o alimentare confirmată.</p>
           </CardContent>
         </Card>
 
@@ -252,6 +274,9 @@ export function SettingsPage() {
           </CardHeader>
           <CardContent className="grid gap-5 lg:grid-cols-[280px_1fr]">
             <div className="space-y-4">
+              <p className="text-sm font-medium">Regulă rapidă de afiliere</p>
+              <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => setSettings((current) => ({ ...current, 'rate.affiliate_patient_topup': 3, 'affiliate.patient_topup_first_only': false }))}>3% la fiecare alimentare</Button><Button type="button" variant="outline" onClick={() => setSettings((current) => ({ ...current, 'rate.affiliate_patient_topup': 10, 'affiliate.patient_topup_first_only': true }))}>10% o singură dată</Button></div>
+              <p className="text-xs text-slate-500">Exemplu la 3%: 1.000 MDL → 30 MDL bonus pentru invitator; 500 MDL → 15 MDL. Alegerea se aplică după salvare.</p>
               <NumberField
                 label={settingLabel('rate.affiliate_patient_topup')}
                 value={Number(settings['rate.affiliate_patient_topup'])}
@@ -294,7 +319,7 @@ export function SettingsPage() {
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
             {workflowSettingKeys.map((key) => (
-              <NumberField key={key} label={settingLabel(key)} value={Number(settings[key])} onChange={(value) => update(key, value)} />
+              <NumberField key={key} disabled={key === 'consultations.addendum_days'} label={settingLabel(key)} value={key === 'consultations.addendum_days' ? 14 : Number(settings[key])} onChange={(value) => update(key, value)} />
             ))}
           </CardContent>
         </Card>
@@ -352,11 +377,11 @@ function TextField({ label, value, onChange }: { label: string; value: string; o
   );
 }
 
-function NumberField({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
+function NumberField({ label, value, onChange, disabled = false }: { label: string; value: number; onChange: (value: number) => void; disabled?: boolean }) {
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
-      <Input type="number" value={Number.isFinite(value) ? value : 0} onChange={(event) => onChange(Number(event.target.value))} className="rounded-xl bg-white/50" />
+      <Input type="number" disabled={disabled} value={Number.isFinite(value) ? value : 0} onChange={(event) => onChange(Number(event.target.value))} className="rounded-xl bg-white/50" />
     </div>
   );
 }

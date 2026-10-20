@@ -1,3 +1,4 @@
+import { VALIDATION_EVENT, VALIDATION_CLEAR_EVENT, type FieldErrors } from './validation';
 import { runtimeEnv } from './runtime-env';
 
 const API_BASE_URL = runtimeEnv.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE_URL || '/api/v1';
@@ -9,6 +10,7 @@ export type ApiError = Error & {
   status?: number;
   data?: unknown;
   raw?: string;
+  errors?: FieldErrors;
 };
 
 export function getToken() {
@@ -33,6 +35,8 @@ export async function apiRequest<T>(
   path: string,
   options: RequestInit & { auth?: boolean } = {}
 ): Promise<T> {
+  const requestPage = window.location.pathname + window.location.search;
+  const scope = document.activeElement?.closest<HTMLElement>('form, [role="dialog"], [data-validation-scope]') || null;
   const token = getToken();
   const headers = new Headers(options.headers);
   headers.set('Accept', 'application/json');
@@ -88,12 +92,19 @@ export async function apiRequest<T>(
 
   if (!response.ok) {
     const payload = data as { message?: string; errors?: Record<string, string[]> } | null;
-    const firstValidationError = Object.values(payload?.errors ?? {}).flat()[0];
+    const errors: FieldErrors = Object.fromEntries(Object.entries(payload?.errors || {}).map(([key, values]) => [key, (Array.isArray(values) ? values : [values]).map((value) => typeof value === 'string' && !value.includes('validation.') ? value : 'Verifică valoarea completată.') ]));
+    if (response.status === 422 && Object.keys(errors).length) {
+      window.dispatchEvent(new CustomEvent(VALIDATION_EVENT, { detail: { errors, scope, path: requestPage } }));
+      throw buildError('Verifică datele completate și corectează câmpurile indicate.', { status: 422, data, errors });
+    }
+    const firstValidationError = Object.values(errors).flat()[0];
     const message = firstValidationError || payload?.message || 'A apărut o eroare. Încercați din nou.';
 
-    throw buildError(String(message), { status: response.status, data });
+    const readable = response.status >= 500 ? 'Serviciul este temporar indisponibil. Încearcă din nou în câteva momente.' : response.status === 429 ? 'Ai făcut prea multe încercări. Așteaptă puțin și încearcă din nou.' : String(message).includes('validation.') ? 'Verifică datele completate și încearcă din nou.' : String(message);
+    throw buildError(readable, { status: response.status, data, errors });
   }
 
+  if (options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase())) window.dispatchEvent(new CustomEvent(VALIDATION_CLEAR_EVENT, { detail: { scope } }));
   return data as T;
 }
 

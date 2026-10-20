@@ -17,12 +17,14 @@ use App\Models\User;
 use App\Models\WithdrawalRequest;
 use App\Notifications\AppEventNotification;
 use App\Rules\ValidPhoneNumber;
+use App\Services\DoctorPerformance;
 use App\Services\PlatformConfig;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -65,7 +67,7 @@ class DoctorOperationsController extends Controller
         $pendingRequests = ConsultationRequest::query()
             ->with(['patient', 'patientProfile', 'specialty'])
             ->whereIn('type', ['doctor', 'video'])
-            ->where('status', 'new')
+            ->whereIn('status', ['new', 'rescheduled'])
             ->where(function ($query) use ($doctor) {
                 $query->whereNull('doctor_id')->orWhere('doctor_id', $doctor->id);
             })
@@ -84,6 +86,7 @@ class DoctorOperationsController extends Controller
                 'rating' => (float) ($doctor->doctorProfile?->rating ?? 0),
                 'reviews_count' => (int) ($doctor->doctorProfile?->reviews_count ?? 0),
                 'average_response_minutes' => $averageResponseMinutes !== null ? (int) round($averageResponseMinutes) : null,
+                'performance' => $doctor->doctorProfile ? app(DoctorPerformance::class)->forDoctor($doctor->doctorProfile) : null,
             ],
             'pending_requests' => $pendingRequests->map(fn (ConsultationRequest $item) => [
                 'id' => (string) $item->id,
@@ -156,8 +159,18 @@ class DoctorOperationsController extends Controller
             'optional_investigation_ids' => ['nullable', 'array'],
             'optional_investigation_ids.*' => ['integer', Rule::exists('investigation_types', 'id')],
             'platforms' => ['nullable', 'array'],
-            'platforms.*.name' => ['required_with:platforms', 'string', 'max:100'],
-            'platforms.*.value' => ['required_with:platforms', 'string', 'max:255'],
+            'platforms.*' => [function (string $attribute, mixed $value, \Closure $fail): void {
+                if (is_string($value) && in_array($value, ['Video', 'Chat'], true)) {
+                    return;
+                }
+                if (! is_array($value) || Validator::make(['contact' => $value], [
+                    'contact' => ['array:name,value'],
+                    'contact.name' => ['required', 'string', 'max:100'],
+                    'contact.value' => ['required', 'string', 'max:255'],
+                ])->fails()) {
+                    $fail('Completează denumirea și datele de contact ale platformei video.');
+                }
+            }],
             'is_available' => ['nullable', 'boolean'],
         ]);
 
@@ -178,7 +191,7 @@ class DoctorOperationsController extends Controller
                 'experience_years' => $validated['experience_years'] ?? 0,
                 'consultation_price' => $validated['consultation_price'] ?? 0,
                 'video_price' => $validated['video_price'] ?? null,
-                'video_duration_minutes' => $validated['video_duration_minutes'] ?? (int) app(PlatformConfig::class)->number('video.default_duration_minutes', 15),
+                'video_duration_minutes' => $validated['video_duration_minutes'] ?? (int) app(PlatformConfig::class)->number('video.default_duration_minutes', 10),
                 'google_meet_account' => $validated['google_meet_account'] ?? null,
                 'platforms' => $validated['platforms'] ?? [],
                 'service_catalog' => $validated['service_catalog'] ?? [],
@@ -228,6 +241,38 @@ class DoctorOperationsController extends Controller
         abort_unless($profile?->signature_path, 404);
 
         return Storage::disk('local')->response($profile->signature_path, 'parafa', ['Content-Type' => $profile->signature_mime, 'Cache-Control' => 'no-store']);
+    }
+
+    public function uploadClinicLogo(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->hasRole('doctor'), 403);
+        $request->validate(['logo' => ['required', 'image', 'mimes:jpg,jpeg,png', 'mimetypes:image/jpeg,image/png', 'max:2048', 'dimensions:max_width=3000,max_height=3000']]);
+        $profile = $request->user()->doctorProfile;
+        abort_unless($profile, 422, 'Salvează mai întâi profilul medicului.');
+        $file = $request->file('logo');
+        $path = $file->store('clinic-logos', 'local');
+        abort_unless(is_string($path) && $path !== '', 503, 'Sigla nu a putut fi salvată. Reîncearcă încărcarea.');
+        $old = $profile->clinic_logo_path;
+        try {
+            $profile->forceFill(['clinic_logo_path' => $path, 'clinic_logo_mime' => $file->getMimeType()])->save();
+        } catch (\Throwable $exception) {
+            Storage::disk('local')->delete($path);
+            throw $exception;
+        }
+        if ($old) {
+            Storage::disk('local')->delete($old);
+        }
+
+        return response()->json(['message' => 'Sigla clinicii a fost salvată.']);
+    }
+
+    public function clinicLogo(Request $request): Response
+    {
+        abort_unless($request->user()->hasRole('doctor'), 403);
+        $profile = $request->user()->doctorProfile;
+        abort_unless($profile?->clinic_logo_path && Storage::disk('local')->exists($profile->clinic_logo_path), 404);
+
+        return Storage::disk('local')->response($profile->clinic_logo_path, 'sigla-clinicii', ['Content-Type' => $profile->clinic_logo_mime, 'Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']);
     }
 
     private function syncDoctorInvestigations(int $doctorId, DoctorProfile $profile, array $validated): void
@@ -339,6 +384,7 @@ class DoctorOperationsController extends Controller
                     ? round((($currentMonthRevenue - $previousMonthRevenue) / $previousMonthRevenue) * 100, 1)
                     : null,
                 'total_consultations' => $consultations->count(),
+                'performance' => $doctor->doctorProfile ? app(DoctorPerformance::class)->forDoctor($doctor->doctorProfile) : null,
                 'rating' => (float) ($doctor->doctorProfile?->rating ?? 0),
                 'reviews_count' => (int) ($doctor->doctorProfile?->reviews_count ?? 0),
                 'profile_views' => $profileViews,

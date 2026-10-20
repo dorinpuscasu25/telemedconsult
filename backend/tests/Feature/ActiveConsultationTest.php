@@ -88,13 +88,24 @@ class ActiveConsultationTest extends TestCase
         $consultation->update(['operator_id' => $operator->id, 'consultation_kind' => 'with_exam']);
         Sanctum::actingAs($operator);
         $this->getJson('/api/v1/requests/active?role=operator')->assertOk()->assertJsonPath('data.0.video_available', false);
-        $consultation->update(['objective_data_completed_at' => now()]);
+        $consultation->update(['objective_data_completed_at' => now(), 'doctor_started_at' => now()]);
         $this->getJson('/api/v1/requests/active?role=operator')->assertOk()->assertJsonPath('data.0.video_available', true);
         config(['services.livekit.api_secret' => null]);
         $this->getJson('/api/v1/requests/active?role=operator')->assertOk()->assertJsonPath('data.0.video_available', false);
         config(['services.livekit.api_secret' => 'test']);
         $consultation->update(['consultation_kind' => 'video']);
         $this->getJson('/api/v1/requests/active?role=operator')->assertOk()->assertJsonPath('data.0.video_available', false);
+    }
+
+    public function test_resume_video_is_available_once_doctor_explicitly_opens_including_early_start(): void
+    {
+        [$patient, , $consultation] = $this->scenario();
+        Sanctum::actingAs($patient);
+        $this->getJson('/api/v1/requests/active?role=patient')->assertOk()->assertJsonPath('data.0.video_available', false);
+        $consultation->update(['doctor_started_at' => now(), 'scheduled_at' => now()->addHour()]);
+        $this->getJson('/api/v1/requests/active?role=patient')->assertOk()->assertJsonPath('data.0.video_available', true);
+        $this->travelTo($consultation->scheduled_at);
+        $this->getJson('/api/v1/requests/active?role=patient')->assertOk()->assertJsonPath('data.0.video_available', true);
     }
 
     public function test_multiple_roles_do_not_mix_patient_and_doctor_consultations(): void

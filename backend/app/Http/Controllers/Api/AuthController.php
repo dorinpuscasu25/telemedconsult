@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\RegisterRequest;
+use App\Mail\EmailOtpMail;
 use App\Models\DoctorProfile;
 use App\Models\EmailVerificationOtp;
 use App\Models\OperatorProfile;
@@ -319,7 +320,7 @@ class AuthController extends Controller
         }
 
         if (! $isAdmin && app(PlatformConfig::class)->bool('auth.email_2fa_enabled', true)) {
-            $devOtp = $this->sendEmailOtp($user);
+            $devOtp = $this->sendEmailOtp($user, 'login');
 
             return response()->json([
                 'message' => 'Am trimis codul de autentificare pe email.',
@@ -422,7 +423,7 @@ class AuthController extends Controller
         ]);
     }
 
-    private function sendEmailOtp(User $user): ?string
+    private function sendEmailOtp(User $user, string $purpose = 'verify'): ?string
     {
         $recentOtp = EmailVerificationOtp::where('user_id', $user->id)
             ->whereNull('verified_at')
@@ -439,24 +440,22 @@ class AuthController extends Controller
             ->update(['verified_at' => now()]);
 
         $code = (string) random_int(100000, 999999);
+        $expiresMinutes = (int) config('otp.expires_minutes', 10);
 
         EmailVerificationOtp::create([
             'user_id' => $user->id,
             'email' => $user->email,
             'code_hash' => Hash::make($code),
-            'expires_at' => now()->addMinutes((int) config('otp.expires_minutes', 10)),
+            'expires_at' => now()->addMinutes($expiresMinutes),
         ]);
 
         $this->storeDemoOtp($user, $code);
 
         try {
-            Mail::raw(
-                "Codul tău de verificare telemedconsult.md este: {$code}\n\nCodul expiră în 10 minute. Dacă nu ai creat acest cont, ignoră acest email.",
-                function ($message) use ($user) {
-                    $message->to($user->email, $user->name)
-                        ->subject('Cod verificare telemedconsult.md');
-                }
-            );
+            $actionUrl = rtrim(config('services.frontend_url'), '/').'/confirm-code#'.http_build_query([
+                'email' => $user->email, 'code' => $code, 'purpose' => $purpose,
+            ], '', '&', PHP_QUERY_RFC3986);
+            Mail::to($user->email, $user->name)->send(new EmailOtpMail($user->name, $code, $expiresMinutes, $purpose, $actionUrl));
         } catch (Throwable $e) {
             report($e);
 

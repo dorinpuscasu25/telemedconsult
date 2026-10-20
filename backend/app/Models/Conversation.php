@@ -7,9 +7,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['consultation_request_id', 'patient_id', 'patient_profile_id', 'doctor_id', 'operator_id', 'status', 'starts_at', 'free_until', 'reactivated_until', 'hard_closes_at'])]
+#[Fillable(['is_direct', 'consultation_request_id', 'patient_id', 'patient_profile_id', 'doctor_id', 'operator_id', 'status', 'starts_at', 'free_until', 'reactivated_until', 'hard_closes_at'])]
 class Conversation extends Model
 {
+    protected $attributes = ['is_direct' => false];
+
     public function patient(): BelongsTo
     {
         return $this->belongsTo(User::class, 'patient_id');
@@ -43,6 +45,7 @@ class Conversation extends Model
     protected function casts(): array
     {
         return [
+            'is_direct' => 'boolean',
             'starts_at' => 'datetime',
             'free_until' => 'datetime',
             'reactivated_until' => 'datetime',

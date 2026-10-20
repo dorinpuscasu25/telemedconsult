@@ -79,6 +79,27 @@ class DoctorConsultationViewTest extends TestCase
         $this->assertNotSame($scenario['patient']->user->name, $pending['patient_profile']['name']);
     }
 
+    public function test_dashboard_pending_list_includes_rescheduling_for_the_assigned_doctor_only(): void
+    {
+        $scenario = $this->scenario();
+        $requestId = $this->createWithExamRequest($scenario);
+        ConsultationRequest::findOrFail($requestId)->update(['status' => 'rescheduled']);
+        $otherDoctor = $this->userWithRole('doctor');
+        $foreign = ConsultationRequest::create([
+            'patient_id' => $scenario['patient']->user_id,
+            'patient_profile_id' => $scenario['patient']->id,
+            'doctor_id' => $otherDoctor->id,
+            'type' => 'doctor', 'consultation_kind' => 'video', 'status' => 'new',
+        ]);
+        Sanctum::actingAs($scenario['doctor']);
+        $pending = collect($this->getJson('/api/v1/doctor/dashboard')->assertOk()->json('pending_requests'));
+        $this->assertNotNull($pending->firstWhere('id', (string) $requestId));
+        $this->assertNull($pending->firstWhere('id', (string) $foreign->id));
+        $item = $pending->firstWhere('id', (string) $requestId);
+        $this->assertSame((string) $scenario['patient']->id, $item['patient_profile']['id']);
+        $this->assertSame((string) $scenario['patient']->user_id, $item['patient']['id']);
+    }
+
     public function test_unknown_measurement_keys_survive_validation(): void
     {
         $scenario = $this->scenario();

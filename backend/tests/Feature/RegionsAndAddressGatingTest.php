@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\DoctorProfile;
 use App\Models\Locality;
 use App\Models\PatientCardPurchase;
 use App\Models\PatientProfile;
@@ -9,6 +10,7 @@ use App\Models\Region;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\PlatformConfig;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -88,7 +90,6 @@ class RegionsAndAddressGatingTest extends TestCase
         $this->postJson('/api/v1/patient/profiles', [
             'first_name' => 'Ana',
             'last_name' => 'Popescu',
-            'identity_number' => '2000000000001',
             'country' => 'Republica Moldova',
         ])
             ->assertUnprocessable()
@@ -97,7 +98,6 @@ class RegionsAndAddressGatingTest extends TestCase
         $response = $this->postJson('/api/v1/patient/profiles', [
             'first_name' => 'Ana',
             'last_name' => 'Popescu',
-            'identity_number' => '2000000000001',
             'country' => 'Republica Moldova',
             'region_id' => $locality->region_id,
             'locality_id' => $locality->id,
@@ -126,7 +126,6 @@ class RegionsAndAddressGatingTest extends TestCase
         $this->postJson('/api/v1/patient/profiles', [
             'first_name' => 'Ana',
             'last_name' => 'Popescu',
-            'identity_number' => '2000000000002',
             'country' => 'Republica Moldova',
             'region_id' => $regionA->id,
             'locality_id' => $localityB->id,
@@ -169,6 +168,23 @@ class RegionsAndAddressGatingTest extends TestCase
         ])->assertCreated();
     }
 
+    public function test_operator_mode_disabled_allows_direct_doctor_booking_without_address_or_operator_fees(): void
+    {
+        $patient = $this->userWithRole('patient');
+        $profile = $this->profileWithoutAddress($patient);
+        $doctor = $this->userWithRole('doctor');
+        DoctorProfile::create(['user_id' => $doctor->id, 'consultation_price' => 700, 'video_price' => 500, 'is_available' => true, 'is_approved' => true]);
+        Wallet::create(['user_id' => $patient->id, 'balance_minor' => 100000, 'currency' => 'MDL']);
+        app(PlatformConfig::class)->upsert('feature.operators', false, 'features', 'boolean');
+        app(PlatformConfig::class)->upsert('feature.with_exam_consultations', false, 'features', 'boolean');
+        Sanctum::actingAs($patient);
+        $this->postJson('/api/v1/requests/preview', ['consultation_kind' => 'video', 'patient_profile_id' => $profile->id, 'doctor_id' => $doctor->id])
+            ->assertOk()->assertJsonPath('eligible', true)->assertJsonPath('cost.doctor_base', 500)->assertJsonPath('cost.travel_fee', 0)->assertJsonCount(0, 'cost.investigations')->assertJsonMissingPath('operator');
+        $this->postJson('/api/v1/requests', [
+            'type' => 'video', 'consultation_kind' => 'video', 'patient_profile_id' => $profile->id, 'doctor_id' => $doctor->id, 'operator_id' => $doctor->id, 'symptoms' => 'Consultație directă',
+        ])->assertCreated()->assertJsonPath('request.consultation_kind', 'video')->assertJsonPath('request.operator_id', null);
+    }
+
     private function userWithRole(string $roleName): User
     {
         $role = Role::firstOrCreate(['name' => $roleName], ['label' => ucfirst($roleName)]);
@@ -203,7 +219,6 @@ class RegionsAndAddressGatingTest extends TestCase
             'user_id' => $user->id,
             'first_name' => 'Ion',
             'last_name' => 'Popescu',
-            'identity_number' => '2000000000009',
             'country' => 'Republica Moldova',
             'status' => 'active',
             'active_until' => now()->addYear(),

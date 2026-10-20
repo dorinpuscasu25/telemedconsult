@@ -40,6 +40,7 @@ class ActiveConsultationController extends Controller
                 : $item->patient?->name,
             'conversation_id' => $chats->get($item->id)?->id,
             'video_available' => $item->status === 'accepted' && $item->doctor_id !== null && $stateMachine->readyForDoctor($item)
+                && $item->doctor_started_at !== null
                 && $livekit->configured() && ($validated['role'] !== 'operator' || $item->consultation_kind === 'with_exam'),
         ])])->header('Cache-Control', 'no-store');
     }

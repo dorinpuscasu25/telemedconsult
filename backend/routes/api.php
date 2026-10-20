@@ -96,6 +96,8 @@ Route::prefix('v1')->group(function () {
         Route::post('/auth/switch-role', [AuthController::class, 'switchRole']);
         Route::post('/auth/logout', [AuthController::class, 'logout']);
 
+        Route::get('/video-calls/incoming', [ConsultationVideoController::class, 'incoming']);
+        Route::post('/video-calls/{videoCallInvitation}/respond', [ConsultationVideoController::class, 'respondCall'])->middleware('throttle:30,1');
         Route::get('/notifications', [NotificationController::class, 'index']);
         Route::post('/notifications/read', [NotificationController::class, 'markRead']);
 
@@ -184,7 +186,9 @@ Route::prefix('v1')->group(function () {
         Route::post('/requests/{consultationRequest}/examination-done', [WorkflowController::class, 'completeExamination']);
         Route::post('/requests/{consultationRequest}/start', [WorkflowController::class, 'startConsultation']);
         Route::post('/requests/{consultationRequest}/add-on-service', [WorkflowController::class, 'addOnService']);
+        Route::get('/requests/{consultationRequest}/video/call', [ConsultationVideoController::class, 'currentCall']);
         Route::get('/requests/{consultationRequest}/video', [ConsultationVideoController::class, 'status']);
+        Route::post('/requests/{consultationRequest}/video/invite', [ConsultationVideoController::class, 'invite'])->middleware('throttle:6,1');
         Route::post('/requests/{consultationRequest}/video/token', [ConsultationVideoController::class, 'token'])->middleware('throttle:30,1');
         Route::post('/requests/{consultationRequest}/meet-link', [WorkflowController::class, 'storeMeetLink']);
         Route::post('/requests/{consultationRequest}/additional-investigation', [WorkflowController::class, 'requestAdditionalInvestigation']);
@@ -193,6 +197,7 @@ Route::prefix('v1')->group(function () {
 
         Route::post('/conversations/{conversation}/read', [WorkflowController::class, 'readConversation']);
         Route::get('/conversations', [WorkflowController::class, 'conversations']);
+        Route::post('/conversations/{conversation}/direct', [WorkflowController::class, 'directConversation']);
         Route::get('/conversations/{conversation}', [WorkflowController::class, 'conversation']);
         Route::post('/conversations/{conversation}/messages', [WorkflowController::class, 'sendMessage']);
         Route::post('/conversations/{conversation}/attachments', [WorkflowController::class, 'sendAttachment']);
@@ -222,6 +227,8 @@ Route::prefix('v1')->group(function () {
         Route::post('/coordinator/requests/{consultationRequest}/claim', [CoordinatorController::class, 'claim']);
         Route::post('/coordinator/requests/{consultationRequest}/assign-provider', [CoordinatorController::class, 'assignProvider']);
 
+        Route::post('/doctor/clinic-logo', [DoctorOperationsController::class, 'uploadClinicLogo']);
+        Route::get('/doctor/clinic-logo', [DoctorOperationsController::class, 'clinicLogo']);
         Route::post('/doctor/signature', [DoctorOperationsController::class, 'uploadSignature']);
         Route::get('/doctor/signature', [DoctorOperationsController::class, 'signature']);
         Route::get('/doctor/profile', [DoctorOperationsController::class, 'profile']);

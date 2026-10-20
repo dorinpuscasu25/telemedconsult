@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ConsultationRequest;
 use App\Models\DoctorAvailability;
 use App\Models\DoctorProfile;
 use App\Models\PatientProfile;
@@ -32,7 +33,7 @@ class DoctorSchedulingTest extends TestCase
             'doctor_id' => $scenario['doctor']->id,
             'symptoms' => 'Tuse',
             'scheduled_at' => $this->nextMonday('10:00'),
-        ])->assertCreated();
+        ])->assertCreated()->assertJsonPath('request.acceptance_expires_at', null);
     }
 
     public function test_a_configured_schedule_is_still_enforced(): void
@@ -82,9 +83,79 @@ class DoctorSchedulingTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_iso_request_checks_doctor_hours_on_the_local_day_across_midnight(): void
+    {
+        $scenario = $this->scenario();
+        DoctorAvailability::create([
+            'doctor_id' => $scenario['doctor']->id,
+            'weekday' => Carbon::MONDAY, 'starts_at' => '00:00:00', 'ends_at' => '01:00:00', 'is_active' => true,
+        ]);
+        $localMonday = Carbon::now('Europe/Chisinau')->next(Carbon::MONDAY)->startOfDay();
+        $this->assertNotSame($localMonday->dayOfWeek, $localMonday->copy()->utc()->dayOfWeek);
+        $this->postJson('/api/v1/requests', [
+            'type' => 'video', 'consultation_kind' => 'video', 'patient_profile_id' => $scenario['patient']->id,
+            'doctor_id' => $scenario['doctor']->id, 'symptoms' => 'Tuse', 'scheduled_at' => $localMonday->toISOString(),
+        ])->assertCreated();
+        $stored = ConsultationRequest::latest('id')->firstOrFail();
+        $this->assertTrue($stored->scheduled_at->equalTo($localMonday));
+        $this->postJson('/api/v1/requests', [
+            'type' => 'video', 'consultation_kind' => 'video', 'patient_profile_id' => $scenario['patient']->id,
+            'doctor_id' => $scenario['doctor']->id, 'symptoms' => 'Tuse', 'scheduled_at' => $localMonday->copy()->addHours(2)->toISOString(),
+        ])->assertUnprocessable();
+    }
+
+    public function test_doctor_opens_confirmed_consultation_only_at_scheduled_time(): void
+    {
+        $scenario = $this->scenario();
+        $request = $this->scheduledRequest($scenario);
+        Sanctum::actingAs($scenario['doctor']);
+        $this->postJson('/api/v1/requests/'.$request->id.'/start')->assertUnprocessable();
+        $this->postJson('/api/v1/requests/'.$request->id.'/accept')->assertOk();
+        $this->postJson('/api/v1/requests/'.$request->id.'/start')->assertUnprocessable();
+        $this->travelTo($request->scheduled_at);
+        $this->postJson('/api/v1/requests/'.$request->id.'/start')->assertOk();
+        $this->assertNotNull($request->refresh()->doctor_started_at);
+    }
+
+    public function test_patient_confirmation_of_doctor_proposal_confirms_the_appointment(): void
+    {
+        $scenario = $this->scenario();
+        $request = $this->scheduledRequest($scenario);
+        Sanctum::actingAs($scenario['doctor']);
+        $proposedAt = now()->addDays(2)->startOfHour();
+        $this->postJson('/api/v1/requests/'.$request->id.'/propose-time', ['scheduled_at' => $proposedAt->toISOString()])
+            ->assertOk()->assertJsonPath('request.status', 'rescheduled');
+        $this->postJson('/api/v1/requests/'.$request->id.'/accept')->assertUnprocessable();
+        $this->postJson('/api/v1/requests/'.$request->id.'/start')->assertUnprocessable();
+        Sanctum::actingAs($scenario['patient']->user);
+        $this->postJson('/api/v1/requests/'.$request->id.'/accept-proposed-time')
+            ->assertOk()->assertJsonPath('request.status', 'accepted');
+        $request->refresh();
+        $this->assertTrue($request->scheduled_at->equalTo($proposedAt));
+        $this->assertNull($request->acceptance_expires_at);
+        $this->assertNull($request->proposed_scheduled_at);
+    }
+
+    public function test_unrelated_provider_cannot_propose_a_time(): void
+    {
+        $scenario = $this->scenario();
+        $request = $this->scheduledRequest($scenario);
+        Sanctum::actingAs($this->userWithRole('doctor'));
+        $this->postJson('/api/v1/requests/'.$request->id.'/propose-time', ['scheduled_at' => now()->addDays(2)->toISOString()])->assertForbidden();
+    }
+
+    private function scheduledRequest(array $scenario): ConsultationRequest
+    {
+        return ConsultationRequest::create([
+            'patient_id' => $scenario['patient']->user_id, 'patient_profile_id' => $scenario['patient']->id,
+            'doctor_id' => $scenario['doctor']->id, 'type' => 'video', 'consultation_kind' => 'video', 'status' => 'new',
+            'scheduled_at' => now()->addDay(), 'symptoms' => 'Tuse',
+        ]);
+    }
+
     private function nextMonday(string $time): string
     {
-        return Carbon::now()->next(Carbon::MONDAY)->setTimeFromTimeString($time)->format('Y-m-d H:i:s');
+        return Carbon::now('Europe/Chisinau')->next(Carbon::MONDAY)->setTimeFromTimeString($time)->toISOString();
     }
 
     /**

@@ -5,9 +5,11 @@ namespace Tests\Feature;
 use App\Models\Consultation;
 use App\Models\ConsultationObjectiveData;
 use App\Models\ConsultationRequest;
+use App\Models\DoctorProfile;
 use App\Models\PatientInvestigation;
 use App\Models\PatientProfile;
 use App\Models\Role;
+use App\Models\Specialty;
 use App\Models\User;
 use App\Services\ObjectiveDataSchema;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -54,7 +56,7 @@ class PatientMedicalRecordTest extends TestCase
     public static function invalidSections(): array
     {
         return [
-            ['birth', ['gestational_weeks' => 23]], ['birth', ['gestational_weeks' => 43]],
+            ['birth', ['gestational_weeks' => 23]], ['birth', ['gestational_weeks' => 44]],
             ['birth', ['apgar' => 11]], ['birth', ['blood_group' => 'invalid']],
             ['birth', ['diagnosis' => 'Nu este un câmp pentru pacient']],
             ['vaccinations', ['refusal' => 'invalid', 'items' => []]],
@@ -63,6 +65,37 @@ class PatientMedicalRecordTest extends TestCase
             ['family_history', [['name' => 'Afecțiune']]],
             ['diagnosis', ['name' => 'Diagnostic pacient']],
         ];
+    }
+
+    public function test_life_history_supports_birth_at_43_weeks_and_preserves_separate_history_sections(): void
+    {
+        [$patient, $profile] = $this->patient();
+        Sanctum::actingAs($patient);
+        foreach (['natural', 'cesarean', 'forceps', 'vacuum'] as $method) {
+            foreach (['natural', 'artificial', 'mixed'] as $feeding) {
+                $this->patchJson($this->url($profile), ['section' => 'birth', 'data' => [
+                    'birth_method' => $method, 'gestational_weeks' => 43, 'feeding' => $feeding,
+                ]])->assertOk();
+                $this->assertSame($method, $profile->fresh()->medical_record['birth']['birth_method']);
+                $this->assertSame($feeding, $profile->fresh()->medical_record['birth']['feeding']);
+            }
+        }
+        foreach ([
+            'family_history' => [
+                ['relationship' => 'Mamă', 'name' => 'Boală cronică declarată'],
+                ['relationship' => 'Tată', 'name' => 'Afecțiune genetică declarată'],
+                ['relationship' => 'Bunică maternă', 'name' => 'Afecțiune declarată'],
+                ['relationship' => 'Bunic patern', 'name' => 'Afecțiune declarată'],
+            ],
+            'disease_history' => [['name' => 'Accident', 'period' => 'La 5 ani', 'notes' => 'Traumatism, fără urmări declarate']],
+            'surgeries' => [['name' => 'Intervenție', 'period' => 'La 6 ani']],
+            'vaccinations' => ['items' => [['name' => 'Vaccin din carnet', 'dose' => '1']]],
+        ] as $section => $data) {
+            $this->patchJson($this->url($profile), ['section' => $section, 'data' => $data])->assertOk();
+            $this->assertSame($data, $profile->fresh()->medical_record[$section]);
+        }
+        $this->assertSame(43, $profile->fresh()->medical_record['birth']['gestational_weeks']);
+        $this->assertCount(4, $profile->fresh()->medical_record['family_history']);
     }
 
     public function test_all_history_sections_and_vaccination_refusal_are_saved(): void
@@ -96,23 +129,56 @@ class PatientMedicalRecordTest extends TestCase
         [$patient, $profile] = $this->patient();
         $doctor = $this->user('doctor');
         $request = $this->consultation($patient, $profile, $doctor);
-        Consultation::create(['consultation_request_id' => $request->id, 'patient_id' => $patient->id, 'patient_profile_id' => $profile->id, 'doctor_id' => $doctor->id, 'diagnosis' => 'Diagnostic medic', 'recommendations' => 'Recomandări medic', 'status' => 'completed']);
+        Consultation::create(['consultation_request_id' => $request->id, 'patient_id' => $patient->id, 'patient_profile_id' => $profile->id, 'doctor_id' => $doctor->id, 'patient_complaints' => 'Acuze din consultația finală', 'objective_exam' => 'Observații oficiale', 'higo_reviewed' => true, 'prescription_notes' => 'Indicații rețetă', 'diagnosis' => 'Diagnostic medic', 'recommendations' => 'Recomandări medic', 'status' => 'completed']);
         Sanctum::actingAs($doctor);
-        $this->getJson($this->url($profile))->assertOk()->assertJsonPath('consultations.0.diagnosis', 'Diagnostic medic')->assertJsonPath('consultations.0.recommendations', 'Recomandări medic');
+        $this->getJson($this->url($profile))->assertOk()->assertJsonPath('consultations.0.symptoms', 'Acuze din consultația finală')->assertJsonPath('consultations.0.objective_exam', 'Observații oficiale')->assertJsonPath('consultations.0.higo_reviewed', true)->assertJsonPath('consultations.0.prescription_notes', 'Indicații rețetă')->assertJsonPath('consultations.0.diagnosis', 'Diagnostic medic')->assertJsonPath('consultations.0.recommendations', 'Recomandări medic');
         $this->patchJson($this->url($profile), ['section' => 'birth', 'data' => ['apgar' => 9]])->assertForbidden();
         Sanctum::actingAs($this->user('doctor'));
         $this->getJson($this->url($profile))->assertForbidden();
     }
 
-    public function test_identity_and_precise_address_are_editable_and_birth_cannot_be_in_future(): void
+    public function test_platform_identity_replaces_idnp_and_address_remains_editable(): void
     {
         [$patient, $profile] = $this->patient();
         Sanctum::actingAs($patient);
-        $this->putJson('/api/v1/patient/profiles/'.$profile->id, ['identity_number' => '1234567890123', 'birth_date' => '2026-05-01', 'residential_environment' => 'urban', 'address_details' => ['building' => '5', 'entrance' => '2', 'apartment' => '10', 'floor' => '3']])->assertOk();
-        $this->assertSame('1234567890123', $profile->fresh()->identity_number);
+        $this->putJson('/api/v1/patient/profiles/'.$profile->id, ['birth_date' => '2026-05-01', 'residential_environment' => 'urban', 'address_details' => ['building' => '5', 'entrance' => '2', 'apartment' => '10', 'floor' => '3']])->assertOk();
+        $this->assertMatchesRegularExpression('/^[0-9]{15}$/', $profile->fresh()->patient_code);
+        $this->assertIsString($profile->toArray()['patient_code']);
+        $this->assertArrayNotHasKey('identity_number', $profile->toArray());
         $this->assertSame('10', $profile->fresh()->address_details['apartment']);
-        $this->putJson('/api/v1/patient/profiles/'.$profile->id, ['identity_number' => 'abc'])->assertUnprocessable();
+        $this->putJson('/api/v1/patient/profiles/'.$profile->id, ['identity_number' => '1234567890123'])->assertUnprocessable();
         $this->putJson('/api/v1/patient/profiles/'.$profile->id, ['birth_date' => '2099-01-01'])->assertUnprocessable();
+    }
+
+    public function test_patient_codes_are_unique_immutable_and_preserve_legacy_higo_identifiers(): void
+    {
+        [$patient, $profile] = $this->patient();
+        $originalCode = $profile->patient_code;
+        $second = PatientProfile::create(['user_id' => $patient->id, 'first_name' => 'Ion', 'last_name' => 'Ștefan']);
+        $this->assertNotSame($originalCode, $second->patient_code);
+        $this->assertMatchesRegularExpression('/^[0-9]{15}$/', $second->patient_code);
+        Sanctum::actingAs($patient);
+        $this->putJson('/api/v1/patient/profiles/'.$profile->id, ['patient_code' => '123456789012345', 'pseudonymized' => true])->assertOk();
+        $this->assertSame($originalCode, $profile->fresh()->patient_code);
+        $this->assertSame($originalCode, $profile->fresh()->higoIdentifier());
+        $profile->forceFill(['patient_code' => '000000000123456'])->save();
+        $this->assertSame('123456', $profile->higoIdentifier());
+        $second->update(['pseudonymized' => true]);
+        $this->assertSame('Ion Ș.', $second->display_name);
+    }
+
+    public function test_existing_patient_codes_are_extended_without_changing_patient_associations(): void
+    {
+        [$patient, $profile] = $this->patient();
+        $profile->forceFill(['patient_code' => '438560'])->save();
+        $request = $this->consultation($patient, $profile, $this->user('doctor'));
+        $migration = require database_path('migrations/2026_10_20_182002_backfill_fifteen_digit_patient_platform_codes.php');
+        $migration->up();
+        $this->assertSame('000000000438560', $profile->fresh()->patient_code);
+        $this->assertSame('438560', $profile->fresh()->higoIdentifier());
+        $this->assertSame($profile->id, $request->fresh()->patient_profile_id);
+        $migration->up();
+        $this->assertSame('000000000438560', $profile->fresh()->patient_code);
     }
 
     public function test_account_update_preserves_patient_medical_demographics(): void
@@ -148,6 +214,25 @@ class PatientMedicalRecordTest extends TestCase
         }
         Sanctum::actingAs($patient);
         $this->getJson($this->url($profile))->assertOk()->assertJsonPath('documents.0.title', 'Recent')->assertJsonPath('documents.1.title', 'Vechi');
+    }
+
+    public function test_history_includes_specialty_fallback_and_orders_by_consultation_date(): void
+    {
+        [$patient, $profile] = $this->patient();
+        $doctor = $this->user('doctor');
+        $pediatrics = Specialty::create(['name' => 'Pediatrie', 'slug' => 'pediatrie']);
+        $neurology = Specialty::create(['name' => 'Neurologie', 'slug' => 'neurologie']);
+        DoctorProfile::create(['user_id' => $doctor->id, 'specialty_id' => $pediatrics->id]);
+        $newer = $this->consultation($patient, $profile, $doctor);
+        $newer->update(['completed_at' => '2026-10-19 12:00:00', 'specialty_id' => null]);
+        $older = $this->consultation($patient, $profile, $doctor);
+        $older->update(['completed_at' => '2026-10-18 12:00:00', 'specialty_id' => $neurology->id]);
+        Sanctum::actingAs($patient);
+        $this->getJson($this->url($profile))->assertOk()
+            ->assertJsonPath('consultations.0.id', $newer->id)
+            ->assertJsonPath('consultations.0.specialty', 'Pediatrie')
+            ->assertJsonPath('consultations.1.id', $older->id)
+            ->assertJsonPath('consultations.1.specialty', 'Neurologie');
     }
 
     public function test_document_deletion_checks_profile_ownership_and_removes_file(): void

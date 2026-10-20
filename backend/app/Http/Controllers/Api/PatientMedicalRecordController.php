@@ -23,7 +23,7 @@ class PatientMedicalRecordController extends Controller
     public function show(Request $request, PatientProfile $patientProfile): JsonResponse
     {
         $this->authorizeRead($request, $patientProfile);
-        $requests = ConsultationRequest::with(['specialty', 'doctor', 'operator', 'objectiveData', 'examMedia'])
+        $requests = ConsultationRequest::with(['specialty', 'doctor.doctorProfile.specialty', 'operator', 'objectiveData', 'examMedia'])
             ->where('patient_profile_id', $patientProfile->id)->latest()->get();
         $conclusions = Consultation::where('patient_profile_id', $patientProfile->id)->get()->keyBy('consultation_request_id');
         $documents = MedicalDocument::where('patient_profile_id', $patientProfile->id)->orderBy('id')->get()->groupBy('consultation_request_id');
@@ -37,11 +37,14 @@ class PatientMedicalRecordController extends Controller
                 $conclusion = $conclusions->get($item->id);
 
                 return [
-                    'id' => $item->id, 'status' => $item->status,
+                    'id' => $item->id, 'consultation_id' => $conclusion?->id, 'status' => $item->status,
                     'date' => $item->completed_at ?? $item->scheduled_at ?? $item->created_at,
-                    'doctor' => $item->doctor?->name, 'specialty' => $item->specialty?->name,
+                    'doctor' => $item->doctor?->name, 'specialty' => $item->specialty?->name ?? $item->doctor?->doctorProfile?->specialty?->name,
                     'current_illness_history' => $conclusion?->current_illness_history ?? $item->current_illness_history,
-                    'documents' => ($documents->get($item->id) ?? collect())->map(fn ($document) => ConsultationDocumentController::serialize($document))->values(), 'symptoms' => $item->symptoms,
+                    'documents' => ($documents->get($item->id) ?? collect())->map(fn ($document) => ConsultationDocumentController::serialize($document))->values(), 'symptoms' => $conclusion?->patient_complaints ?? $item->symptoms,
+                    'objective_exam' => $conclusion?->objective_exam, 'higo_reviewed' => (bool) $conclusion?->higo_reviewed,
+                    'prescription_notes' => $conclusion?->prescription_notes,
+                    'investigation_recommendations' => $conclusion?->investigation_recommendations,
                     'diagnosis' => $conclusion?->diagnosis, 'recommendations' => $conclusion?->recommendations,
                     'treatment_plan' => $conclusion?->treatment_plan, 'conversation_id' => $chats->get($item->id)?->id,
                     'objective_data' => $item->objectiveData->map(fn ($entry) => [

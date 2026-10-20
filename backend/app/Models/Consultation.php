@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['consultation_request_id', 'patient_complaints', 'objective_exam', 'higo_reviewed', 'patient_id', 'patient_profile_id', 'doctor_id', 'status', 'current_illness_history', 'objective_data_snapshot', 'diagnosis', 'treatment_plan', 'recommendations', 'prescription_notes', 'price', 'fhir_payload', 'signed_pdf_path', 'completed_at'])]
+#[Fillable(['investigation_recommendations', 'consultation_request_id', 'patient_complaints', 'objective_exam', 'higo_reviewed', 'patient_id', 'patient_profile_id', 'doctor_id', 'status', 'current_illness_history', 'objective_data_snapshot', 'diagnosis', 'treatment_plan', 'recommendations', 'prescription_notes', 'price', 'fhir_payload', 'signed_pdf_path', 'completed_at'])]
 class Consultation extends Model
 {
     public function patient(): BelongsTo

@@ -112,10 +112,8 @@ class HigoResourceBuilder
             'gender' => self::GENDER[$profile->gender] ?? 'unknown',
             'identifier' => [
                 'type' => ['text' => (string) config('higo.sync.patient_identifier_type', 'PESEL')],
-                // Codul nostru de 6 cifre, nu actul de identitate: platforma nu
-                // colectează IDNP-ul. Îl trimitem pe poziția pe care aplicația
-                // lor mobilă o caută, ca operatorul să găsească pacientul.
-                'value' => (string) $profile->patient_code,
+                // Preserve identifiers of patients already registered with HIGO.
+                'value' => $profile->higoIdentifier(),
             ],
             'name' => $this->name($profile->first_name, $profile->pseudonymized ? mb_substr($profile->last_name ?: '', 0, 1).'.' : ($profile->last_name ?: $profile->user?->name)),
         ];

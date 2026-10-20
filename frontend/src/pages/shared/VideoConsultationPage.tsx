@@ -1,9 +1,12 @@
+import { OutgoingVideoCall } from '../../components/OutgoingVideoCall';
+import { inviteVideoCall, type CallInvitation } from '../../lib/video-calls';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import type { LocalUserChoices } from '@livekit/components-react';
 import { ArrowLeft, Video, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiRequest, type ApiError } from '../../lib/api';
+import { ConsultationChatNavigation } from '../../components/ConsultationChatNavigation';
 import { Button } from '../../components/ui/button';
 import type { VideoStatus, VideoConnection } from '../../lib/consultation-video';
 
@@ -12,7 +15,7 @@ const VideoCallPanel = lazy(() => import('../../components/VideoCallPanel'));
 export function VideoConsultationPage() {
   const { requestId } = useParams();
   const location = useLocation();
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const returnTo = location.state?.returnTo || (role === 'doctor' ? `/doctor/consultations?request=${requestId}` : `/${role || 'patient'}/chat?request=${requestId}`);
   const [status, setStatus] = useState<VideoStatus | null>(null);
   const [connection, setConnection] = useState<(VideoConnection & { attemptId: number }) | null>(null);
@@ -23,6 +26,7 @@ export function VideoConsultationPage() {
   const [rejoining, setRejoining] = useState(false);
   const joiningRef = useRef(false);
   const attempt = useRef(0);
+  const answered = useRef<number | null>(null);
   const onDeviceError = useCallback(() => setError('Permite accesul la cameră și microfon. Poți intra și cu acestea oprite.'), []);
   const onDisconnected = useCallback(() => {
     if (connection?.attemptId !== attempt.current) return;
@@ -82,11 +86,26 @@ export function VideoConsultationPage() {
         if (attempt.current !== currentAttempt) return;
       }
       const token = await apiRequest<Omit<VideoConnection, 'choices'>>(`/requests/${requestId}/video/token`, { method: 'POST' });
+      const current = await apiRequest<{ call: CallInvitation | null }>(`/requests/${requestId}/video/call`);
+      if (current.call?.status === 'ringing' && Number(current.call.recipient_id) === Number(user?.id)) {
+        await apiRequest(`/video-calls/${current.call.id}/respond`, { method: 'POST', body: JSON.stringify({ action: 'accept' }) });
+      } else if (!location.state?.answerCallId) {
+        try { await inviteVideoCall(requestId || ''); } catch { setNotice('Ai intrat în pagina apelului, dar invitația nu a fost trimisă. Folosește „Sună prin video” pentru a încerca din nou.'); }
+      }
       if (attempt.current === currentAttempt) setConnection({ ...token, choices: { ...choices, username: token.participant.name }, attemptId: currentAttempt });
     } catch (err) {
       if (attempt.current === currentAttempt) setError(err instanceof Error ? err.message : 'Nu am putut deschide apelul.');
     } finally { if (attempt.current === currentAttempt) { setJoining(false); joiningRef.current = false; } }
   };
+
+  useEffect(() => {
+    const callId = Number(location.state?.answerCallId);
+    if (!callId || answered.current === callId || !status?.available || !status.configured || !status.participant) return;
+    answered.current = callId;
+    void join({ username: status.participant.name, audioEnabled: false, videoEnabled: false, audioDeviceId: 'default', videoDeviceId: 'default' });
+    // This explicit answer is consumed once; status polling never joins again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state?.answerCallId, status?.available, status?.configured]);
 
   return <div className="mx-auto w-full min-w-0 max-w-[1600px] space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-4">
@@ -97,9 +116,15 @@ export function VideoConsultationPage() {
       <span className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 px-4 py-2 text-sm text-primary"><ShieldCheck size={16} /> Acces doar pentru participanți</span>
     </div>
     {status?.consultation && <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+      {status.consultation.patient_profile && <strong className="w-full text-slate-900">Pacient: {status.consultation.patient_profile.display_name} · {status.consultation.patient_profile.patient_code}</strong>}
+      {status.consultation.conversation_id && <Link className="font-medium text-primary underline" to={`/${role}/chat?request=${requestId}`}>Deschide chatul consultației</Link>}
+      {status.consultation.patient_profile && role === 'patient' && <Link className="font-medium text-primary underline" to={`/patient/profile?patient_profile=${status.consultation.patient_profile.id}&section=consultations&request=${requestId}`}>Fișa pacientului</Link>}
+      {role === 'doctor' && <Link className="font-medium text-primary underline" to={`/doctor/consultations?request=${requestId}&chart=1`}>Fișa pacientului</Link>}
       {status.consultation.participants.map((person) => <span key={person.id} className="min-w-0 break-words"><span className="text-slate-400">{person.role_label}: </span><strong className="font-semibold text-slate-900">{person.name}</strong></span>)}
       {status.consultation.specialty && <span>{status.consultation.specialty}</span>}
     </div>}
+    {requestId && status?.consultation && !connection && <ConsultationChatNavigation key={requestId} requestId={requestId} showVideoLink={false} showCallStatus={false} onRefresh={() => { void apiRequest<VideoStatus>(`/requests/${requestId}/video`).then(setStatus).catch(() => setStatusError('Nu am putut actualiza consultația.')); }} />}
+    {requestId && status?.consultation && <OutgoingVideoCall requestId={requestId} />}
     {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</p>}
     {statusError && <p role="status" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">{statusError} Verificăm din nou disponibilitatea apelului.</p>}
     {notice && status?.available && <p role="status" className="rounded-xl bg-primary/5 p-4 text-sm text-primary">{notice}</p>}

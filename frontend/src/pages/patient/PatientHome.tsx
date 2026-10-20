@@ -24,6 +24,7 @@ interface ConsultationRequest {
   symptoms: string;
   scheduled_at?: string | null;
   proposed_scheduled_at?: string | null;
+  doctor_started_at?: string | null;
   created_at: string;
   doctor?: { name: string } | null;
   operator?: { name: string } | null;
@@ -44,8 +45,8 @@ interface CatalogResponse<T> {
 }
 
 const statusLabels: Record<string, string> = {
-  new: 'Nouă',
-  accepted: 'În lucru',
+  new: 'În așteptarea confirmării',
+  accepted: 'Confirmată',
   rescheduled: 'Reprogramare propusă',
   completed: 'Finalizată',
   cancelled: 'Anulată'
@@ -278,6 +279,8 @@ export function PatientHome() {
                       </Badge>
                     </div>
                     <p className="mt-1 line-clamp-1 text-sm text-slate-500">{request.symptoms}</p>
+                    {request.scheduled_at && <p className="mt-1 text-xs font-medium text-slate-600">{request.status === 'new' ? 'Ora solicitată' : 'Ora confirmată'}: {dateTime(request.scheduled_at)}</p>}
+                    {request.status === 'accepted' && request.type !== 'operator' && !request.doctor_started_at && <p className="mt-1 text-xs text-slate-500">Aștepți ca medicul să deschidă consultația la ora stabilită.</p>}
                     {request.proposed_scheduled_at && (
                       <p className="mt-1 text-xs font-medium text-amber-700">
                         Propus: {dateTime(request.proposed_scheduled_at)}

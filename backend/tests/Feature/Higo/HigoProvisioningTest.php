@@ -536,7 +536,7 @@ class HigoProvisioningTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_every_patient_gets_a_unique_six_digit_code(): void
+    public function test_every_patient_gets_a_unique_fifteen_digit_code(): void
     {
         $owner = $this->userWithRole('patient');
 
@@ -547,7 +547,7 @@ class HigoProvisioningTest extends TestCase
             ])->patient_code);
 
         $this->assertCount(25, $codes->unique(), 'Codurile trebuie să fie unice.');
-        $codes->each(fn (?string $code) => $this->assertMatchesRegularExpression('/^\d{6}$/', (string) $code));
+        $codes->each(fn (?string $code) => $this->assertMatchesRegularExpression('/^\d{15}$/', (string) $code));
     }
 
     public function test_the_generated_code_is_sent_to_higo_instead_of_an_id_document(): void

@@ -78,6 +78,8 @@ class RegistrationApprovalTest extends TestCase
             'user_id' => $user->id,
             'is_approved' => false,
             'license_number' => 'LIC-123',
+            'video_price' => 500,
+            'video_duration_minutes' => 10,
         ]);
     }
 

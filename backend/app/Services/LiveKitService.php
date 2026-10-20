@@ -11,7 +11,12 @@ class LiveKitService
 {
     public function configured(): bool
     {
-        return str_starts_with((string) config('services.livekit.url'), 'wss://')
+        $url = parse_url((string) config('services.livekit.url'));
+        $scheme = $url['scheme'] ?? null;
+        $host = $url['host'] ?? null;
+        $localServer = app()->environment('local') && $scheme === 'ws' && in_array($host, ['localhost', '127.0.0.1', '[::1]'], true);
+
+        return filled($host) && ($scheme === 'wss' || $localServer)
             && filled(config('services.livekit.api_key')) && filled(config('services.livekit.api_secret'));
     }
 
@@ -57,7 +62,7 @@ class LiveKitService
         }
 
         $room = $this->roomName($consultation);
-        $url = 'https://'.substr(rtrim(config('services.livekit.url'), '/'), 6);
+        $url = preg_replace('/^ws(s?):\/\//', 'http$1://', rtrim(config('services.livekit.url'), '/'));
         // Revoke even departed participants so cached or refreshed Cloud tokens cannot rejoin.
         foreach (array_unique(array_filter([$consultation->patient_id, $consultation->doctor_id, $consultation->operator_id])) as $userId) {
             $revocation = Http::timeout(10)->withToken($this->token(['video' => ['room' => $room, 'roomAdmin' => true]]))

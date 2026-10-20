@@ -10,18 +10,25 @@ use Illuminate\Database\QueryException;
 final class WalletLedger
 {
     public const REAL = 'real';
+
     public const POINTS = 'points';
+
+    public const PROMO = 'promo';
 
     public function locked(User|int $user, string $type = self::REAL, string $currency = 'MDL'): Wallet
     {
         $userId = $user instanceof User ? $user->id : $user;
         $wallet = Wallet::where('user_id', $userId)->where('type', $type)->lockForUpdate()->first();
-        if ($wallet) return $wallet;
+        if ($wallet) {
+            return $wallet;
+        }
 
         try {
             Wallet::create(['user_id' => $userId, 'type' => $type, 'balance_minor' => 0, 'currency' => $currency]);
         } catch (QueryException $e) {
-            if (! in_array((string) $e->getCode(), ['19', '23000', '23505'], true)) throw $e;
+            if (! in_array((string) $e->getCode(), ['19', '23000', '23505'], true)) {
+                throw $e;
+            }
         }
 
         return Wallet::where('user_id', $userId)->where('type', $type)->lockForUpdate()->firstOrFail();
@@ -34,6 +41,7 @@ final class WalletLedger
             throw new \RuntimeException('Sold insuficient în portofel.');
         }
         $wallet->increment('balance_minor', $amountMinor);
+
         return WalletTransaction::create([
             'wallet_id' => $wallet->id, 'user_id' => $wallet->user_id, 'wallet_type' => $wallet->type,
             'amount_minor' => $amountMinor, 'currency' => $wallet->currency ?: 'MDL', 'type' => $type,

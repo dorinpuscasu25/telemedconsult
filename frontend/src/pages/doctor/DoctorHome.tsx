@@ -1,3 +1,4 @@
+import { DoctorPerformanceCard, type DoctorPerformance } from '../../components/DoctorPerformanceCard';
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Clock, MessageSquare, Star, TrendingUp, Users } from 'lucide-react';
@@ -15,6 +16,7 @@ import { dateTime } from '../../lib/format';
 
 interface DashboardData {
   summary: {
+    performance?: DoctorPerformance | null;
     current_month_revenue: number;
     previous_month_revenue: number;
     revenue_change_percent: number | null;
@@ -116,6 +118,8 @@ export function DoctorHome() {
         />
       </div>
 
+      <DoctorPerformanceCard performance={summary?.performance} />
+
       <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Consultații în așteptare</CardTitle>
@@ -140,7 +144,7 @@ export function DoctorHome() {
                 <div key={request.id} className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
                   <div className="min-w-0">
                     <div className="mb-1 flex flex-wrap items-center gap-2">
-                      <h3 className="font-semibold text-slate-900">{request.patient_profile?.name || request.patient?.name || 'Pacient'}</h3>
+                      <h3 className="font-semibold text-slate-900"><Link className="text-blue-700 hover:underline" to={`/doctor/consultations?request=${request.id}&chart=1`}>{request.patient_profile?.name || request.patient?.name || 'Pacient'}</Link></h3>
                       <Badge variant="outline" className="bg-amber-50 text-amber-700">
                         Nou
                       </Badge>
@@ -153,7 +157,7 @@ export function DoctorHome() {
                     </p>
                   </div>
                   <Button asChild className="h-9 shrink-0 rounded-lg">
-                    <Link to="/doctor/consultations">Gestionează</Link>
+                    <Link to={`/doctor/consultations?request=${request.id}`}>Gestionează</Link>
                   </Button>
                 </div>
               ))}

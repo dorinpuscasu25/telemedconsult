@@ -20,6 +20,7 @@ import {
   SelectValue
 } from '../../components/ui/select';
 import { Textarea } from '../../components/ui/textarea';
+import { ConsultationComplaintFields } from '../../components/ConsultationComplaintFields';
 import { Avatar, AvatarFallback } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
 import { Activity, CheckCircle2, MapPin, Search } from 'lucide-react';
@@ -58,6 +59,8 @@ export function OperatorsList() {
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
+  const [illnessHistory, setIllnessHistory] = useState('');
+  const [symptoms, setSymptoms] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -91,6 +94,8 @@ export function OperatorsList() {
     setAddress('');
     setPhone(operator.phone || '');
     setNotes('');
+    setIllnessHistory('');
+    setSymptoms('');
     setScheduledAt('');
     setError('');
     setIsSuccess(false);
@@ -121,8 +126,10 @@ export function OperatorsList() {
           type: 'operator',
           operator_id: selectedOperator.id,
           patient_profile_id: Number(patientProfileId),
-          scheduled_at: scheduledAt || null,
-          symptoms: `Solicitare examinare la domiciliu.\nAdresă: ${address}\nTelefon: ${phone}\nDetalii: ${notes || 'Nespecificat'}`
+          scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+          current_illness_history: illnessHistory,
+          symptoms,
+          triage_notes: `Adresă: ${address}\nTelefon: ${phone}\nDetalii pentru operator: ${notes || 'Nespecificat'}`
         })
       });
       if (response.conversation?.id) {
@@ -294,13 +301,15 @@ export function OperatorsList() {
                     required
                   />
                 </div>
+                <ConsultationComplaintFields history={illnessHistory} symptoms={symptoms} onHistoryChange={setIllnessHistory} onSymptomsChange={setSymptoms} />
                 <div className="space-y-2">
-                  <Label htmlFor="notes">Detalii pentru operator</Label>
+                  <Label htmlFor="notes">Detalii de acces pentru operator</Label>
                   <Textarea
                     id="notes"
                     value={notes}
                     onChange={(event) => setNotes(event.target.value)}
-                    placeholder="Simptome, etaj, cod interfon, preferințe orar..."
+                    placeholder="Etaj, cod interfon, indicații de acces…"
+                    maxLength={2000}
                     className="rounded-xl min-h-[90px] resize-none"
                   />
                 </div>

@@ -24,6 +24,7 @@ use App\Services\ConsultationCostEstimator;
 use App\Services\ConsultationStateMachine;
 use App\Services\FeatureFlags;
 use App\Services\FinancialBreakdown;
+use App\Services\FirstTopupPromotion;
 use App\Services\MedicalDocumentPublisher;
 use App\Services\ObjectiveDataSchema;
 use App\Services\OperatorAssignmentService;
@@ -62,7 +63,7 @@ class WorkflowController extends Controller
         $requests = ConsultationRequest::with(['patient', 'patientProfile.investigations', 'doctor', 'operator', 'specialty', 'objectiveData.operator'])
             ->when($role === 'patient', fn ($query) => $query->where('patient_id', $user->id))
             ->when($role === 'doctor', fn ($query) => $query->where(function ($q) use ($user) {
-                $q->where(fn ($pool) => $pool->where('type', 'doctor')->whereNull('doctor_id'))->orWhere('doctor_id', $user->id);
+                $q->where(fn ($pool) => $pool->whereIn('type', ['doctor', 'video'])->whereNull('doctor_id')->whereIn('status', ['new', 'rescheduled']))->orWhere('doctor_id', $user->id);
             }))
             // Operatorul își vede examinările atribuite indiferent de tipul
             // solicitării: la o consultație cu examinare, `type` e „doctor”, dar
@@ -91,6 +92,7 @@ class WorkflowController extends Controller
             'patient_profile_id' => ['required', 'integer', 'exists:patient_profiles,id'],
             'doctor_id' => ['nullable', 'exists:users,id'],
             'selected_services' => ['nullable', 'array'],
+            'points_percent' => ['nullable', 'integer', 'min:0', 'max:100'],
         ]);
 
         $patientProfile = $this->resolvePatientProfile($request, (int) $validated['patient_profile_id']);
@@ -110,11 +112,12 @@ class WorkflowController extends Controller
 
         if ($kind !== 'with_exam') {
             $doctor = ! empty($validated['doctor_id']) ? User::with('doctorProfile')->find($validated['doctor_id']) : null;
-            $base = (int) ($doctor?->doctorProfile?->video_price ?? app(PlatformConfig::class)->number('video.default_price', 300));
+            $base = $this->priceForRequest([...$validated, 'type' => $kind === 'video' ? 'video' : 'doctor']);
 
             return response()->json([
                 'eligible' => true,
                 'consultation_kind' => $kind,
+                'payment' => app(FirstTopupPromotion::class)->split($request->user()->id, $doctor, $base * 100, $base * 100, $validated['points_percent'] ?? 0),
                 'cost' => ['doctor_base' => $base, 'investigations' => [], 'investigations_total' => 0, 'travel_fee' => 0, 'total' => $base],
             ]);
         }
@@ -156,6 +159,7 @@ class WorkflowController extends Controller
                 'region' => $operator?->operatorProfile?->region,
             ],
             'cost' => $cost,
+            'payment' => app(FirstTopupPromotion::class)->split($request->user()->id, $doctor, $cost['total'] * 100, $cost['doctor_base'] * 100, $validated['points_percent'] ?? 0),
         ]);
     }
 
@@ -170,6 +174,7 @@ class WorkflowController extends Controller
             'specialty_id' => ['nullable', 'exists:specialties,id'],
             'symptoms' => ['required', 'string', 'max:4000'],
             'current_illness_history' => ['nullable', 'string', 'max:4000'],
+            'triage_notes' => ['nullable', 'string', 'max:4000'],
             'selected_services' => ['nullable', 'array'],
             'scheduled_at' => ['nullable', 'date'],
             'points_percent' => ['nullable', 'integer', 'min:0', 'max:100'],
@@ -229,13 +234,19 @@ class WorkflowController extends Controller
             $provider = $this->providerForPricing($validated) ?? $request->user();
             $pricing = app(FinancialBreakdown::class)->forProvider($price * 100, $provider);
 
-            $maxPointsPercent = (int) min(100, max(0, app(PlatformConfig::class)->number('wallet.max_points_payment_percent', 30)));
-            $requestedPointsPercent = (int) ($validated['points_percent'] ?? 0);
-            $doctorAcceptsPoints = (bool) ($provider->doctorProfile?->accepts_points ?? false);
-            $pointsPercent = $doctorAcceptsPoints ? min($requestedPointsPercent, $maxPointsPercent) : 0;
+            $ledger = app(WalletLedger::class);
+            $ledger->locked($request->user(), WalletLedger::REAL);
+            $ledger->locked($request->user(), WalletLedger::POINTS);
+            $ledger->locked($request->user(), WalletLedger::PROMO);
+            $doctor = ! empty($validated['doctor_id']) ? $provider : null;
             $totalMinor = (int) $pricing['amount_minor'];
-            $pointsAmountMinor = (int) floor($totalMinor * $pointsPercent / 100);
-            $realAmountMinor = $totalMinor - $pointsAmountMinor;
+            $doctorBaseMinor = $doctor ? ($costBreakdown !== null ? $costBreakdown['doctor_base'] * 100 : $totalMinor) : 0;
+            $payment = app(FirstTopupPromotion::class)->split($request->user()->id, $doctor, $totalMinor, $doctorBaseMinor, $validated['points_percent'] ?? 0, true);
+            $pointsAmountMinor = (int) round($payment['points_amount'] * 100);
+            $promoAmountMinor = (int) round($payment['promo_amount'] * 100);
+            $realAmountMinor = $totalMinor - $pointsAmountMinor - $promoAmountMinor;
+            $pointsPercent = $totalMinor > 0 ? (int) floor($pointsAmountMinor * 100 / $totalMinor) : 0;
+            $pricing['payment'] = $payment;
 
             if ($costBreakdown !== null) {
                 $pricing = [...$pricing, 'cost_breakdown' => $costBreakdown];
@@ -252,17 +263,20 @@ class WorkflowController extends Controller
                 'status' => 'new',
                 'symptoms' => $validated['symptoms'],
                 'current_illness_history' => $validated['current_illness_history'] ?? null,
+                'triage_notes' => $validated['triage_notes'] ?? null,
                 'selected_services' => $validated['selected_services'] ?? [],
                 'scheduled_at' => $validated['scheduled_at'] ?? null,
                 'amount_minor' => $pricing['amount_minor'],
                 'real_amount_minor' => $realAmountMinor,
                 'points_amount_minor' => $pointsAmountMinor,
+                'promo_amount_minor' => $promoAmountMinor,
+                'promo_grant_id' => $payment['promo_grant_id'],
                 'points_percent' => $pointsPercent,
                 'platform_fee_minor' => $pricing['platform_fee_minor'],
                 'provider_amount_minor' => $pricing['provider_amount_minor'],
                 'pricing_snapshot' => $pricing,
                 'payment_status' => $pricing['amount_minor'] > 0 ? 'held' : 'none',
-                'acceptance_expires_at' => now()->addMinutes($this->acceptanceWindowMinutes()),
+                'acceptance_expires_at' => $validated['consultation_kind'] === 'with_exam' ? now()->addMinutes($this->acceptanceWindowMinutes()) : null,
             ]);
 
             $this->reservePatientWallet($request->user(), $item);
@@ -304,7 +318,7 @@ class WorkflowController extends Controller
         $user = $request->user()->loadMissing('roles');
 
         abort_unless($user->hasRole('doctor') || $user->hasRole('operator') || $user->hasRole('admin'), 403);
-        abort_unless(in_array($consultationRequest->status, ['new', 'rescheduled'], true), 422, 'Solicitarea nu mai poate fi acceptată.');
+        abort_unless($consultationRequest->status === 'new', 422, 'Solicitarea nu mai poate fi acceptată. Așteaptă confirmarea pacientului pentru ora propusă.');
 
         abort_unless(
             $user->hasRole('admin')
@@ -316,7 +330,7 @@ class WorkflowController extends Controller
         );
         abort_if($user->hasRole('operator') && $consultationRequest->consultation_kind !== 'with_exam', 403);
 
-        if ($consultationRequest->acceptance_expires_at?->isPast()) {
+        if ($this->operatorAcceptancePending($consultationRequest) && $consultationRequest->acceptance_expires_at?->isPast()) {
             $this->refundHeldFunds($consultationRequest, 'Solicitare expirată: prestatorul nu a răspuns în timp util.');
             $consultationRequest->forceFill([
                 'status' => 'expired',
@@ -345,6 +359,7 @@ class WorkflowController extends Controller
             ...$payload,
             'status' => 'accepted',
             'accepted_at' => now(),
+            'acceptance_expires_at' => null,
         ])->save();
 
         $conversation = Conversation::where('consultation_request_id', $consultationRequest->id)->first();
@@ -392,6 +407,7 @@ class WorkflowController extends Controller
             'diagnosis' => ['required', 'string', 'max:4000'],
             'treatment_plan' => ['nullable', 'string', 'max:4000'],
             'recommendations' => ['nullable', 'string', 'max:4000'],
+            'investigation_recommendations' => ['nullable', 'string', 'max:4000'],
             'prescription_notes' => ['nullable', 'string', 'max:4000'],
             'current_illness_history' => ['nullable', 'string', 'max:4000'],
             'objective_exam' => ['nullable', 'string', 'max:4000'],
@@ -455,6 +471,7 @@ class WorkflowController extends Controller
                 'diagnosis' => $validated['diagnosis'],
                 'treatment_plan' => $validated['treatment_plan'] ?? null,
                 'recommendations' => $validated['recommendations'] ?? null,
+                'investigation_recommendations' => $validated['investigation_recommendations'] ?? null,
                 'prescription_notes' => $validated['prescription_notes'] ?? null,
                 'price' => $consultationRequest->amount_minor / 100,
                 'completed_at' => now(),
@@ -465,7 +482,7 @@ class WorkflowController extends Controller
             $fhir = $doctorId ? $this->buildFhirEncounter($consultation->load(['patient', 'doctor'])) : null;
             $consultation->forceFill(['fhir_payload' => $fhir])->save();
 
-            $document = app(MedicalDocumentPublisher::class)->publish($consultation);
+            $document = app(MedicalDocumentPublisher::class)->publish($consultation, ['has_prescription' => $request->hasFile('prescription')]);
             if ($request->hasFile('prescription')) {
                 $document->forceFill([
                     'prescription_path' => $request->file('prescription')->store('medical-prescriptions', 'local'),
@@ -480,7 +497,7 @@ class WorkflowController extends Controller
             $consultationRequest->patient?->notify(new AppEventNotification(
                 'Consultație finalizată',
                 'Consultația a fost finalizată. Documentul PDF este disponibil în fișa pacientului.',
-                '/patient/profile?patient_profile='.$consultationRequest->patient_profile_id,
+                '/patient/profile?patient_profile='.$consultationRequest->patient_profile_id.'&section=consultations&request='.$consultationRequest->id,
                 'success',
             ));
 
@@ -698,6 +715,14 @@ class WorkflowController extends Controller
         );
         abort_if($consultationRequest->conclusion_sent_at, 422, 'Consultația a fost deja concluzionată.');
         abort_unless(
+            $consultationRequest->status === 'accepted'
+                || ($consultationRequest->consultation_kind === 'with_exam' && $consultationRequest->status === 'new' && $consultationRequest->objective_data_completed_at),
+            422,
+            'Confirmă mai întâi solicitarea și ora consultației.',
+        );
+        $validated = $request->validate(['start_early' => ['sometimes', 'boolean']]);
+        abort_if($consultationRequest->scheduled_at?->isFuture() && ! ($validated['start_early'] ?? false), 422, 'Consultația poate fi deschisă la ora programată sau mai devreme prin acțiunea explicită a medicului.');
+        abort_unless(
             app(ConsultationStateMachine::class)->readyForDoctor($consultationRequest),
             422,
             'Operatorul nu a finalizat încă examinarea la domiciliu.',
@@ -706,6 +731,8 @@ class WorkflowController extends Controller
         if (! $consultationRequest->doctor_started_at) {
             $consultationRequest->forceFill([
                 'doctor_id' => $consultationRequest->doctor_id ?: $user->id,
+                'status' => 'accepted',
+                'accepted_at' => $consultationRequest->accepted_at ?: now(),
                 'doctor_started_at' => now(),
             ])->save();
 
@@ -713,7 +740,7 @@ class WorkflowController extends Controller
 
             $consultationRequest->patient?->notify(new AppEventNotification(
                 'Consultația a început',
-                ($consultationRequest->doctor?->name ?? 'Medicul').' a preluat rezultatele examinării. Poți discuta acum în chat.',
+                ($consultationRequest->doctor?->name ?? 'Medicul').' a deschis consultația. Poți intra în apelul video din chat.',
                 '/patient/chat?request='.$consultationRequest->id,
                 'success',
             ));
@@ -833,9 +860,39 @@ class WorkflowController extends Controller
 
     public function requestContext(Request $request, ConsultationRequest $consultationRequest): JsonResponse
     {
-        abort_unless($request->user()->hasRole('admin') || in_array((int) $request->user()->id, array_map('intval', array_filter([$consultationRequest->patient_id, $consultationRequest->doctor_id, $consultationRequest->operator_id])), true), 403);
+        $user = $request->user()->loadMissing('roles');
+        abort_unless($user->hasRole('admin') || in_array((int) $user->id, array_map('intval', array_filter([$consultationRequest->patient_id, $consultationRequest->doctor_id, $consultationRequest->operator_id])), true), 403);
+        $isDoctor = $user->hasRole('doctor') && (int) $user->id === (int) $consultationRequest->doctor_id;
+        $isOperator = $user->hasRole('operator') && (int) $user->id === (int) $consultationRequest->operator_id;
+        $ready = app(ConsultationStateMachine::class)->readyForDoctor($consultationRequest);
 
-        return response()->json(['request' => ['id' => (string) $consultationRequest->id, 'consultation_kind' => $consultationRequest->consultation_kind, 'status' => $consultationRequest->status, 'doctor' => $consultationRequest->doctor_id ? ['id' => (string) $consultationRequest->doctor_id] : null, 'current_illness_history' => $consultationRequest->current_illness_history, 'symptoms' => $consultationRequest->symptoms, 'anamnesis_completed_at' => $consultationRequest->anamnesis_completed_at, 'higo_proposal' => $consultationRequest->higo_proposal]])->header('Cache-Control', 'no-store');
+        return response()->json(['request' => [
+            'id' => (string) $consultationRequest->id,
+            'consultation_kind' => $consultationRequest->consultation_kind,
+            'status' => $consultationRequest->status,
+            'doctor' => $consultationRequest->doctor_id ? ['id' => (string) $consultationRequest->doctor_id] : null,
+            'patient_profile_id' => $consultationRequest->patient_profile_id ? (string) $consultationRequest->patient_profile_id : null,
+            'current_illness_history' => $consultationRequest->current_illness_history,
+            'symptoms' => $consultationRequest->symptoms,
+            'anamnesis_completed_at' => $consultationRequest->anamnesis_completed_at,
+            'higo_proposal' => $consultationRequest->higo_proposal,
+            'scheduled_at' => $consultationRequest->scheduled_at,
+            'proposed_scheduled_at' => $consultationRequest->proposed_scheduled_at,
+            'accepted_at' => $consultationRequest->accepted_at,
+            'doctor_started_at' => $consultationRequest->doctor_started_at,
+            'acceptance_expires_at' => $this->operatorAcceptancePending($consultationRequest) ? $consultationRequest->acceptance_expires_at : null,
+            'ready_for_doctor' => $ready,
+            'can_accept' => $consultationRequest->status === 'new'
+                && (! $this->operatorAcceptancePending($consultationRequest) || ! $consultationRequest->acceptance_expires_at?->isPast())
+                && ($isDoctor || ($isOperator && $consultationRequest->consultation_kind === 'with_exam') || $user->hasRole('admin')),
+            'can_start_early' => ($isDoctor || $user->hasRole('admin')) && ! $consultationRequest->doctor_started_at
+                && ! $consultationRequest->conclusion_sent_at && $ready
+                && $consultationRequest->status === 'accepted' && $consultationRequest->scheduled_at?->isFuture(),
+            'can_start' => ($isDoctor || $user->hasRole('admin')) && ! $consultationRequest->doctor_started_at
+                && ! $consultationRequest->conclusion_sent_at && $ready
+                && ($consultationRequest->status === 'accepted' || ($consultationRequest->status === 'new' && $consultationRequest->consultation_kind === 'with_exam'))
+                && (! $consultationRequest->scheduled_at || ! $consultationRequest->scheduled_at->isFuture()),
+        ]])->header('Cache-Control', 'no-store');
     }
 
     public function proposeHigo(Request $request, ConsultationRequest $consultationRequest): JsonResponse
@@ -1057,6 +1114,38 @@ class WorkflowController extends Controller
         return response()->json(['data' => $conversations]);
     }
 
+    public function directConversation(Request $request, Conversation $conversation): JsonResponse
+    {
+        $user = $request->user();
+        $role = $user->activeRole?->name ?? $user->roles->first()?->name;
+        abort_unless(in_array($role, ['patient', 'doctor', 'operator'], true) && $user->hasRole($role), 403);
+        abort_unless((int) $conversation->{$role.'_id'} === (int) $user->id, 403);
+        $providerRole = $role === 'patient' ? ($conversation->doctor_id ? 'doctor' : 'operator') : $role;
+        $providerId = $conversation->{$providerRole.'_id'};
+        abort_unless($providerId, 422, 'Conversația nu are un medic sau operator asociat.');
+
+        $direct = DB::transaction(function () use ($conversation, $providerRole, $providerId) {
+            User::whereKey($conversation->patient_id)->lockForUpdate()->firstOrFail();
+
+            return Conversation::firstOrCreate([
+                'is_direct' => true,
+                'patient_id' => $conversation->patient_id,
+                'doctor_id' => $providerRole === 'doctor' ? $providerId : null,
+                'operator_id' => $providerRole === 'operator' ? $providerId : null,
+                'patient_profile_id' => null,
+                'consultation_request_id' => null,
+            ], ['status' => 'open']);
+        });
+        $direct->load(['patient', 'doctor', 'operator', 'messages.sender']);
+        $direct->setAttribute('chat', $this->chatState($direct, $user));
+        $direct->setAttribute('unread_count', 0);
+        if ($direct->wasRecentlyCreated) {
+            ConversationUpdated::dispatch($direct);
+        }
+
+        return response()->json(['data' => $direct], $direct->wasRecentlyCreated ? 201 : 200);
+    }
+
     public function readConversation(Request $request, Conversation $conversation): JsonResponse
     {
         abort_unless(in_array((int) $request->user()->id, array_map('intval', array_filter([$conversation->patient_id, $conversation->doctor_id, $conversation->operator_id])), true), 403);
@@ -1112,9 +1201,7 @@ class WorkflowController extends Controller
                 abort(422, 'Chatul s-a închis. Îl poți reactiva din consultație cât timp fereastra este deschisă.');
             }
 
-            abort(422, $consultationRequest->objective_data_completed_at
-                ? 'Chatul se deschide după ce medicul pornește consultația.'
-                : 'Chatul se deschide după ce operatorul efectuează examinarea la domiciliu.');
+            abort(422, $this->unavailableRequestMessage($consultationRequest));
         }
 
         $validated = $request->validate([
@@ -1158,9 +1245,7 @@ class WorkflowController extends Controller
                 abort(422, 'Chatul s-a închis. Îl poți reactiva din consultație cât timp fereastra este deschisă.');
             }
 
-            abort(422, $consultationRequest->objective_data_completed_at
-                ? 'Chatul se deschide după ce medicul pornește consultația.'
-                : 'Chatul se deschide după ce operatorul efectuează examinarea la domiciliu.');
+            abort(422, $this->unavailableRequestMessage($consultationRequest));
         }
 
         $validated = $request->validate([
@@ -1207,6 +1292,13 @@ class WorkflowController extends Controller
         $user = $request->user()->loadMissing('roles');
         abort_unless($user->hasRole('doctor') || $user->hasRole('operator') || $user->hasRole('admin'), 403);
         abort_unless(in_array($consultationRequest->status, ['new', 'accepted', 'rescheduled'], true), 422, 'Nu se mai poate propune alt interval.');
+        abort_unless(
+            $user->hasRole('admin')
+                || ($user->hasRole('doctor') && (int) $consultationRequest->doctor_id === (int) $user->id)
+                || ($user->hasRole('operator') && (int) $consultationRequest->operator_id === (int) $user->id),
+            403,
+        );
+        abort_if($consultationRequest->doctor_started_at, 422, 'Consultația a început deja.');
 
         $validated = $request->validate([
             'scheduled_at' => ['required', 'date', 'after:now'],
@@ -1230,7 +1322,7 @@ class WorkflowController extends Controller
             $message = Message::create([
                 'conversation_id' => $conversation->id,
                 'sender_id' => $user->id,
-                'body' => 'A fost propus un nou interval: '.date('d.m.Y H:i', strtotime($validated['scheduled_at'])),
+                'body' => 'A fost propus un nou interval: '.CarbonImmutable::parse($validated['scheduled_at'])->setTimezone('Europe/Chisinau')->format('d.m.Y H:i'),
                 'type' => 'system',
             ]);
             ConversationMessageSent::dispatch($conversation, $message->load('sender'));
@@ -1260,8 +1352,9 @@ class WorkflowController extends Controller
             'scheduled_at' => $consultationRequest->proposed_scheduled_at,
             'proposed_scheduled_at' => null,
             'proposed_by' => null,
-            'status' => 'new',
-            'acceptance_expires_at' => now()->addMinutes($this->acceptanceWindowMinutes()),
+            'status' => 'accepted',
+            'accepted_at' => now(),
+            'acceptance_expires_at' => null,
         ])->save();
 
         $conversation = Conversation::where('consultation_request_id', $consultationRequest->id)->first();
@@ -1306,7 +1399,7 @@ class WorkflowController extends Controller
             'cancelled_at' => $item->cancelled_at,
             'refunded_at' => $item->refunded_at,
             'cancellation_reason' => $item->cancellation_reason,
-            'acceptance_expires_at' => $item->acceptance_expires_at,
+            'acceptance_expires_at' => $this->operatorAcceptancePending($item) ? $item->acceptance_expires_at : null,
             'chat_expires_at' => $item->chat_expires_at,
             'free_chat_until' => $item->free_chat_until,
             'chat_reactivated_until' => $item->chat_reactivated_until,
@@ -1315,6 +1408,8 @@ class WorkflowController extends Controller
             'amount' => $item->amount_minor / 100,
             'real_amount' => $item->real_amount_minor / 100,
             'points_amount' => $item->points_amount_minor / 100,
+            'promo_amount' => $item->promo_amount_minor / 100,
+            'promo_grant_id' => $item->promo_grant_id,
             'points_percent' => $item->points_percent,
             'platform_fee' => $item->platform_fee_minor / 100,
             'provider_amount' => $item->provider_amount_minor / 100,
@@ -1324,7 +1419,6 @@ class WorkflowController extends Controller
                 'id' => (string) $item->patientProfile->id,
                 'name' => $item->patientProfile->display_name,
                 'patient_code' => $item->patientProfile->patient_code,
-                'identity_number' => $item->patientProfile->pseudonymized ? null : $item->patientProfile->identity_number,
                 'residential_environment' => $item->patientProfile->residential_environment,
                 'address_details' => $item->patientProfile->address_details,
                 'medical_record' => $item->patientProfile->medical_record ?? (object) [],
@@ -1446,10 +1540,10 @@ class WorkflowController extends Controller
             if (! empty($validated['doctor_id'])) {
                 $doctor = User::with('doctorProfile')->find($validated['doctor_id']);
 
-                return (int) ($doctor?->doctorProfile?->video_price ?? app(PlatformConfig::class)->number('video.default_price', 300));
+                return (int) ($doctor?->doctorProfile?->video_price ?? app(PlatformConfig::class)->number('video.default_price', 500));
             }
 
-            return (int) app(PlatformConfig::class)->number('video.default_price', 300);
+            return (int) app(PlatformConfig::class)->number('video.default_price', 500);
         }
 
         if ($validated['type'] === 'operator') {
@@ -1485,7 +1579,7 @@ class WorkflowController extends Controller
         abort_unless(
             filled($profile->first_name) && filled($profile->last_name),
             422,
-            'Profilul de pacient este incomplet. Completează numele și IDNP-ul înainte de consultație.',
+            'Profilul de pacient este incomplet. Completează numele și prenumele înainte de consultație.',
         );
 
         return $profile;
@@ -1572,6 +1666,10 @@ class WorkflowController extends Controller
 
         $isPatient = (int) $user->id === (int) $request->patient_id;
 
+        if (in_array($request->status, ['expired', 'cancelled', 'rejected', 'no_operator_available'], true)) {
+            return ['state' => 'closed', 'can_write' => false, 'can_reactivate' => false, 'message' => $this->unavailableRequestMessage($request)];
+        }
+
         if ($this->canWriteChat($request)) {
             return ['state' => 'open', 'can_write' => true, 'can_reactivate' => false, 'message' => null];
         }
@@ -1583,9 +1681,7 @@ class WorkflowController extends Controller
                 'state' => 'pending',
                 'can_write' => false,
                 'can_reactivate' => false,
-                'message' => $request->objective_data_completed_at
-                    ? 'Examinarea e gata. Chatul se deschide când medicul pornește consultația.'
-                    : 'Chatul se deschide după ce operatorul efectuează examinarea la domiciliu.',
+                'message' => $this->unavailableRequestMessage($request),
             ];
         }
 
@@ -1601,6 +1697,20 @@ class WorkflowController extends Controller
                 : 'Fereastra de discuții pentru această consultație s-a închis definitiv.',
             'reactivate_until' => $request->chat_expires_at,
         ];
+    }
+
+    private function unavailableRequestMessage(ConsultationRequest $request): string
+    {
+        return match ($request->status) {
+            'expired' => 'Solicitarea a expirat. Creează o solicitare nouă pentru a continua consultația.',
+            'cancelled' => 'Solicitarea a fost anulată.',
+            'rejected' => 'Solicitarea a fost respinsă de prestator.',
+            'no_operator_available' => 'Nu a fost găsit un operator disponibil. Creează o solicitare nouă.',
+            'rescheduled' => 'Așteptăm confirmarea pacientului pentru ora propusă.',
+            default => $request->objective_data_completed_at
+                ? 'Chatul se deschide după ce medicul pornește consultația.'
+                : 'Chatul se deschide după ce operatorul efectuează examinarea la domiciliu.',
+        };
     }
 
     private function canWriteChat(ConsultationRequest $consultationRequest): bool
@@ -1635,7 +1745,8 @@ class WorkflowController extends Controller
 
     private function ensureSchedulable(array $validated, ?int $ignoreRequestId = null): void
     {
-        $scheduledAt = CarbonImmutable::parse($validated['scheduled_at']);
+        $scheduledAt = CarbonImmutable::parse($validated['scheduled_at'])->setTimezone(config('app.timezone', 'UTC'));
+        $localScheduledAt = $scheduledAt->setTimezone('Europe/Chisinau');
         abort_if($scheduledAt->isPast(), 422, 'Alegeți o dată/oră din viitor.');
 
         $providerId = $validated['doctor_id'] ?? $validated['operator_id'] ?? null;
@@ -1651,8 +1762,8 @@ class WorkflowController extends Controller
             abort_unless($provider->doctorProfile?->is_available, 422, 'Medicul nu este disponibil pentru consultații.');
 
             $onVacation = $provider->doctorVacations()
-                ->whereDate('starts_on', '<=', $scheduledAt->toDateString())
-                ->whereDate('ends_on', '>=', $scheduledAt->toDateString())
+                ->whereDate('starts_on', '<=', $localScheduledAt->toDateString())
+                ->whereDate('ends_on', '>=', $localScheduledAt->toDateString())
                 ->exists();
             abort_if($onVacation, 422, 'Medicul este în concediu în această perioadă.');
 
@@ -1664,10 +1775,10 @@ class WorkflowController extends Controller
 
             if ($hasSchedule) {
                 $fitsSchedule = $provider->doctorAvailabilities()
-                    ->where('weekday', $scheduledAt->dayOfWeek)
+                    ->where('weekday', $localScheduledAt->dayOfWeek)
                     ->where('is_active', true)
-                    ->whereTime('starts_at', '<=', $scheduledAt->format('H:i:s'))
-                    ->whereTime('ends_at', '>=', $scheduledAt->addMinutes(30)->format('H:i:s'))
+                    ->whereTime('starts_at', '<=', $localScheduledAt->format('H:i:s'))
+                    ->whereTime('ends_at', '>=', $localScheduledAt->addMinutes(30)->format('H:i:s'))
                     ->exists();
 
                 abort_unless($fitsSchedule, 422, 'Medicul nu are program disponibil în acest interval.');
@@ -1702,6 +1813,8 @@ class WorkflowController extends Controller
         ]);
 
         $retainedTravelFee = DB::transaction(function () use ($consultationRequest, $validated) {
+            $consultationRequest = ConsultationRequest::lockForUpdate()->findOrFail($consultationRequest->id);
+            abort_unless(in_array($consultationRequest->status, ['new', 'accepted'], true), 422, 'Solicitarea nu mai poate fi anulată.');
             $retained = $this->refundForCancellation($consultationRequest, $validated['reason'] ?? 'Solicitare anulată.');
             $consultationRequest->forceFill([
                 'status' => 'cancelled',
@@ -1773,7 +1886,7 @@ class WorkflowController extends Controller
 
     private function realAmountForRequest(ConsultationRequest $item): int
     {
-        return (int) (($item->real_amount_minor + $item->points_amount_minor) > 0 ? $item->real_amount_minor : $item->amount_minor);
+        return (int) (($item->real_amount_minor + $item->points_amount_minor + $item->promo_amount_minor) > 0 ? $item->real_amount_minor : $item->amount_minor);
     }
 
     private function reservePatientWallet(User $patient, ConsultationRequest $consultationRequest): void
@@ -1785,10 +1898,12 @@ class WorkflowController extends Controller
         $ledger = app(WalletLedger::class);
         $wallet = $ledger->locked($patient, WalletLedger::REAL);
         $pointsWallet = $ledger->locked($patient, WalletLedger::POINTS);
+        $promoWallet = $ledger->locked($patient, WalletLedger::PROMO);
         $realAmount = $this->realAmountForRequest($consultationRequest);
         $pointsAmount = (int) $consultationRequest->points_amount_minor;
         abort_if($wallet->balance_minor < $realAmount, 422, 'Balanță insuficientă în portofelul de bani reali.');
         abort_if($pointsWallet->balance_minor < $pointsAmount, 422, 'Nu ai suficiente puncte pentru această plată.');
+        abort_if($promoWallet->balance_minor < $consultationRequest->promo_amount_minor, 422, 'Sold promoțional insuficient. Reîncarcă oferta.');
 
         if ($realAmount > 0) {
             $ledger->move($wallet, -$realAmount, 'service_hold', 'Rezervare consultație din bani reali', ['consultation_request_id' => $consultationRequest->id], $consultationRequest->id);
@@ -1797,6 +1912,9 @@ class WorkflowController extends Controller
             $ledger->move($pointsWallet, -$pointsAmount, 'points_service_hold', 'Rezervare consultație din puncte', ['consultation_request_id' => $consultationRequest->id], $consultationRequest->id);
         }
 
+        if ($consultationRequest->promo_amount_minor > 0) {
+            $ledger->move($promoWallet, -$consultationRequest->promo_amount_minor, 'promo_service_hold', 'Rezervare bonus promoțional pentru consultația medicului', ['promo_grant_id' => $consultationRequest->promo_grant_id], $consultationRequest->id);
+        }
     }
 
     private function captureHeldFunds(ConsultationRequest $consultationRequest, User $provider, int $consultationId): void
@@ -1824,6 +1942,7 @@ class WorkflowController extends Controller
                     'consultation_id' => $consultationId,
                     'gross_amount_minor' => $consultationRequest->amount_minor,
                     'platform_fee_minor' => $consultationRequest->platform_fee_minor,
+                    'promo_subsidy_minor' => (int) $consultationRequest->promo_amount_minor,
                 ],
                 'rate_snapshot' => $consultationRequest->pricing_snapshot['rate_snapshot'] ?? [],
                 'consultation_request_id' => $consultationRequest->id,
@@ -1854,6 +1973,7 @@ class WorkflowController extends Controller
 
     private function refundHeldFunds(ConsultationRequest $consultationRequest, string $reason): void
     {
+        $consultationRequest = ConsultationRequest::lockForUpdate()->findOrFail($consultationRequest->id);
         if ($consultationRequest->payment_status !== 'held' || $consultationRequest->amount_minor <= 0) {
             return;
         }
@@ -1868,6 +1988,11 @@ class WorkflowController extends Controller
         }
         if ($pointsAmount > 0) {
             $ledger->move($pointsWallet, $pointsAmount, 'points_service_refund', 'Returnare puncte pentru consultație', ['reason' => $reason], $consultationRequest->id);
+        }
+
+        if ($consultationRequest->promo_amount_minor > 0) {
+            $promoWallet = $ledger->locked($consultationRequest->patient_id, WalletLedger::PROMO);
+            $ledger->move($promoWallet, $consultationRequest->promo_amount_minor, 'promo_service_refund', 'Returnare bonus promoțional pentru consultație', ['reason' => $reason, 'promo_grant_id' => $consultationRequest->promo_grant_id], $consultationRequest->id);
         }
 
         $consultationRequest->forceFill([
@@ -1964,6 +2089,7 @@ class WorkflowController extends Controller
 
     private function refundHeldFundsPartial(ConsultationRequest $consultationRequest, int $retainMinor, string $reason): void
     {
+        $consultationRequest = ConsultationRequest::lockForUpdate()->findOrFail($consultationRequest->id);
         if ($consultationRequest->payment_status !== 'held' || $consultationRequest->amount_minor <= 0) {
             return;
         }
@@ -1971,6 +2097,8 @@ class WorkflowController extends Controller
         $retainMinor = min($retainMinor, $consultationRequest->amount_minor);
         $realHeld = $this->realAmountForRequest($consultationRequest);
         $pointsHeld = (int) $consultationRequest->points_amount_minor;
+        $promoHeld = (int) $consultationRequest->promo_amount_minor;
+        abort_if($promoHeld > 0 && $retainMinor > $realHeld + $pointsHeld, 422, 'Taxa de deplasare nu poate fi achitată din bonusul promoțional.');
         // Taxa de deplasare se achită către operator în bani reali; consumăm
         // întâi componenta reală a rezervării, apoi componenta de puncte.
         $retainReal = min($retainMinor, $realHeld);
@@ -1986,6 +2114,11 @@ class WorkflowController extends Controller
         }
         if ($refundPoints > 0) {
             $ledger->move($pointsWallet, $refundPoints, 'points_service_refund', 'Returnare parțială în puncte', ['reason' => $reason, 'retained_minor' => $retainMinor], $consultationRequest->id);
+        }
+
+        if ($promoHeld > 0) {
+            $promoWallet = $ledger->locked($consultationRequest->patient_id, WalletLedger::PROMO);
+            $ledger->move($promoWallet, $promoHeld, 'promo_service_refund', 'Returnare bonus promoțional la anulare', ['reason' => $reason, 'promo_grant_id' => $consultationRequest->promo_grant_id], $consultationRequest->id);
         }
 
         if ($retainMinor > 0 && $consultationRequest->operator_id) {
@@ -2009,33 +2142,41 @@ class WorkflowController extends Controller
         $consultationRequest->forceFill(['payment_status' => 'refunded', 'refunded_at' => now()])->save();
     }
 
+    private function operatorAcceptancePending(ConsultationRequest $request): bool
+    {
+        return $request->consultation_kind === 'with_exam'
+            && ! $request->operator_accepted_at && ! $request->objective_data_completed_at && ! $request->doctor_started_at;
+    }
+
     private function expireStaleRequests(): void
     {
         ConsultationRequest::where('status', 'new')
+            ->whereNotNull('acceptance_expires_at')
+            ->where(function ($query) {
+                $query->whereIn('consultation_kind', ['video', 'preliminary'])
+                    ->orWhereNotNull('operator_accepted_at')
+                    ->orWhereNotNull('objective_data_completed_at')
+                    ->orWhereNotNull('doctor_started_at');
+            })->update(['acceptance_expires_at' => null]);
+
+        ConsultationRequest::where('status', 'new')
+            ->where('consultation_kind', 'with_exam')
+            ->whereNull('operator_accepted_at')
+            ->whereNull('objective_data_completed_at')
+            ->whereNull('doctor_started_at')
             ->whereNotNull('acceptance_expires_at')
             ->where('acceptance_expires_at', '<', now())
             ->limit(50)
             ->get()
             ->each(function (ConsultationRequest $item) {
                 DB::transaction(function () use ($item) {
-                    if ($item->consultation_kind === 'with_exam') {
-                        $this->reassignOperator($item, 'Operatorul nu a răspuns în intervalul disponibil.');
-
+                    $pending = ConsultationRequest::lockForUpdate()->find($item->id);
+                    if (! $pending || $pending->status !== 'new' || ! $this->operatorAcceptancePending($pending)
+                        || ! $pending->acceptance_expires_at?->isPast()) {
                         return;
                     }
 
-                    $this->refundHeldFunds($item, 'Solicitare expirată automat.');
-                    $item->forceFill([
-                        'status' => 'expired',
-                        'cancelled_at' => now(),
-                        'cancellation_reason' => 'Prestatorul nu a răspuns în intervalul disponibil.',
-                    ])->save();
-
-                    $conversation = Conversation::where('consultation_request_id', $item->id)->first();
-                    if ($conversation) {
-                        $conversation->forceFill(['status' => 'closed'])->save();
-                        ConversationUpdated::dispatch($conversation->refresh()->load(['patient', 'doctor', 'operator', 'messages.sender']));
-                    }
+                    $this->reassignOperator($pending, 'Operatorul nu a răspuns în intervalul disponibil.');
                 });
             });
     }
@@ -2067,7 +2208,7 @@ class WorkflowController extends Controller
                 continue;
             }
             $role = (int) $id === (int) $conversation->patient_id ? 'patient' : ((int) $id === (int) $conversation->doctor_id ? 'doctor' : 'operator');
-            User::find($id)?->notify(new AppEventNotification('Mesaj nou', 'Ai primit un mesaj nou în conversația unui pacient. Deschide platforma pentru a-l citi.', '/'.$role.'/chat?conversation='.$conversation->id));
+            User::find($id)?->notify(new AppEventNotification('Mesaj nou', 'Ai primit un mesaj nou în chat. Deschide platforma pentru a-l citi.', '/'.$role.'/chat?conversation='.$conversation->id));
         }
     }
 

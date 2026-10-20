@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['pseudonymized', 'identity_number', 'residential_environment', 'address_details', 'medical_record', 'user_id', 'higo_patient_id', 'first_name', 'last_name', 'birth_date', 'gender', 'country', 'region', 'region_id', 'locality', 'locality_id', 'address', 'emergency_contact', 'medical_summary', 'life_history', 'status', 'active_until'])]
+#[Fillable(['pseudonymized', 'residential_environment', 'address_details', 'medical_record', 'user_id', 'higo_patient_id', 'first_name', 'last_name', 'birth_date', 'gender', 'country', 'region', 'region_id', 'locality', 'locality_id', 'address', 'emergency_contact', 'medical_summary', 'life_history', 'status', 'active_until'])]
 class PatientProfile extends Model
 {
     /**
@@ -25,7 +25,7 @@ class PatientProfile extends Model
     public static function generateUniqueCode(): string
     {
         do {
-            $code = (string) random_int(100000, 999999);
+            $code = (string) random_int(100000000000000, 999999999999999);
         } while (self::where('patient_code', $code)->exists());
 
         return $code;
@@ -77,9 +77,19 @@ class PatientProfile extends Model
         return $this->status === 'active' && ($this->active_until === null || $this->active_until->isFuture());
     }
 
+    protected $hidden = ['identity_number'];
+
+    public function higoIdentifier(): string
+    {
+        return preg_match('/^0{9}[1-9][0-9]{5}$/', (string) $this->patient_code)
+            ? substr($this->patient_code, 9)
+            : (string) $this->patient_code;
+    }
+
     protected function casts(): array
     {
         return [
+            'patient_code' => 'string',
             'pseudonymized' => 'boolean',
             'birth_date' => 'date',
             'life_history' => 'array',

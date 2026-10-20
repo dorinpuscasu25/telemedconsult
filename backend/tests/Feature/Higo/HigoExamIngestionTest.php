@@ -24,6 +24,7 @@ class HigoExamIngestionTest extends TestCase
         parent::setUp();
 
         config([
+            'higo.sync.enabled' => true,
             'higo.exams.webhook_secret' => 'exam-secret',
             'higo.base_url' => 'https://higo.test',
             'higo.client_id' => 'cid',

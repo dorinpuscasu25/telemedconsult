@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\FeatureFlags;
+use App\Services\FirstTopupPromotion;
 use App\Services\PaymentVerification;
 use App\Services\PlatformConfig;
 use App\Services\ReferralProgram;
@@ -29,10 +30,14 @@ class WalletController extends Controller
     {
         $wallet = $this->walletFor($request->user(), WalletLedger::REAL);
         $points = $this->walletFor($request->user(), WalletLedger::POINTS);
+        $promo = $this->walletFor($request->user(), WalletLedger::PROMO);
 
         return response()->json([
             'topup_bonus_percent' => min(100, max(0, app(PlatformConfig::class)->number('wallet.topup_bonus_percent', 0))),
             'max_bonus_payment_percent' => app(PlatformConfig::class)->number('wallet.max_points_payment_percent', 30),
+            'promo_wallet' => $this->serializeWallet($promo),
+            'first_topup_promotion' => app(FirstTopupPromotion::class)->describe($request->user()->id),
+            'promo_transactions' => $promo->transactions()->latest()->limit(50)->get()->map(fn (WalletTransaction $transaction) => ['id' => $transaction->id, 'date' => $transaction->created_at, 'type' => $transaction->description, 'amount' => $transaction->amount_minor / 100, 'status' => $transaction->status]),
             'wallet' => $this->serializeWallet($wallet),
             'points_wallet' => $this->serializeWallet($points),
             'transactions' => $wallet->transactions()->latest()->limit(50)->get()->map(fn (WalletTransaction $transaction) => [
@@ -253,6 +258,7 @@ class WalletController extends Controller
 
             // Afiliere medic/operator: codul este transmis explicit la top-up.
             $this->creditAffiliateBonus($payment);
+            app(FirstTopupPromotion::class)->credit($payment);
         });
     }
 

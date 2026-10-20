@@ -34,6 +34,17 @@ interface WalletData {
   topup_bonus_percent: number;
   max_bonus_payment_percent: number;
   points_transactions: WalletData['transactions'];
+  promo_transactions?: WalletData['transactions'];
+  promo_wallet?: { balance: number; currency: string };
+  first_topup_promotion?: {
+    enabled: boolean;
+    minimum_deposit: number;
+    bonus_amount: number;
+    max_payment_percent: number;
+    doctors: Array<{ id: number; name: string }>;
+    eligible_for_grant: boolean;
+    grant?: { doctor_ids: number[]; max_payment_percent: number } | null;
+  };
   wallet: {
     id: number;
     balance: number;
@@ -107,7 +118,10 @@ export function WalletPage() {
 
   const wallet = walletData?.wallet;
   const pointsWallet = walletData?.points_wallet;
-  const transactions = [...(walletData?.transactions ?? []).map((tx) => ({ ...tx, pocket: 'Bază' })), ...(walletData?.points_transactions ?? []).map((tx) => ({ ...tx, pocket: 'Bonusuri' }))].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const promoBalance = walletData?.promo_wallet?.balance ?? 0;
+  const promotion = walletData?.first_topup_promotion;
+  const promoDoctors = promotion?.doctors.map((doctor) => doctor.name).join(', ');
+  const transactions = [...(walletData?.transactions ?? []).map((tx) => ({ ...tx, pocket: 'Bază' })), ...(walletData?.points_transactions ?? []).map((tx) => ({ ...tx, pocket: 'Bonusuri' })), ...(walletData?.promo_transactions ?? []).map((tx) => ({ ...tx, pocket: 'Bonus promoțional' }))].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto relative">
@@ -120,6 +134,7 @@ export function WalletPage() {
         </p>
       </div>
 
+      {promotion?.eligible_for_grant && <Card className="border-blue-200 bg-blue-50"><CardContent className="flex flex-wrap items-center justify-between gap-4 p-5"><div className="max-w-2xl"><h2 className="font-semibold text-blue-950">Prima alimentare: {money(promotion.minimum_deposit)} MDL + {money(promotion.bonus_amount)} MDL bonus</h2><p className="mt-1 text-sm text-blue-900">Depune minimum {money(promotion.minimum_deposit)} MDL și primește o singură dată {money(promotion.bonus_amount)} MDL bonus promoțional. Se folosește automat pentru maximum 50% din fiecare consultație cu {promoDoctors || 'medicul eligibil'}. Examinările și deplasarea operatorului se achită separat.</p></div><Button onClick={() => { setAmount(String(promotion.minimum_deposit)); setIsTopUpOpen(true); }}>Alimentează contul</Button></CardContent></Card>}
       {error && !isTopUpOpen && <div role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}<Button variant="outline" size="sm" className="ml-3" onClick={loadWallet}>Reîncearcă</Button></div>}
       <div className="grid gap-6 md:grid-cols-3">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="md:col-span-2">
@@ -163,10 +178,11 @@ export function WalletPage() {
             <CardContent className="flex h-full flex-col justify-between p-8">
               <div>
                 <p className="mb-1 font-medium text-white/80">Portofel de bonusuri</p>
-                <h2 className="text-4xl font-bold">{pointsWallet ? pointsWallet.balance.toFixed(2) : '…'} <span className="text-lg">MDL</span></h2>
+                <h2 className="text-4xl font-bold">{pointsWallet ? money(pointsWallet.balance + promoBalance) : '…'} <span className="text-lg">MDL</span></h2>
                 <p className="mt-2 text-sm text-white/80">Bonusuri acordate separat de banii depuși</p>
+                {promoBalance > 0 && <div className="mt-4 space-y-1 rounded-xl bg-white/15 p-3 text-sm"><p>Bonusuri obișnuite: {money(pointsWallet?.balance)} MDL</p><p className="font-semibold">Bonus promoțional: {money(promoBalance)} MDL</p><p className="text-xs">Se aplică automat, maximum 50% din consultația medicului: {promoDoctors || 'medicul eligibil din promoția primită'}.</p></div>}
               </div>
-              <p className="mt-6 text-sm font-medium">Până la {walletData?.max_bonus_payment_percent ?? 30}% din consultațiile eligibile</p>
+              <p className="mt-6 text-sm font-medium">Bonusurile obișnuite: până la {walletData?.max_bonus_payment_percent ?? 30}% din consultațiile eligibile</p>
             </CardContent>
           </Card>
         </motion.div>
@@ -270,7 +286,8 @@ export function WalletPage() {
                 ))}
               </div>
             </div>
-            <p className="rounded-xl bg-amber-50 p-3 text-sm">Portofel de bază: +{money(Number(amount) || 0)}<br />Portofel de bonusuri (estimare): +{money((Number(amount) || 0) * (walletData?.topup_bonus_percent ?? 0) / 100)} ({walletData?.topup_bonus_percent ?? 0}%). Procentul aplicat se salvează la confirmarea plății.</p>
+            <p className="rounded-xl bg-amber-50 p-3 text-sm">Portofel de bază: +{money(Number(amount) || 0)}<br />Bonus obișnuit estimat: +{money((Number(amount) || 0) * (walletData?.topup_bonus_percent ?? 0) / 100)} ({walletData?.topup_bonus_percent ?? 0}%). Procentul aplicat se salvează la confirmarea plății.</p>
+            {promotion?.eligible_for_grant && <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900"><p className="font-semibold">Promoție la prima alimentare: {money(promotion.minimum_deposit)} + {money(promotion.bonus_amount)} MDL</p><p className="mt-1">{Number(amount) >= promotion.minimum_deposit ? `Bonus promoțional estimat: +${money(promotion.bonus_amount)} MDL.` : `Prima alimentare trebuie să fie de minimum ${money(promotion.minimum_deposit)} MDL pentru a primi bonusul.`} Banii depuși intră integral în portofelul de bază.</p><p className="mt-1">Bonusul se folosește automat pentru maximum 50% din consultația cu {promoDoctors || 'medicul eligibil'}. Examinările și deplasarea operatorului se achită separat.</p></div>}
           <DialogFooter>
               <Button
                 type="submit"

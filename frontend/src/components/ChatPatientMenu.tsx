@@ -24,7 +24,9 @@ export function ChatPatientMenu({ active = false, compact = false }: { active?: 
       setPatients([...groups.values()]);
     } catch (err) { setError(err instanceof Error ? err.message : 'Lista nu a putut fi încărcată.'); }
   };
-  return <DropdownMenu onOpenChange={load}><DropdownMenuTrigger className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-2.5 text-sm font-medium ${active ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+  const triggerClassName = `inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-2.5 text-sm font-medium ${active ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100'}`;
+  if (role !== 'patient') return <Link to={`/${role}/chat`} className={triggerClassName}>{!compact && <MessageSquare className="h-4 w-4" />}Chat</Link>;
+  return <DropdownMenu onOpenChange={load}><DropdownMenuTrigger className={triggerClassName}>
     {!compact && <MessageSquare className="h-4 w-4" />}Chat<ChevronDown className="h-3 w-3" />
   </DropdownMenuTrigger><DropdownMenuContent align="start" className="max-h-80 min-w-64 overflow-auto">
     <DropdownMenuItem asChild><Link to={`/${role}/chat`}>Toate conversațiile</Link></DropdownMenuItem>

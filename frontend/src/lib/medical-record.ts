@@ -12,7 +12,7 @@ const notes: MedicalField = { key: 'notes', label: 'Alte detalii', type: 'textar
 export const MEDICAL_SECTIONS: MedicalSection[] = [
   { key: 'birth', title: 'Date despre naștere', description: 'Completează doar informațiile cunoscute. Părintele poate descrie dezvoltarea copilului.', fields: [
     { key: 'birth_method', label: 'Modul nașterii', type: 'select', options: [['natural', 'Natural'], ['cesarean', 'Operație cezariană'], ['forceps', 'Natural cu forceps'], ['vacuum', 'Natural cu vacuum extracție']] },
-    { key: 'gestational_weeks', label: 'Termenul nașterii', type: 'select', options: Array.from({ length: 19 }, (_, i) => [String(i + 24), `${i + 24} săptămâni`]) },
+    { key: 'gestational_weeks', label: 'Termenul nașterii', type: 'select', options: Array.from({ length: 20 }, (_, i) => [String(i + 24), `${i + 24} săptămâni`]) },
     { key: 'birth_weight', label: 'Masa la naștere', type: 'number', unit: 'g', min: 1, max: 10000 },
     { key: 'head_circumference', label: 'Circumferința craniană la naștere', type: 'number', unit: 'cm', min: 1, max: 100 },
     { key: 'apgar', label: 'Scor APGAR', type: 'select', options: Array.from({ length: 10 }, (_, i) => [String(i + 1), String(i + 1)]) },
@@ -29,7 +29,7 @@ export const MEDICAL_SECTIONS: MedicalSection[] = [
   { key: 'drug_allergies', title: 'Alergii la medicamente', description: 'O înregistrare pentru fiecare medicament la care ai avut o reacție alergică.', repeated: true, fields: [name('Medicament'), period, { key: 'manifestation', label: 'Cum s-a manifestat alergia', type: 'textarea' }, { key: 'resolution', label: 'Cum a fost rezolvată', type: 'textarea' }] },
   { key: 'food_allergies', title: 'Alergii la alimente', description: 'Descrie alimentul, reacția și ce ai făcut atunci.', repeated: true, fields: [name('Aliment'), period, { key: 'manifestation', label: 'Cum s-a manifestat alergia', type: 'textarea' }, { key: 'resolution', label: 'Cum a fost rezolvată', type: 'textarea' }] },
   { key: 'chronic_conditions', title: 'Boli cronice active', description: 'Adaugă diagnosticele stabilite de un specialist.', repeated: true, fields: [name('Diagnostic'), date, { key: 'specialist', label: 'Specialistul care a stabilit diagnosticul' }, notes] },
-  { key: 'family_history', title: 'Antecedente familiale', description: 'Precizează rudenia și linia maternă sau paternă, dacă este relevant.', repeated: true, fields: [{ key: 'relationship', label: 'Gradul de rudenie', required: true, placeholder: 'De exemplu: bunica după tata' }, name('Boală cronică / genetică'), notes] },
+  { key: 'family_history', title: 'Antecedente familiale', description: 'Adaugă separat bolile cronice sau genetice cunoscute la mamă, tată și bunici. La bunici, precizează linia maternă sau paternă. Completează doar informațiile cunoscute.', repeated: true, fields: [{ key: 'relationship', label: 'Gradul de rudenie', required: true, placeholder: 'Mamă, tată, bunică maternă, bunic patern...'  }, name('Boală cronică / genetică'), notes] },
   { key: 'lifestyle', title: 'Stil de viață și factori de risc', description: 'Descrie activitatea, expunerile și obiceiurile care pot fi relevante pentru medic.', fields: [
     { key: 'activity', label: 'Nivel de activitate', type: 'select', options: [['sedentary', 'Sedentar'], ['active', 'Activ'], ['regular_sport', 'Sport regulat']] },
     { key: 'workplace', label: 'Activitate profesională', type: 'textarea', placeholder: 'De exemplu: muncă pe scaun, activitate fizică' },
@@ -38,7 +38,7 @@ export const MEDICAL_SECTIONS: MedicalSection[] = [
     { key: 'alcohol', label: 'Alcool', placeholder: 'Frecvență și cantitate, dacă este cazul' },
     { key: 'long_term_medication', label: 'Medicamente administrate îndelungat', type: 'textarea' }, notes
   ] },
-  { key: 'disease_history', title: 'Cronologia bolilor suportate', description: 'Adaugă bolile și traumatismele pe care ți le amintești sau le ai în documente.', repeated: true, fields: [name('Boală / traumatism'), date, period, notes] }
+  { key: 'disease_history', title: 'Boli, accidente și traumatisme', description: 'Înregistrează cronologic bolile suportate, accidentele și traumatismele: ce s-a întâmplat, când și ce urmări au rămas. Operațiile se completează separat la Intervenții chirurgicale.', repeated: true, fields: [name('Boală / accident / traumatism'), date, period, notes] }
 ];
 export function todayDate() {
   const now = new Date();

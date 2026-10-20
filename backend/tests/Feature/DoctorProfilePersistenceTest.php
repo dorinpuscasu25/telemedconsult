@@ -12,6 +12,35 @@ class DoctorProfilePersistenceTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_legacy_and_mixed_platforms_do_not_block_description_and_services(): void
+    {
+        $doctor = User::factory()->create();
+        $doctor->roles()->attach(Role::create(['name' => 'doctor', 'label' => 'Medic']));
+        Sanctum::actingAs($doctor);
+        foreach ([['Video', 'Chat'], [['name' => 'Telegram', 'value' => '@test']], ['Video', 'Chat', ['name' => 'Telegram', 'value' => '@test']]] as $platforms) {
+            $this->putJson('/api/v1/doctor/profile', [
+                'name' => 'Medic de test', 'bio' => 'Probleme pediatrice', 'service_catalog' => [['name' => 'Consultație pediatrică'], ['name' => 'Monitorizare']], 'platforms' => $platforms,
+            ])->assertOk();
+            $this->getJson('/api/v1/doctor/profile')->assertOk()
+                ->assertJsonPath('profile.bio', 'Probleme pediatrice')
+                ->assertJsonPath('profile.service_catalog.1.name', 'Monitorizare')
+                ->assertJsonPath('profile.platforms', $platforms);
+        }
+        $this->getJson('/api/v1/catalog/doctors')->assertOk()->assertJsonPath('data.0.platforms', ['Video', 'Chat', 'Telegram']);
+    }
+
+    public function test_incomplete_or_invalid_platform_contacts_are_rejected_without_changing_profile(): void
+    {
+        $doctor = User::factory()->create();
+        $doctor->roles()->attach(Role::create(['name' => 'doctor', 'label' => 'Medic']));
+        Sanctum::actingAs($doctor);
+        $this->putJson('/api/v1/doctor/profile', ['name' => 'Medic', 'bio' => 'Descriere salvată', 'platforms' => ['Video', 'Chat']])->assertOk();
+        foreach ([[['name' => 'Telegram']], [123], [['name' => 'Telegram', 'value' => '@test', 'unexpected' => true]]] as $platforms) {
+            $this->putJson('/api/v1/doctor/profile', ['name' => 'Medic', 'bio' => 'Nu se salvează', 'platforms' => $platforms])->assertUnprocessable()->assertJsonValidationErrors('platforms.0');
+        }
+        $this->getJson('/api/v1/doctor/profile')->assertOk()->assertJsonPath('profile.bio', 'Descriere salvată');
+    }
+
     public function test_description_services_clinic_and_bonus_eligibility_persist(): void
     {
         $doctor = User::factory()->create();

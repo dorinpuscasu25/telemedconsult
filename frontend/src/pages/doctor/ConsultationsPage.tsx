@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { DoctorSignature } from '../../components/DoctorSignature';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Activity, AlertCircle, CheckCircle2, Clock, FileText, MessageSquare, Microscope, Stethoscope } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -21,6 +22,7 @@ import { Textarea } from '../../components/ui/textarea';
 import { ConsultationVideoButton } from '../../components/ConsultationVideoButton';
 import { HigoConsultationProposal } from '../../components/HigoConsultationProposal';
 import { ConsultationDocuments } from '../../components/ConsultationDocuments';
+import { useAuth } from '../../contexts/AuthContext';
 import { apiBlob, apiRequest } from '../../lib/api';
 import { dateTime } from '../../lib/format';
 import {
@@ -63,8 +65,15 @@ interface ConsultationRequest {
 
 export function ConsultationsPage() {
   const navigate = useNavigate();
+  const { user, role } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const loadSequence = useRef(0);
+  const openedChart = useRef('');
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeStatus, setActiveStatus] = useState('new');
+  const prescriptionInput = useRef<HTMLInputElement>(null);
+  const chartFromExam = useRef(false);
   const [prescription, setPrescription] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const [requests, setRequests] = useState<ConsultationRequest[]>([]);
@@ -87,22 +96,38 @@ export function ConsultationsPage() {
     diagnosis: '',
     treatment_plan: '',
     recommendations: '',
+    investigation_recommendations: '',
     prescription_notes: ''
   });
 
-  const loadRequests = () => {
-    apiRequest<{data: ConsultationRequest[]}>('/requests').then((response) => {
+  const invalidateRequests = useCallback(() => { loadSequence.current++; }, []);
+
+  const loadRequests = useCallback(async () => {
+    const sequence = ++loadSequence.current;
+    try {
+      const response = await apiRequest<{ data: ConsultationRequest[] }>('/requests');
+      if (sequence !== loadSequence.current) return;
       setRequests(response.data);
-    });
-  };
+      setChartRequest((current) => current ? response.data.find((item) => String(item.id) === String(current.id)) ?? null : null);
+      setLoadError('');
+    } catch (err) {
+      if (sequence === loadSequence.current) setLoadError(err instanceof Error ? err.message : 'Nu am putut încărca consultațiile.');
+    } finally {
+      if (sequence === loadSequence.current) setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    loadRequests();
-    const timer = window.setInterval(loadRequests, 15000);
-    const refresh = () => loadRequests();
+    setIsLoading(true);
+    setRequests([]);
+    setChartRequest(null);
+    openedChart.current = '';
+    void loadRequests();
+    const timer = window.setInterval(() => void loadRequests(), 15000);
+    const refresh = () => void loadRequests();
     window.addEventListener('focus', refresh);
-    return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); };
-  }, []);
+    return () => { invalidateRequests(); window.clearInterval(timer); window.removeEventListener('focus', refresh); };
+  }, [invalidateRequests, loadRequests, user?.id, role]);
 
   const openExam = (request: ConsultationRequest) => {
     setSelectedRequest(request);
@@ -116,6 +141,7 @@ export function ConsultationsPage() {
       diagnosis: '',
       treatment_plan: '',
       recommendations: '',
+      investigation_recommendations: '',
       prescription_notes: ''
     });
     setIsExamModalOpen(true);
@@ -226,7 +252,7 @@ export function ConsultationsPage() {
   const preview = async () => {
     if (!selectedRequest) return;
     setError(''); setIsSaving(true);
-    try { const blob = await apiBlob(`/requests/${selectedRequest.id}/documents/preview`, { method: 'POST', body: JSON.stringify(examData) }); setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return URL.createObjectURL(blob); }); }
+    try { const blob = await apiBlob(`/requests/${selectedRequest.id}/documents/preview`, { method: 'POST', body: JSON.stringify({ ...examData, has_prescription: !!prescription }) }); setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return URL.createObjectURL(blob); }); }
     catch (err) { setError(err instanceof Error ? err.message : 'Previzualizarea nu a reușit.'); }
     finally { setIsSaving(false); }
   };
@@ -236,7 +262,11 @@ export function ConsultationsPage() {
     if (!id || !requests.length) return;
     const item = requests.find((item) => String(item.id) === id);
     if (item) {
-      setActiveStatus(['new', 'rescheduled'].includes(item.status) ? 'new' : item.status === 'completed' ? 'completed' : 'accepted');
+      setActiveStatus(['new', 'rescheduled'].includes(item.status) ? 'new' : ['accepted', 'completed'].includes(item.status) ? item.status : 'closed');
+      if (searchParams.get('chart') === '1' && openedChart.current !== id) {
+        setChartRequest(item);
+        openedChart.current = id;
+      }
       document.getElementById(`consultation-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [requests, searchParams, activeStatus]);
@@ -251,9 +281,9 @@ export function ConsultationsPage() {
     }), 'Investigație suplimentară solicitată.');
   };
 
-  const requestsByStatus = (status: string) => requests.filter((request) => status === 'new' ? ['new', 'rescheduled'].includes(request.status) : request.status === status);
+  const requestsByStatus = (status: string) => requests.filter((request) => status === 'new' ? ['new', 'rescheduled'].includes(request.status) : status === 'closed' ? !['new', 'rescheduled', 'accepted', 'completed'].includes(request.status) : request.status === status);
 
-  const renderRequestCard = ({ request, index, variant }: { request: ConsultationRequest; index: number; variant: 'new' | 'accepted' | 'completed' }) => {
+  const renderRequestCard = ({ request, index, variant }: { request: ConsultationRequest; index: number; variant: 'new' | 'accepted' | 'completed' | 'closed' }) => {
     // Titularul contului nu e pacientul: consultația e pentru profilul ales la
     // programare, iar numele lui e cel pe care îl caută și operatorul în HIGO.
     const patientName = request.patient_profile?.name || request.patient?.name || 'Pacient';
@@ -264,7 +294,7 @@ export function ConsultationsPage() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: index * 0.05 }}>
-        <Card className={`glass-card border-l-4 ${border} border-y-0 border-r-0 ${variant === 'completed' ? 'opacity-80' : ''}`}>
+        <Card className={`glass-card border-l-4 ${border} border-y-0 border-r-0 ${variant === 'completed' || variant === 'closed' ? 'opacity-80' : ''} ${searchParams.get('request') === String(request.id) ? 'ring-2 ring-blue-400' : ''}`}>
           <CardContent className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="flex items-start space-x-4">
               <Avatar className="h-12 w-12 bg-primary/10 text-primary">
@@ -272,17 +302,19 @@ export function ConsultationsPage() {
               </Avatar>
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-bold text-lg text-slate-900">{patientName}</h3>
+                  <h3 className="font-bold text-lg text-slate-900"><button type="button" onClick={() => setChartRequest(request)} className="text-left text-blue-700 hover:underline" aria-label={`Deschide fișa pacientului ${patientName}`}>{patientName}</button></h3>
                   {variant === 'new' && <Badge variant="outline" className="bg-amber-50 text-amber-600 border-amber-200">Nou</Badge>}
                   {variant === 'accepted' && <Badge variant="outline" className="bg-green-50 text-green-600 border-green-200"><Clock className="w-3 h-3 mr-1" /> Activ</Badge>}
+                  {variant === 'closed' && <Badge variant="secondary">{{ expired: 'Expirată', cancelled: 'Anulată', rejected: 'Respinsă', no_operator_available: 'Fără operator disponibil' }[request.status] || request.status}</Badge>}
                   {variant === 'completed' && <Badge variant="secondary" className="bg-slate-100 text-slate-500"><CheckCircle2 className="w-3 h-3 mr-1" /> Finalizat</Badge>}
                 </div>
                 <p className="text-sm text-slate-500 mb-2">
-                  {request.specialty || 'Consultație'} • {dateTime(request.created_at)}
+                  {request.specialty || 'Consultație'} · #{request.id} • {dateTime(request.created_at)}
                 </p>
+                <p className="mb-2 text-xs text-slate-500">{request.patient_profile?.patient_code && `ID pacient: ${request.patient_profile.patient_code} · `}Titular cont: {request.patient?.name || '—'}</p>
                 {request.scheduled_at && (
                   <p className="mb-2 text-sm font-medium text-slate-700">
-                    Programat: {dateTime(request.scheduled_at)}
+                    {request.status === 'new' ? 'Ora solicitată de pacient' : 'Ora confirmată'}: {dateTime(request.scheduled_at)}
                   </p>
                 )}
                 {request.proposed_scheduled_at && (
@@ -306,8 +338,10 @@ export function ConsultationsPage() {
                   )}
                 </div>
                 <p className="text-slate-700 bg-slate-50 p-3 rounded-lg text-sm border border-slate-100 whitespace-pre-wrap">
+                  <strong>Acuzele pacientului (plângerile / simptomele): </strong>
                   {request.symptoms || request.triage_notes || 'Fără detalii.'}
                 </p>
+                {variant === 'closed' && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{request.cancellation_reason || 'Această solicitare este închisă. Fișa și istoricul rămân disponibile.'}</p>}
                 {['new', 'accepted'].includes(request.status) && <HigoConsultationProposal requestId={request.id} />}
                 {request.status === 'completed' && <ConsultationDocuments requestId={request.id} />}
                 {request.current_illness_history && <p className="mt-2 whitespace-pre-wrap text-sm"><strong>Istoricul bolii actuale: </strong>{request.current_illness_history}</p>}
@@ -332,10 +366,10 @@ export function ConsultationsPage() {
               <Button onClick={() => setChartRequest(request)} variant="outline" className="rounded-xl">
                 <Stethoscope className="mr-2 h-4 w-4" /> Fișa pacientului
               </Button>
-              {variant === 'new' && (
+              {variant === 'new' && request.status !== 'rescheduled' && (
                 <>
                   <Button onClick={() => acceptRequest(request)} className="rounded-xl bg-gradient-to-r from-primary to-purple-600 border-0">
-                    <CheckCircle2 className="mr-2 h-4 w-4" /> Acceptă
+                    <CheckCircle2 className="mr-2 h-4 w-4" /> {request.scheduled_at ? 'Confirmă ora solicitată' : 'Acceptă'}
                   </Button>
                   <Button onClick={() => rejectRequest(request)} variant="outline" className="rounded-xl border-red-200 text-red-600 hover:bg-red-50">
                     Respinge și refund
@@ -348,11 +382,13 @@ export function ConsultationsPage() {
                   </Button>
                 </>
               )}
+              {request.status === 'rescheduled' && <p className="max-w-64 text-sm text-amber-700">Așteptăm confirmarea pacientului pentru ora propusă.</p>}
               {variant === 'accepted' && (
                 <>
+                  {request.scheduled_at && !request.doctor_started_at && new Date(request.scheduled_at).getTime() > Date.now() && <p className="max-w-64 text-sm text-slate-500">Poți deschide consultația la {dateTime(request.scheduled_at)}. Pacientul așteaptă să începi.</p>}
                   {request.ready_for_doctor && (
                     <Button
-                      disabled={!!request.doctor_started_at || startingId === request.id}
+                      disabled={!!request.doctor_started_at || startingId === request.id || !!(request.scheduled_at && new Date(request.scheduled_at).getTime() > Date.now())}
                       onClick={() => startConsultation(request)}
                       variant="outline"
                       className="rounded-xl disabled:opacity-100 disabled:bg-emerald-50 disabled:text-emerald-700 disabled:border-emerald-200">
@@ -375,7 +411,7 @@ export function ConsultationsPage() {
                   </Button>
                 </>
               )}
-              {variant === 'completed' && (
+              {(variant === 'completed' || variant === 'closed') && (
                 <Button asChild variant="ghost" className="rounded-xl text-slate-500">
                   <Link to={`/doctor/chat?request=${request.id}`}>Vezi istoric</Link>
                 </Button>
@@ -391,41 +427,49 @@ export function ConsultationsPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">Consultații</h1>
-        <p className="text-slate-500">Gestionează solicitările reale de la pacienți.</p>
+        <p className="text-slate-500">Gestionează solicitările reale de la pacienți.</p><Button type="button" variant="outline" className="mt-3" onClick={() => { setIsLoading(true); void loadRequests(); }} disabled={isLoading}>Reîncarcă consultațiile</Button>
       </div>
 
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
+      {!isLoading && !loadError && searchParams.get('request') && !requests.some((item) => String(item.id) === searchParams.get('request')) && <p role="status" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Consultația solicitată nu este disponibilă pentru acest cont de medic.</p>}
+      {loadError && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{loadError}</p>}
+      {isLoading && <p role="status" className="text-sm text-slate-500">Se încarcă consultațiile...</p>}
       {message && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div>
       )}
 
       <Tabs value={activeStatus} onValueChange={(value) => { setActiveStatus(value); const next = new URLSearchParams(searchParams); next.delete('request'); setSearchParams(next, { replace: true }); }} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-3 bg-white/50 backdrop-blur-sm p-1 rounded-xl mb-6">
+        <TabsList className="grid w-full max-w-2xl grid-cols-4 bg-white/50 backdrop-blur-sm p-1 rounded-xl mb-6">
           <TabsTrigger value="new" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm relative">
-            În Așteptare
+            În așteptare ({requestsByStatus('new').length})
             {requestsByStatus('new').length > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />}
           </TabsTrigger>
           <TabsTrigger value="accepted" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
-            Active
+            Active ({requestsByStatus('accepted').length})
           </TabsTrigger>
           <TabsTrigger value="completed" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
-            Finalizate
+            Finalizate ({requestsByStatus('completed').length})
           </TabsTrigger>
+          <TabsTrigger value="closed" className="rounded-lg">Închise ({requestsByStatus('closed').length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="new" className="grid gap-4">
           {requestsByStatus('new').map((request, index) => renderRequestCard({ request, index, variant: 'new' }))}
-          {requestsByStatus('new').length === 0 && <EmptyState text="Nu există solicitări noi." />}
+          {!isLoading && !loadError && requestsByStatus('new').length === 0 && <EmptyState text="Nu există solicitări noi." />}
         </TabsContent>
         <TabsContent value="accepted" className="grid gap-4">
           {requestsByStatus('accepted').map((request, index) => renderRequestCard({ request, index, variant: 'accepted' }))}
-          {requestsByStatus('accepted').length === 0 && <EmptyState text="Nu există consultații active." />}
+          {!isLoading && !loadError && requestsByStatus('accepted').length === 0 && <EmptyState text="Nu există consultații active." />}
         </TabsContent>
         <TabsContent value="completed" className="grid gap-4">
           {requestsByStatus('completed').map((request, index) => renderRequestCard({ request, index, variant: 'completed' }))}
-          {requestsByStatus('completed').length === 0 && <EmptyState text="Nu există consultații finalizate." />}
+          {!isLoading && !loadError && requestsByStatus('completed').length === 0 && <EmptyState text="Nu există consultații finalizate." />}
+        </TabsContent>
+        <TabsContent value="closed" className="grid gap-4">
+          {requestsByStatus('closed').map((request, index) => renderRequestCard({ request, index, variant: 'closed' }))}
+          {!isLoading && !loadError && requestsByStatus('closed').length === 0 && <EmptyState text="Nu există solicitări închise." />}
         </TabsContent>
       </Tabs>
 
@@ -454,6 +498,7 @@ export function ConsultationsPage() {
             <div className="py-4 space-y-6">
               {error && <div className="flex items-center rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"><AlertCircle className="mr-2 h-4 w-4" /> {error}</div>}
               <PatientChart
+                consultationOnly
                 profile={selectedRequest.patient_profile}
                 illnessHistory={selectedRequest.current_illness_history}
                 symptoms={selectedRequest.symptoms}
@@ -465,10 +510,11 @@ export function ConsultationsPage() {
                 objectiveDataCompletedAt={selectedRequest.objective_data_completed_at}
               />
 
+              <Button variant="outline" onClick={() => { chartFromExam.current = true; setIsExamModalOpen(false); setChartRequest(selectedRequest); }}>Istoricul vieții și fișa electronică a pacientului</Button>
               <div className="space-y-4">
                 <div className="space-y-2">
                   <label className="block space-y-2"><span>Istoricul bolii actuale</span><Textarea value={examData.current_illness_history} onChange={(event) => setExamData({ ...examData, current_illness_history: event.target.value })} /></label>
-                  <p className="whitespace-pre-wrap text-sm"><strong>Acuze / simptome: </strong>{selectedRequest?.symptoms}</p>
+                  <p className="whitespace-pre-wrap text-sm"><strong>Acuzele pacientului (plângerile / simptomele): </strong>{selectedRequest?.symptoms}</p>
                   <label className="block space-y-2"><span>Examen obiectiv / observațiile medicului</span><Textarea value={examData.objective_exam} onChange={(event) => setExamData({ ...examData, objective_exam: event.target.value })} /></label>
                   {selectedRequest?.consultation_kind === 'with_exam' && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={examData.higo_reviewed} onChange={(event) => setExamData({ ...examData, higo_reviewed: event.target.checked })} />Confirm că am examinat datele HIGO disponibile</label>}
                   <Label htmlFor="diagnosis">Diagnostic</Label>
@@ -500,7 +546,20 @@ export function ConsultationsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-<label className="block space-y-2"><span>Încarcă rețeta PDF / JPG / PNG</span><input type="file" accept="application/pdf,image/jpeg,image/png" onChange={(event) => setPrescription(event.target.files?.[0] ?? null)} /></label>
+                  <Label htmlFor="investigation_recommendations">Investigații recomandate</Label>
+                  <Textarea
+                    id="investigation_recommendations"
+                    maxLength={4000}
+                    value={examData.investigation_recommendations}
+                    onChange={(event) => setExamData({ ...examData, investigation_recommendations: event.target.value })}
+                    placeholder="Analize și investigații recomandate pacientului"
+                    className="min-h-[80px] rounded-xl"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="prescription-upload">Rețetă scanată / fotografiată</Label><input ref={prescriptionInput} id="prescription-upload" className="sr-only" type="file" accept="application/pdf,image/jpeg,image/png" onChange={(event) => { const file = event.target.files?.[0] ?? null; if (file && (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.type) || file.size > 10 * 1024 * 1024)) { setError('Încarcă rețeta în format PDF, JPG sau PNG, maximum 10 MB.'); event.target.value = ''; setPrescription(null); return; } setPrescription(file); }} />
+                  <div className="flex flex-wrap items-center gap-2"><Button variant="outline" type="button" onClick={() => prescriptionInput.current?.click()}>Încarcă rețeta PDF / JPG / PNG</Button>{prescription && <><span className="text-sm">{prescription.name}</span><Button type="button" variant="ghost" onClick={() => { setPrescription(null); if (prescriptionInput.current) prescriptionInput.current.value = ''; }}>Elimină</Button></>}</div>
+                  <p className="rounded-xl bg-blue-50 p-3 text-sm text-blue-900">Mesaj transmis automat pacientului: Spuneți-ne din ce rețea de farmacii ați luat medicamentul pe rețetă, pentru a transmite rețeta originală în rețeaua respectivă.</p>
                   <Label htmlFor="prescription_notes">Medicamente / rețetă</Label>
                   <Textarea
                     id="prescription_notes"
@@ -513,6 +572,7 @@ export function ConsultationsPage() {
             </div>
           )}
 
+          <DoctorSignature onSaved={() => setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return ''; })} />
           {previewUrl && <a href={previewUrl} target="_blank" rel="noreferrer" className="font-medium text-blue-700">Deschide previzualizarea PDF</a>}
           <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:justify-between">
             <Button variant="outline" onClick={() => setIsExamModalOpen(false)} className="rounded-xl sm:w-auto w-full">
@@ -531,12 +591,12 @@ export function ConsultationsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(chartRequest)} onOpenChange={(open) => !open && setChartRequest(null)}>
+      <Dialog open={Boolean(chartRequest)} onOpenChange={(open) => { if (!open) { setChartRequest(null); if (chartFromExam.current) { chartFromExam.current = false; setIsExamModalOpen(true); } } }}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-2xl">Fișa pacientului</DialogTitle>
+            <DialogTitle className="text-2xl">Fișa pacientului — {chartRequest?.patient_profile?.name || chartRequest?.patient?.name}</DialogTitle>
             <DialogDescription>
-              Ce a declarat pacientul și ce a măsurat operatorul la domiciliu.
+              Consultația #{chartRequest?.id} · Titular cont: {chartRequest?.patient?.name || '—'}. Datele de mai jos aparțin pacientului selectat.
             </DialogDescription>
           </DialogHeader>
 

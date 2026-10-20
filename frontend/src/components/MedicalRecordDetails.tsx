@@ -1,3 +1,4 @@
+import { ConsultationDocuments } from './ConsultationDocuments';
 import { useState } from 'react';
 import { apiRequest } from '../lib/api';
 import { dateOnly } from '../lib/format';
@@ -24,7 +25,8 @@ export function MedicalRecordDetails({ record, documents = [] }: { record?: Medi
       const refusal = { categorical: 'Refuz categoric de vaccinare', temporary: 'Refuz temporar de vaccinare', none: 'Fără refuz declarat' }[vaccination?.refusal ?? ''];
       return <details key={section.key} className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold text-slate-800">{section.title}{section.repeated ? ` (${entries.length})` : ''}</summary>
         <div className="mt-3 space-y-3">{section.key === 'vaccinations' && refusal && <p className="text-sm font-medium">{refusal}</p>}
-          {entries.map((entry, index) => <dl key={index} className="grid gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-2">{section.fields.map((field) => {
+          {section.key === 'vaccinations' && entries.length > 0 && <div className="overflow-x-auto"><table className="w-full min-w-[600px] text-left text-sm"><thead><tr>{section.fields.map((field) => <th key={field.key} className="p-2 text-slate-600">{field.label}</th>)}</tr></thead><tbody>{entries.map((entry, index) => <tr key={index} className="border-t">{section.fields.map((field) => <td key={field.key} className="whitespace-pre-wrap p-2">{medicalFieldValue(field, entry?.[field.key]) || '—'}</td>)}</tr>)}</tbody></table></div>}
+          {section.key !== 'vaccinations' && entries.map((entry, index) => <dl key={index} className="grid gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-2">{section.fields.map((field) => {
             const display = medicalFieldValue(field, entry?.[field.key]);
             return display ? <div key={field.key} className={field.type === 'textarea' ? 'sm:col-span-2' : ''}><dt className="text-xs text-slate-500">{field.label}</dt><dd className="whitespace-pre-wrap text-sm text-slate-800">{display}</dd></div> : null;
           })}</dl>)}
@@ -40,7 +42,7 @@ export function MedicalRecordDetails({ record, documents = [] }: { record?: Medi
 }
 
 export function MedicalConsultationHistory({ profileId }: { profileId: string | number }) {
-  const [items, setItems] = useState<Array<{ id: number; date: string; doctor?: string; diagnosis?: string; recommendations?: string; symptoms?: string }> | null>(null);
+  const [items, setItems] = useState<Array<{ id: number; date: string; specialty?: string; current_illness_history?: string; treatment_plan?: string; investigation_recommendations?: string; doctor?: string; diagnosis?: string; recommendations?: string; symptoms?: string }> | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const load = async () => {
@@ -50,5 +52,9 @@ export function MedicalConsultationHistory({ profileId }: { profileId: string | 
     catch (err) { setError(err instanceof Error ? err.message : 'Istoricul nu a putut fi încărcat.'); }
     finally { setLoading(false); }
   };
-  return <details className="rounded-xl border p-3" onToggle={(event) => { if (event.currentTarget.open) void load(); }}><summary className="cursor-pointer text-sm font-semibold">Istoricul consultațiilor pacientului</summary><div className="mt-3 space-y-3">{loading && <p className="text-sm text-slate-500">Se încarcă...</p>}{error && <p className="text-sm text-red-600">{error}</p>}{items?.length === 0 && <p className="text-sm text-slate-500">Fără consultații.</p>}{items?.map((item) => <div key={item.id} className="rounded-lg bg-slate-50 p-3 text-sm"><p className="font-semibold">{dateOnly(item.date)} · {item.doctor ?? 'Medic neatribuit'}</p>{item.symptoms && <p className="mt-2 whitespace-pre-wrap"><strong>Simptome: </strong>{item.symptoms}</p>}{item.diagnosis && <p className="mt-2 whitespace-pre-wrap"><strong>Diagnostic: </strong>{item.diagnosis}</p>}{item.recommendations && <p className="mt-2 whitespace-pre-wrap"><strong>Recomandări: </strong>{item.recommendations}</p>}</div>)}</div></details>;
+  const groups = [...(items ?? [])].sort((a, b) => b.date.localeCompare(a.date)).reduce<Record<string, NonNullable<typeof items>>>((result, item) => {
+    (result[item.specialty || 'Specialitate neprecizată'] ??= []).push(item);
+    return result;
+  }, {});
+  return <details className="rounded-xl border p-3" onToggle={(event) => { if (event.currentTarget.open) void load(); }}><summary className="cursor-pointer text-sm font-semibold">Istoricul consultațiilor pacientului</summary><div className="mt-3 space-y-3">{loading && <p className="text-sm text-slate-500">Se încarcă...</p>}{error && <p className="text-sm text-red-600">{error}</p>}{items?.length === 0 && <p className="text-sm text-slate-500">Fără consultații.</p>}{Object.entries(groups).map(([specialty, consultations]) => <section key={specialty} className="space-y-2"><h4 className="font-semibold text-blue-800">{specialty} · cele mai recente întâi</h4>{consultations.map((item) => <div key={item.id} className="rounded-lg bg-slate-50 p-3 text-sm"><p className="font-semibold">{dateOnly(item.date)} · {item.doctor ?? 'Medic neatribuit'}</p>{item.current_illness_history && <p className="mt-2 whitespace-pre-wrap"><strong>Istoricul bolii actuale: </strong>{item.current_illness_history}</p>}{item.symptoms && <p className="mt-2 whitespace-pre-wrap"><strong>Simptome: </strong>{item.symptoms}</p>}{item.diagnosis && <p className="mt-2 whitespace-pre-wrap"><strong>Diagnostic: </strong>{item.diagnosis}</p>}{item.recommendations && <p className="mt-2 whitespace-pre-wrap"><strong>Recomandări: </strong>{item.recommendations}</p>}{item.investigation_recommendations && <p className="mt-2 whitespace-pre-wrap"><strong>Investigații recomandate: </strong>{item.investigation_recommendations}</p>}{item.treatment_plan && <p className="mt-2 whitespace-pre-wrap"><strong>Tratament: </strong>{item.treatment_plan}</p>}<ConsultationDocuments requestId={item.id} /></div>)}</section>)}</div></details>;
 }

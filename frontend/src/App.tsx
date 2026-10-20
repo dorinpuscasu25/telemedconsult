@@ -1,3 +1,5 @@
+import { IncomingVideoCall } from './components/IncomingVideoCall';
+import { ValidationFeedback } from './components/ValidationFeedback';
 import React from 'react';
 import {
   BrowserRouter as Router,
@@ -64,6 +66,7 @@ import { SiteContentPage } from './pages/admin/SiteContentPage';
 import { HigoSyncPage } from './pages/admin/HigoSyncPage';
 // Conectarea contului la botul de notificări — aceeași pagină pentru toate rolurile
 import { PasswordRecoveryPage } from './pages/PasswordRecoveryPage';
+import { ConfirmCodePage } from './pages/ConfirmCodePage';
 import { TelegramPage } from './pages/TelegramPage';
 // Protected Route Wrapper
 function ProtectedRoute({
@@ -148,6 +151,7 @@ function AppRoutes() {
 
       <Route path="/forgot-password" element={<PasswordRecoveryPage />} />
       <Route path="/reset-password" element={<PasswordRecoveryPage />} />
+      <Route path="/confirm-code" element={<ConfirmCodePage />} />
       {/* Admin Routes */}
       <Route path="/consultations" element={<ProtectedRoute allowedRoles={['patient', 'doctor', 'operator', 'admin']}><AppLayout /></ProtectedRoute>}>
         <Route path=":requestId/video" element={<VideoConsultationPage />} />
@@ -273,6 +277,8 @@ export function App() {
       <AuthProvider>
         <FeatureFlagsProvider>
           <SiteContentProvider>
+            <IncomingVideoCall />
+            <ValidationFeedback />
             <AppRoutes />
           </SiteContentProvider>
         </FeatureFlagsProvider>

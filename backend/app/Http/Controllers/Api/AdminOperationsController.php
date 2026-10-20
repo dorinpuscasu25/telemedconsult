@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Complaint;
-use App\Models\Consultation;
 use App\Models\ContractTemplate;
 use App\Models\DoctorProfile;
 use App\Models\DoctorProfileView;
@@ -15,6 +14,7 @@ use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Models\WithdrawalRequest;
 use App\Notifications\AppEventNotification;
+use App\Services\DoctorPerformance;
 use App\Services\PlatformConfig;
 use App\Services\WalletAdjustment;
 use Illuminate\Http\JsonResponse;
@@ -377,8 +377,8 @@ class AdminOperationsController extends Controller
                 }
             }
 
-            if ($key === 'consultations.addendum_days' && (! is_numeric($value) || (int) $value != $value || $value < 1 || $value > 90)) {
-                throw ValidationException::withMessages(['settings' => ['Fereastra completărilor trebuie să fie între 1 și 90 zile.']]);
+            if ($key === 'consultations.addendum_days' && (! is_numeric($value) || (int) $value != $value || $value != 14)) {
+                throw ValidationException::withMessages(['settings' => ['Fereastra completărilor trebuie să fie egală cu 14 zile.']]);
             }
 
             if ($key === 'affiliate.patient_topup_min_amount') {
@@ -407,6 +407,31 @@ class AdminOperationsController extends Controller
                 ]);
             }
         });
+
+        $promotionChanges = collect($validated['settings'] ?? [])->pluck('value', 'key');
+        foreach (['wallet.first_topup_promo_enabled', 'wallet.first_topup_promo_doctor_ids'] as $promotionKey) {
+            if (! $promotionChanges->has($promotionKey)) {
+                continue;
+            }
+            $value = $promotionChanges[$promotionKey];
+            if ($promotionKey === 'wallet.first_topup_promo_enabled' && ! is_bool($value)) {
+                throw ValidationException::withMessages(['settings' => ['Activarea promoției trebuie să fie o valoare booleană.']]);
+            }
+            if ($promotionKey === 'wallet.first_topup_promo_doctor_ids') {
+                if (! is_array($value) || ! array_is_list($value) || count($value) > 100 || collect($value)->contains(fn ($id) => ! is_int($id) || $id <= 0)) {
+                    throw ValidationException::withMessages(['settings' => ['Selectează o listă de identificatori de medici valizi.']]);
+                }
+                $approved = User::whereIn('id', $value)->whereHas('doctorProfile', fn ($query) => $query->where('is_approved', true))->whereHas('roles', fn ($query) => $query->where('name', 'doctor'))->count();
+                if ($approved !== count(array_unique($value))) {
+                    throw ValidationException::withMessages(['settings' => ['Promoția poate fi oferită doar de medici aprobați.']]);
+                }
+            }
+        }
+        $promotionConfig = app(PlatformConfig::class);
+        if (($promotionChanges['wallet.first_topup_promo_enabled'] ?? $promotionConfig->bool('wallet.first_topup_promo_enabled'))
+            && empty($promotionChanges['wallet.first_topup_promo_doctor_ids'] ?? $promotionConfig->get('wallet.first_topup_promo_doctor_ids', []))) {
+            throw ValidationException::withMessages(['settings' => ['Selectează cel puțin un medic înainte de activarea promoției.']]);
+        }
 
         DB::transaction(function () use ($request, $validated) {
             $config = app(PlatformConfig::class);
@@ -465,27 +490,12 @@ class AdminOperationsController extends Controller
     {
         $this->authorizeAdmin($request);
 
-        $currentMonthStart = now()->startOfMonth();
-        $currentMonthEnd = now()->endOfMonth();
-
         $data = DoctorProfile::with('user')
             ->get()
-            ->map(function (DoctorProfile $profile) use ($currentMonthStart, $currentMonthEnd) {
+            ->map(function (DoctorProfile $profile) {
                 $doctorId = $profile->user_id;
-                $currentMonth = Consultation::where('doctor_id', $doctorId)
-                    ->where('status', 'completed')
-                    ->whereBetween('completed_at', [$currentMonthStart, $currentMonthEnd])
-                    ->count();
-                $previousTotal = Consultation::where('doctor_id', $doctorId)
-                    ->where('status', 'completed')
-                    ->where('completed_at', '<', $currentMonthStart)
-                    ->count();
-                $avgResponse = (int) round((float) DB::table('consultation_requests')
-                    ->where('doctor_id', $doctorId)
-                    ->whereNotNull('doctor_response_minutes')
-                    ->avg('doctor_response_minutes'));
+                $performance = app(DoctorPerformance::class)->forDoctor($profile);
                 $affiliatePatients = DoctorProfileView::where('doctor_id', $doctorId)->count();
-                $score = ($currentMonth * 4) + ($previousTotal * 1.5) + ((float) $profile->rating * 10) + max(0, 60 - min(60, $avgResponse));
 
                 return [
                     'doctor_id' => (string) $doctorId,
@@ -493,10 +503,10 @@ class AdminOperationsController extends Controller
                     'rating' => (float) $profile->rating,
                     'reviews_count' => (int) $profile->reviews_count,
                     'affiliate_patients' => $affiliatePatients,
-                    'current_month_consultations' => $currentMonth,
-                    'previous_total_consultations' => $previousTotal,
-                    'average_response_minutes' => $avgResponse ?: null,
-                    'score' => round($score, 2),
+                    'current_month_consultations' => $performance['current_month_consultations'],
+                    'previous_total_consultations' => $performance['previous_total_consultations'],
+                    'average_response_minutes' => $performance['average_response_minutes'],
+                    'score' => $performance['score'],
                 ];
             })
             ->sortByDesc('score')
