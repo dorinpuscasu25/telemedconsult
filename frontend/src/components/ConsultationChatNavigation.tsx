@@ -1,7 +1,9 @@
 import { OutgoingVideoCall } from './OutgoingVideoCall';
 import { inviteVideoCall } from '../lib/video-calls';
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Video, CalendarDays, Check, Play, Clock3, CircleCheck } from 'lucide-react';
+import { dateTime } from '../lib/format';
 import { apiRequest } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from './ui/button';
@@ -16,6 +18,7 @@ export function ConsultationChatNavigation({ requestId, onRefresh, showVideoLink
   const [busy, setBusy] = useState(false);
   const { role } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const refresh = useCallback(async () => {
     const result = await apiRequest<{ request: Context }>(`/requests/${requestId}/context`);
     setContext(result.request); setError('');
@@ -33,25 +36,30 @@ export function ConsultationChatNavigation({ requestId, onRefresh, showVideoLink
   }, [requestId]);
   const act = async (action: string, startEarly = false) => {
     setBusy(true); setError('');
-    try { if (action === 'video/invite') { if (role === 'doctor' && !context?.doctor_started_at) await apiRequest(`/requests/${requestId}/start`, { method: 'POST', body: JSON.stringify({ start_early: true }) }); const result = await inviteVideoCall(requestId); setNotice(result.message); await refresh(); onRefresh?.(); return; } const result = await apiRequest<{ message?: string }>(`/requests/${requestId}/${action}`, { method: 'POST', ...(startEarly ? { body: JSON.stringify({ start_early: true }) } : {}) }); await refresh(); setNotice(result.message || 'Acțiune efectuată.'); onRefresh?.(); }
+    try { if (action === 'video/invite') { if (role === 'doctor' && !context?.doctor_started_at) await apiRequest(`/requests/${requestId}/start`, { method: 'POST', body: JSON.stringify({ start_early: true }) }); const result = await inviteVideoCall(requestId); setNotice(result.message); await refresh(); onRefresh?.(); if (showVideoLink) navigate(`/consultations/${requestId}/video`, { state: { returnTo: location.pathname + location.search } }); return; } const result = await apiRequest<{ message?: string }>(`/requests/${requestId}/${action}`, { method: 'POST', ...(startEarly ? { body: JSON.stringify({ start_early: true }) } : {}) }); await refresh(); setNotice(result.message || 'Acțiune efectuată.'); onRefresh?.(); }
     catch (err) { setError(err instanceof Error ? err.message : 'Acțiunea nu a reușit.'); }
     finally { setBusy(false); }
   };
-  return <div className="space-y-2 border-b bg-blue-50/50 px-4 py-3 text-sm">
-    <div className="flex flex-wrap items-center gap-2"><strong>Consultație #{requestId}</strong><span>{context ? labels[context.status] || context.status : 'Se încarcă…'}</span>
-      {context?.scheduled_at && <span>· {new Date(context.scheduled_at).toLocaleString('ro-RO')}</span>}
-    </div>
-    {context?.status === 'accepted' && !context.doctor_started_at && <p className="text-slate-600">Medicul deschide consultația la ora confirmată sau mai devreme dacă v-ați înțeles în chat. Poți trimite o invitație și aștepta în pagina video.</p>}
-    <div className="flex flex-wrap gap-2">
-      {context?.can_accept && <Button size="sm" disabled={busy} onClick={() => act('accept')}>Confirmă consultația</Button>}
-      {context?.can_start_early && <Button size="sm" disabled={busy} onClick={() => act('start', true)}>Începe acum, mai devreme</Button>}
-      {context?.can_start && <Button size="sm" disabled={busy} onClick={() => act('start')}>Deschide consultația</Button>}
-      {role === 'patient' && context?.status === 'rescheduled' && context.proposed_scheduled_at && <Button size="sm" disabled={busy} onClick={() => act('accept-proposed-time')}>Acceptă ora: {new Date(context.proposed_scheduled_at).toLocaleString('ro-RO')}</Button>}
-      {context?.status === 'accepted' && context.ready_for_doctor && <Button size="sm" variant="outline" disabled={busy} onClick={() => act('video/invite')}>Sună prin video</Button>}
-      {showVideoLink && <Button asChild size="sm" variant="outline"><Link to={`/consultations/${requestId}/video`} state={{ returnTo: location.pathname + location.search }}>Treci la videocall</Link></Button>}
+  const active = context?.status === 'accepted';
+  const finished = context?.status === 'completed';
+  return <div className="shrink-0 border-b border-slate-200/60 bg-slate-50/70 px-4 py-3 sm:px-5">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${active ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-slate-400'}`}>{finished ? <CircleCheck size={18} /> : <CalendarDays size={18} />}</span>
+        <div className="min-w-0 text-sm"><div className="flex flex-wrap items-center gap-x-2"><strong className="font-semibold text-slate-800">Consultație #{requestId}</strong><span className={active ? 'text-emerald-700' : 'text-slate-500'}>{context ? labels[context.status] || context.status : 'Se încarcă…'}</span></div>
+          {context?.scheduled_at && <p className="mt-0.5 text-xs text-slate-500">{dateTime(context.scheduled_at)}</p>}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {context?.can_accept && <Button size="sm" className="gap-2 rounded-xl" disabled={busy} onClick={() => act('accept')}><Check size={16} />Confirmă consultația</Button>}
+        {context?.can_start_early && <Button size="sm" variant="outline" className="gap-2 rounded-xl" disabled={busy} onClick={() => act('start', true)}><Play size={16} />Începe acum, mai devreme</Button>}
+        {context?.can_start && <Button size="sm" variant="outline" className="gap-2 rounded-xl" disabled={busy} onClick={() => act('start')}><Play size={16} />Deschide consultația</Button>}
+        {role === 'patient' && context?.status === 'rescheduled' && context.proposed_scheduled_at && <Button size="sm" className="gap-2 rounded-xl" disabled={busy} onClick={() => act('accept-proposed-time')}><Clock3 size={16} />Acceptă ora: {dateTime(context.proposed_scheduled_at)}</Button>}
+        {active && context.ready_for_doctor && <Button size="sm" className="gap-2 rounded-xl bg-primary px-4 shadow-sm shadow-primary/20 hover:bg-primary/90" disabled={busy} onClick={() => act('video/invite')}><Video size={18} />{busy ? 'Se conectează…' : 'Apel video'}</Button>}
+      </div>
     </div>
     {showCallStatus && <OutgoingVideoCall requestId={requestId} />}
-    {notice && <p role="status" className="text-blue-700">{notice}</p>}
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {notice && <p role="status" className="mt-2 text-xs text-blue-700">{notice}</p>}
+    {error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}
   </div>;
 }

@@ -194,7 +194,7 @@ export function AppLayout() {
     <div className="min-h-screen gradient-bg flex flex-col">
       {/* Top Navbar */}
       <header className="glass-panel sticky top-0 z-30">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto w-full px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between gap-4">
             <div className="flex min-w-0 flex-1 items-center">
               <Link to={`/${role}`} className="flex shrink-0 items-center">
@@ -295,7 +295,7 @@ export function AppLayout() {
 
       {/* Main Content */}
       <ActiveConsultationBanner />
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="flex-1 w-full min-w-0 mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Boundary per pagină: o pagină care crapă nu mai omoară navigația.
             `key` resetează boundary-ul la fiecare schimbare de rută. */}
         <ErrorBoundary inline key={location.pathname} label={`app:${location.pathname}`}>

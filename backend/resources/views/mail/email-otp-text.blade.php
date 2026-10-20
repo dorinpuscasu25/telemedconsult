@@ -13,6 +13,8 @@ Codul expiră în {{ $expiresMinutes }} {{ $expiresMinutes === 1 ? 'minut' : 'mi
 
 Introdu codul automat: {!! $actionUrl !!}
 
+Copiază codul în browser: {!! $copyUrl !!}
+
 Linkul deschide pagina cu codul completat. Tu confirmi {{ $purpose === 'login' ? 'autentificarea' : 'adresa de email' }} în platformă.
 @endif
 

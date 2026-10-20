@@ -6,7 +6,7 @@ import { Input } from '../../components/ui/input';
 import { Avatar, AvatarFallback } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
 import { ScrollArea } from '../../components/ui/scroll-area';
-import { CheckCircle2, Clock, FileText, Hash, MessageSquare, Paperclip, Search, Send } from 'lucide-react';
+import { CheckCircle2, FileText, Hash, MessageSquare, Paperclip, Search, Send, History, CalendarDays, ChevronRight, ChevronDown, Stethoscope, Info, Check } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { apiRequest } from '../../lib/api';
 import { getEcho } from '../../lib/realtime';
@@ -17,6 +17,9 @@ import { HigoConsultationProposal } from '../../components/HigoConsultationPropo
 import { ConsultationDocuments } from '../../components/ConsultationDocuments';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { useAuth } from '../../contexts/AuthContext';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '../../components/ui/sheet';
+import { dateOnly } from '../../lib/format';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel } from '../../components/ui/dropdown-menu';
 
 interface ChatUser {
   id: number;
@@ -90,6 +93,7 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă', patientProf
   const [peerSearch, setPeerSearch] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
   const [showChart, setShowChart] = useState(false);
+  const [panel, setPanel] = useState<'history' | 'details' | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -409,8 +413,8 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă', patientProf
   const chatBadge = CHAT_BADGES[chat.state] ?? CHAT_BADGES.closed;
 
   return (
-    <div className={`${patientProfileId ? 'h-[600px]' : channelChat ? 'h-[calc(100dvh-12rem)] min-h-[400px] xl:h-[calc(100dvh-8rem)]' : 'h-[calc(100vh-8rem)]'} flex gap-3`}>
-      {channelChat && <Card className="hidden w-64 shrink-0 flex-col overflow-hidden border-0 glass-card lg:flex xl:w-72">
+    <div className={`${patientProfileId ? 'h-[600px]' : channelChat ? 'h-[calc(100dvh-10rem)] min-h-[480px] lg:h-[calc(100dvh-7.5rem)]' : 'h-[calc(100vh-8rem)]'} flex gap-3`}>
+      {channelChat && <Card className="hidden w-64 shrink-0 flex-col overflow-hidden border border-slate-200/70 bg-white py-0 gap-0 lg:flex 2xl:w-80">
         <div className="border-b border-slate-200/50 p-4">
           <h2 className="text-lg font-bold text-slate-900">Chat</h2>
           <p className="mb-3 text-xs text-slate-500">{role === 'patient' ? 'Medici și operatori' : 'Titulari de cont'}</p>
@@ -428,14 +432,13 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă', patientProf
           {peerSearch && !peers.some((account) => account.name.toLocaleLowerCase('ro').includes(peerSearch.toLocaleLowerCase('ro'))) && <p className="p-3 text-sm text-slate-500">{role === 'patient' ? 'Niciun medic sau operator găsit.' : 'Niciun utilizator găsit.'}</p>}
         </ScrollArea>
       </Card>}
-      <Card className="min-w-0 flex-1 glass-card border-0 flex flex-col overflow-hidden relative">
-        {channelChat && <div className="border-b border-slate-200/50 bg-white/50 p-3">
-          <select aria-label={role === 'patient' ? 'Medic sau operator' : 'Titularul contului'} className="mb-2 w-full rounded-lg border bg-white p-2 text-sm lg:hidden" value={activePeerKey} onChange={(event) => selectPeer(event.target.value)}>{peers.map((account) => <option key={account.key} value={account.key}>{account.name}{account.unread ? ` · ${account.unread} necitite` : ''}</option>)}</select>
-          <p className="truncate text-sm font-semibold text-slate-900">{activePeer?.name || activeParticipant.name}</p>
-          <p className="text-xs text-slate-500">Discuție directă sau canalul unui pacient</p>
+      <Card className="min-w-0 flex-1 border border-slate-200/70 bg-white py-0 gap-0 flex flex-col overflow-hidden relative">
+        {channelChat && <div className="grid grid-cols-2 gap-2 border-b border-slate-100 bg-white p-3 md:grid-cols-1 lg:hidden">
+          <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" className="min-w-0 justify-between gap-2 rounded-xl px-3 text-slate-700" aria-label="Alege interlocutorul"><MessageSquare size={16} className="shrink-0 text-primary" /><span className="truncate">{activePeer?.name || activeParticipant.name}</span><ChevronDown size={14} className="shrink-0 text-slate-400" /></Button></DropdownMenuTrigger><DropdownMenuContent align="start" className="max-h-80 overflow-y-auto"><DropdownMenuLabel>{role === 'patient' ? 'Medici și operatori' : 'Titulari de cont'}</DropdownMenuLabel>{peers.map((account) => <DropdownMenuItem key={account.key} onSelect={() => selectPeer(account.key)}><span className="flex-1">{account.name}</span>{account.key === activePeerKey && <Check size={15} className="text-primary" />}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu>
+          <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" disabled={openingDirect} className="min-w-0 justify-between gap-2 rounded-xl px-3 text-slate-700 md:hidden" aria-label="Alege pacientul"><Hash size={16} className="shrink-0 text-primary" /><span className="truncate">{activeChat.is_direct ? 'Discuție directă' : activeChat.patient_profile?.display_name || 'General'}</span><ChevronDown size={14} className="shrink-0 text-slate-400" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="max-h-80 overflow-y-auto"><DropdownMenuItem onSelect={() => void openDirectConversation()}><MessageSquare size={16} />Discuție directă</DropdownMenuItem><DropdownMenuLabel>Pacienți</DropdownMenuLabel>{patientGroups.map(([id, patient]) => <DropdownMenuItem key={id} onSelect={() => { const item = peerConversations.find((item) => item.patient_profile_id === id); if (item) selectConversation(item); }}><Hash size={16} /><span className="flex-1">{patient?.display_name || `Pacient ${id}`}</span>{id === activeChat.patient_profile_id && <Check size={15} className="text-primary" />}</DropdownMenuItem>)}{peerConversations.some((item) => !item.patient_profile_id && !item.is_direct) && <DropdownMenuItem onSelect={() => { const item = peerConversations.find((item) => !item.patient_profile_id && !item.is_direct); if (item) selectConversation(item); }}>General</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>
         </div>}
         <div className="flex min-h-0 flex-1">
-        {channelChat && <aside aria-label="Canale pacienți" className="hidden w-40 shrink-0 flex-col border-r border-slate-200/50 bg-slate-50/70 md:flex xl:w-48">
+        {channelChat && <aside aria-label="Canale pacienți" className="hidden w-44 shrink-0 flex-col border-r border-slate-200/60 bg-slate-50/70 md:flex xl:w-52 2xl:w-60">
           <div className="p-2 pt-3"><button disabled={openingDirect} onClick={openDirectConversation} aria-pressed={Boolean(activeChat.is_direct)} className={`flex w-full items-center gap-2 rounded-xl border p-3 text-left text-sm font-medium ${activeChat.is_direct ? 'border-blue-300 bg-blue-100 text-blue-800 shadow-sm' : 'border-transparent text-slate-600 hover:bg-white'}`}><MessageSquare className="h-4 w-4 shrink-0" /><span className="flex-1">Discuție directă</span>{directUnread > 0 && <span className="rounded-full bg-blue-600 px-1.5 text-xs text-white">{directUnread}</span>}</button></div>
           <h2 className="px-3 pb-2 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Pacienți</h2>
           <ScrollArea className="min-h-0 flex-1 p-2">
@@ -451,7 +454,7 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă', patientProf
           </ScrollArea>
         </aside>}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        {(!patientProfileId || activePatientConversations.length > 1) && <div className={`flex flex-wrap gap-2 border-b p-3 ${channelChat && activePatientConversations.length <= 1 ? 'md:hidden' : ''}`}>
+        {!patientProfileId && !channelChat && <div className="flex flex-wrap gap-2 border-b p-3">
           {!patientProfileId && <select aria-label={channelChat ? 'Canal' : 'Pacient'} disabled={openingDirect} className={`max-w-full rounded-lg border p-2 text-sm ${channelChat ? 'md:hidden' : ''}`} value={channelChat ? (activeChat.is_direct ? 'direct' : activeChat.patient_profile_id || '') : requestedPatient || ''} onChange={(event) => {
             if (channelChat) {
               if (event.target.value === 'direct') { void openDirectConversation(); return; }
@@ -467,46 +470,44 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă', patientProf
             {channelChat && peerConversations.some((item) => !item.patient_profile_id && !item.is_direct) && <option value="">General</option>}
             {patientGroups.map(([id, patient]) => <option key={id} value={id ?? ''}>{patient?.display_name || `Pacient ${id}`}{patient?.patient_code ? ` · ${patient.patient_code}` : ''}</option>)}
           </select>}
-          {activePatientConversations.length > 1 && <label className="flex min-w-0 items-center gap-2 text-sm text-slate-500">{channelChat ? 'Istoric:' : 'Conversație:'}<select aria-label="Conversație" className="min-w-0 max-w-full rounded-lg border p-2 text-sm text-slate-900" value={activeChat.id} onChange={(event) => { const item = conversations.find((item) => item.id === Number(event.target.value)); if (item) selectConversation(item); }}>{activePatientConversations.map((item) => <option key={item.id} value={item.id}>{channelChat ? '' : `${participantFor(item).name} · `}{item.is_direct ? 'Discuție directă' : item.consultation_request_id ? `Consultație #${item.consultation_request_id}` : `Chat ${item.patient_profile?.display_name || 'general'}`} · {new Date(item.created_at).toLocaleDateString('ro-RO')}</option>)}</select></label>}
           {!channelChat && !patientProfileId && <><Button variant="outline" size="sm" disabled={openingDirect} onClick={openDirectConversation}><MessageSquare className="mr-2 h-4 w-4" />Discuție directă</Button><Button variant="ghost" size="sm" onClick={() => setSearchParams({})}>Toate conversațiile</Button></>}
         </div>
         }
         {error && <p role="alert" className="p-3 text-sm text-red-600">{error}</p>}
-        <div className="min-h-16 gap-2 flex-wrap py-2 border-b border-slate-200/50 bg-white/60 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-10">
-          <div className="flex items-center">
-            <Avatar className="h-10 w-10 border border-white shadow-sm mr-3">
-              <AvatarFallback>{activeParticipant.name.charAt(0)}</AvatarFallback>
-            </Avatar>
-            <div>
-              <h3 className="font-bold text-slate-900 leading-tight"><button type="button" className="text-left hover:text-primary hover:underline" disabled={!activeChat.patient_profile_id} onClick={() => setShowChart(true)}>{activeChat.is_direct ? 'Discuție directă' : activeChat.patient_profile?.display_name || activeParticipant.name}{activeChat.patient_profile?.patient_code && ` · ${activeChat.patient_profile.patient_code}`}</button></h3>
-              <p className="text-xs text-primary font-medium">{activeParticipant.name} · {activeParticipant.role}</p>
-              {activeChat.patient_profile_id && <p className="text-xs text-slate-500">Pentru acest pacient răspunde {activeChat.patient?.name || 'titularul contului'}.</p>}
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200/60 bg-white px-4 py-4 sm:px-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <Avatar className="h-11 w-11 shrink-0 border border-indigo-100 bg-indigo-50 text-primary"><AvatarFallback>{(activeChat.patient_profile?.display_name || activeParticipant.name).charAt(0)}</AvatarFallback></Avatar>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold leading-tight text-slate-900"><button type="button" className="text-left hover:text-primary" disabled={!activeChat.patient_profile_id} onClick={() => setShowChart(true)}>{activeChat.is_direct ? 'Discuție directă' : activeChat.patient_profile?.display_name || activeParticipant.name}</button></h3><Badge variant="outline" className={`${chatBadge.className} rounded-full text-[11px]`}>{chatBadge.label}</Badge></div>
+              <p className="mt-1 text-xs text-slate-500">{role === 'patient' ? activeParticipant.name : `Răspunde: ${activeChat.patient?.name || activeParticipant.name}`}{activeChat.patient_profile?.patient_code && <span className="ml-2 hidden text-slate-400 sm:inline">· Cod {activeChat.patient_profile.patient_code}</span>}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-          {role === 'patient' && activeChat.patient_profile_id && <Button asChild variant="outline" size="sm"><Link to={`/patient/profile?patient_profile=${activeChat.patient_profile_id}&section=consultations${activeChat.consultation_request_id ? `&request=${activeChat.consultation_request_id}` : ''}`}>Fișa pacientului</Link></Button>}
-          {role !== 'patient' && activeChat.patient_profile_id && <Button variant="outline" size="sm" onClick={() => setShowChart(true)}>Fișa pacientului</Button>}
-          {role === 'doctor' && activeChat.consultation_request_id && <Button asChild variant="outline" size="sm"><Link to={`/doctor/consultations?request=${activeChat.consultation_request_id}`}>Consultație</Link></Button>}
-          <Badge variant="outline" className={chatBadge.className}>
-            <Clock className="w-3 h-3 mr-1" /> {chatBadge.label}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {activePatientConversations.length > 1 && <Button variant="ghost" size="sm" className="gap-2 rounded-xl text-slate-600" onClick={() => setPanel('history')}><History size={17} /><span>Consultații</span><span className="rounded-md bg-slate-100 px-1.5 text-xs">{activePatientConversations.length}</span></Button>}
+            {activeChat.patient_profile_id && <Button variant="ghost" size="sm" className="gap-2 rounded-xl text-slate-600" onClick={() => setShowChart(true)}><Stethoscope size={17} /><span className="hidden sm:inline">Fișa pacientului</span><span className="sr-only sm:hidden">Fișa pacientului</span></Button>}
+            {activeChat.consultation_request_id && <Button variant="outline" size="sm" className="gap-2 rounded-xl border-indigo-100 text-primary" onClick={() => setPanel('details')}><FileText size={17} />Consultația</Button>}
           </div>
         </div>
-
         {activeChat.consultation_request_id && <ConsultationChatNavigation key={activeChat.consultation_request_id} requestId={activeChat.consultation_request_id} onRefresh={loadConversations} />}
-        {activeChat.patient_profile_id && <p className="border-b bg-slate-50 px-4 py-2 text-xs text-slate-500">Chat pentru discuții și clarificări. Diagnosticul și recomandările oficiale se publică în rubrica Consultații din fișa pacientului.</p>}
-        {activeChat.consultation_request_id && <div className="px-3 pt-2"><ConsultationAnamnesis key={activeChat.consultation_request_id} requestId={activeChat.consultation_request_id} /></div>}
-        {activeChat.consultation_request_id && <div className="px-3 pt-2"><HigoConsultationProposal key={activeChat.consultation_request_id} requestId={activeChat.consultation_request_id} /></div>}
-        {activeChat.consultation_request_id && <details className="border-b p-3"><summary className="cursor-pointer text-sm font-medium">Documentele consultației</summary><ConsultationDocuments requestId={activeChat.consultation_request_id} /></details>}
+        <Sheet open={panel !== null} onOpenChange={(open) => { if (!open) setPanel(null); }}>
+          <SheetContent className="w-[min(28rem,100%)] gap-0" aria-describedby="chat-panel-description">
+            <SheetHeader className="border-b border-slate-100 pr-14">
+              <SheetTitle>{panel === 'history' ? 'Consultațiile pacientului' : 'Detalii consultație'}</SheetTitle>
+              <SheetDescription id="chat-panel-description">{activeChat.patient_profile?.display_name || activeParticipant.name}{panel === 'details' && ` · Consultație #${activeChat.consultation_request_id}`}</SheetDescription>
+            </SheetHeader>
+            {panel === 'history' && <div className="space-y-2 p-4"><p className="mb-4 text-xs text-slate-500">Alege consultația pentru a vedea discuția corespunzătoare.</p>{[...activePatientConversations].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((item) => <button type="button" key={item.id} aria-pressed={item.id === activeChat.id} onClick={() => { selectConversation(item); setPanel(null); }} className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition-colors ${item.id === activeChat.id ? 'border-primary/30 bg-primary/5 ring-1 ring-primary/10' : 'border-slate-200 hover:border-primary/20 hover:bg-slate-50'}`}><span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${item.id === activeChat.id ? 'bg-primary text-white' : 'bg-slate-100 text-slate-500'}`}><CalendarDays size={20} /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-slate-800">{item.is_direct ? 'Discuție directă' : item.consultation_request_id ? `Consultație #${item.consultation_request_id}` : 'Discuție generală'}</span><span className="mt-1 block text-xs text-slate-500">{dateOnly(item.created_at)}{!channelChat && ` · ${participantFor(item).name}`}</span></span>{item.id === activeChat.id ? <Check size={18} className="text-primary" /> : <ChevronRight size={18} className="text-slate-400" />}</button>)}</div>}
+            {panel === 'details' && activeChat.consultation_request_id && <div className="space-y-6 p-5">
+              <div className="flex items-start gap-2 text-xs leading-relaxed text-slate-500"><Info size={16} className="mt-0.5 shrink-0 text-primary" /><p>Chatul este pentru clarificări. Diagnosticul și recomandările medicului se găsesc în consultația PDF.</p></div>
+              <section className="space-y-3"><h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900"><FileText size={17} className="text-primary" />Documente medicale</h3><ConsultationDocuments key={activeChat.consultation_request_id} requestId={activeChat.consultation_request_id} /></section>
+              <ConsultationAnamnesis key={`anamnesis-${activeChat.consultation_request_id}`} requestId={activeChat.consultation_request_id} />
+              <HigoConsultationProposal key={`higo-${activeChat.consultation_request_id}`} requestId={activeChat.consultation_request_id} />
+              <Button asChild variant="outline" className="w-full gap-2 rounded-xl"><Link to={role === 'doctor' ? `/doctor/consultations?request=${activeChat.consultation_request_id}` : role === 'patient' ? `/patient/profile?patient_profile=${activeChat.patient_profile_id}&section=consultations&request=${activeChat.consultation_request_id}` : `/operator/patients?request=${activeChat.consultation_request_id}`}><FileText size={17} />Deschide consultația<ChevronRight size={16} /></Link></Button>
+            </div>}
+          </SheetContent>
+        </Sheet>
         <Dialog open={showChart} onOpenChange={setShowChart}><DialogContent className="max-h-[85vh] max-w-3xl overflow-auto"><DialogHeader><DialogTitle>Fișa pacientului</DialogTitle></DialogHeader>{activeChat.patient_profile_id && <ChatPatientRecord id={activeChat.patient_profile_id} name={activeChat.patient_profile?.display_name} />}</DialogContent></Dialog>
-        <ScrollArea className="min-h-0 flex-1 p-6 bg-slate-50/30">
+        <ScrollArea className="min-h-0 flex-1 p-4 sm:p-6 bg-slate-50/50">
           <div className="space-y-6 flex flex-col">
-            <div className="text-center my-4">
-              <span className="text-xs font-medium text-slate-400 bg-white/80 px-3 py-1 rounded-full shadow-sm">
-                Conversație creată în platformă
-              </span>
-            </div>
-
             {activeChat.messages.map((message) => {
               const isMine = currentUserId === message.sender_id;
               return (
@@ -532,7 +533,7 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă', patientProf
                     )}
                   </div>
                   <span className="text-[10px] text-slate-400 mt-1 px-1">
-                    {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(message.created_at).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </motion.div>
               );

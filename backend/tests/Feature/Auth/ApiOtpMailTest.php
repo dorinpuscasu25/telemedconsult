@@ -22,6 +22,9 @@ class ApiOtpMailTest extends TestCase
         $mail->assertSeeInHtml('123456');
         $mail->assertSeeInHtml('7 minute');
         $mail->assertSeeInHtml('Introdu codul automat');
+        $mail->assertSeeInHtml('alt="Copiază codul"', false);
+        $mail->assertSeeInHtml('data:image/png;base64,', false);
+        $mail->assertSeeInHtml('action=copy', false);
         $mail->assertSeeInHtml('Ana &lt;script&gt;alert(1)&lt;/script&gt;', false);
         $mail->assertDontSeeInHtml('<script', false);
         $mail->assertDontSeeInHtml('navigator.clipboard', false);
@@ -30,6 +33,7 @@ class ApiOtpMailTest extends TestCase
         $mail->assertSeeInText('Codul expiră în 7 minute');
         $mail->assertSeeInText('Nu le comunica altor persoane');
         $mail->assertSeeInText('https://telemedconsult.md/confirm-code#email=ana%40example.test&code=123456&purpose=verify');
+        $mail->assertSeeInText('Copiază codul în browser: https://telemedconsult.md/confirm-code#email=ana%40example.test&code=123456&purpose=verify&action=copy');
     }
 
     public function test_login_email_uses_explicit_login_copy_and_singular_minute(): void
@@ -40,6 +44,8 @@ class ApiOtpMailTest extends TestCase
         $mail->assertSeeInText('Codul expiră în 1 minut');
         $mail->assertSeeInText('Dacă nu ai solicitat autentificarea');
         $mail->assertDontSeeInHtml('Introdu codul automat');
+        $mail->assertDontSeeInHtml('alt="Copiază codul"', false);
+        $mail->assertDontSeeInText('Copiază codul în browser:');
     }
 
     public function test_registration_sends_verification_email_with_configured_expiry_and_prefill_fragment(): void

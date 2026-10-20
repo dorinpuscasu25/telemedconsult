@@ -15,7 +15,12 @@
 <p style="margin:0 0 22px;font-size:15px;line-height:24px;color:#58657b;">{{ $purpose === 'login' ? 'Folosește codul de mai jos pentru a finaliza autentificarea în contul tău.' : 'Folosește codul de mai jos pentru a confirma adresa de email și a continua în contul tău.' }}</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;"><tr><td align="center" style="padding:22px 8px;background-color:#f1efff;border:1px solid #e3ddff;border-radius:12px;">
 <p style="margin:0 0 9px;font-size:11px;letter-spacing:1.5px;font-weight:bold;color:#6b60a3;">CODUL TĂU</p>
-<p dir="ltr" style="margin:0;font-family:Consolas,Monaco,monospace;font-size:36px;font-weight:bold;letter-spacing:7px;line-height:46px;color:#4935bd;">{{ $code }}</p>
+<table role="presentation" cellpadding="0" cellspacing="0" align="center"><tr><td dir="ltr" style="font-family:Consolas,Monaco,monospace;font-size:36px;font-weight:bold;letter-spacing:7px;line-height:46px;color:#4935bd;user-select:all;-webkit-user-select:all;">{{ $code }}</td>
+@if($copyUrl)
+<td style="padding-left:16px;"><a href="{{ $copyUrl }}" title="Deschide în browser pentru a copia codul" style="display:inline-block;padding:10px;border:1px solid #d9d2ff;border-radius:10px;background-color:#ffffff;text-decoration:none;line-height:20px;"><img src="{{ $message->embed(resource_path('images/mail/copy.png')) }}" alt="Copiază codul" width="22" height="22" style="display:block;border:0;width:22px;height:22px;"></a></td>
+@endif
+</tr></table>
+@if($copyUrl)<p style="margin:10px 0 0;font-size:11px;line-height:18px;color:#6b60a3;">Iconița deschide copierea codului în browser.</p>@endif
 </td></tr></table>
 <p style="margin:14px 0 24px;text-align:center;font-size:13px;line-height:21px;color:#68758c;">Codul expiră în <strong>{{ $expiresMinutes }} {{ $expiresMinutes === 1 ? 'minut' : 'minute' }}</strong> și poate fi folosit o singură dată.</p>
 @if($actionUrl)

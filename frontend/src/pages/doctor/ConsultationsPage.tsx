@@ -1,7 +1,7 @@
 import { DoctorSignature } from '../../components/DoctorSignature';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Activity, AlertCircle, CheckCircle2, Clock, FileText, MessageSquare, Microscope, Stethoscope } from 'lucide-react';
+import { Activity, AlertCircle, CheckCircle2, Clock, FileText, MessageSquare, Microscope, Stethoscope, CalendarDays, Wallet, History, RefreshCw } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Avatar, AvatarFallback } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
@@ -294,57 +294,33 @@ export function ConsultationsPage() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: index * 0.05 }}>
-        <Card className={`glass-card border-l-4 ${border} border-y-0 border-r-0 ${variant === 'completed' || variant === 'closed' ? 'opacity-80' : ''} ${searchParams.get('request') === String(request.id) ? 'ring-2 ring-blue-400' : ''}`}>
-          <CardContent className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="flex items-start space-x-4">
+        <Card className={`glass-card py-0 gap-0 border-l-4 ${border} border-y-0 border-r-0  ${searchParams.get('request') === String(request.id) ? 'ring-2 ring-blue-400' : ''}`}>
+          <CardContent className="p-5 flex flex-col xl:flex-row items-start justify-between gap-5 sm:p-6">
+            <div className="flex min-w-0 w-full flex-1 items-start gap-4">
               <Avatar className="h-12 w-12 bg-primary/10 text-primary">
                 <AvatarFallback>{patientName.charAt(0)}</AvatarFallback>
               </Avatar>
-              <div>
-                <div className="flex items-center gap-2 mb-1">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
                   <h3 className="font-bold text-lg text-slate-900"><button type="button" onClick={() => setChartRequest(request)} className="text-left text-blue-700 hover:underline" aria-label={`Deschide fișa pacientului ${patientName}`}>{patientName}</button></h3>
                   {variant === 'new' && <Badge variant="outline" className="bg-amber-50 text-amber-600 border-amber-200">Nou</Badge>}
                   {variant === 'accepted' && <Badge variant="outline" className="bg-green-50 text-green-600 border-green-200"><Clock className="w-3 h-3 mr-1" /> Activ</Badge>}
                   {variant === 'closed' && <Badge variant="secondary">{{ expired: 'Expirată', cancelled: 'Anulată', rejected: 'Respinsă', no_operator_available: 'Fără operator disponibil' }[request.status] || request.status}</Badge>}
                   {variant === 'completed' && <Badge variant="secondary" className="bg-slate-100 text-slate-500"><CheckCircle2 className="w-3 h-3 mr-1" /> Finalizat</Badge>}
                 </div>
-                <p className="text-sm text-slate-500 mb-2">
-                  {request.specialty || 'Consultație'} · #{request.id} • {dateTime(request.created_at)}
-                </p>
-                <p className="mb-2 text-xs text-slate-500">{request.patient_profile?.patient_code && `ID pacient: ${request.patient_profile.patient_code} · `}Titular cont: {request.patient?.name || '—'}</p>
-                {request.scheduled_at && (
-                  <p className="mb-2 text-sm font-medium text-slate-700">
-                    {request.status === 'new' ? 'Ora solicitată de pacient' : 'Ora confirmată'}: {dateTime(request.scheduled_at)}
-                  </p>
-                )}
-                {request.proposed_scheduled_at && (
-                  <p className="mb-2 text-sm font-medium text-amber-700">
-                    Propus: {dateTime(request.proposed_scheduled_at)}
-                  </p>
-                )}
-                <div className="mb-2 flex flex-wrap gap-2 text-xs">
-                  <Badge variant="secondary" className="rounded-full">
-                    {Number(request.amount || 0).toFixed(2)} MDL rezervat
-                  </Badge>
-                  {request.payment_status && (
-                    <Badge variant="outline" className="rounded-full">
-                      Plată: {{ held: 'Rezervată', captured: 'Achitată', paid: 'Achitată', refunded: 'Restituită', none: 'Fără cost' }[request.payment_status] || request.payment_status}
-                    </Badge>
-                  )}
-                  {variant === 'new' && request.acceptance_expires_at && (
-                    <Badge variant="outline" className="rounded-full border-amber-200 bg-amber-50 text-amber-700">
-                      Răspuns până la {new Date(request.acceptance_expires_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </Badge>
-                  )}
+                <p className="mb-4 text-sm text-slate-500">{request.specialty || 'Consultație'} · #{request.id}</p>
+                <div className="mb-4 grid gap-x-6 gap-y-3 text-xs text-slate-500 sm:grid-cols-2 2xl:grid-cols-3">
+                  <div><span className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400">Pacient</span><span className="text-slate-600">{request.patient_profile?.patient_code && `${request.patient_profile.patient_code} · `}Titular: {request.patient?.name || '—'}</span></div>
+                  <div><span className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-400"><CalendarDays size={13} />{request.scheduled_at ? request.status === 'new' ? 'Ora solicitată' : 'Data consultației' : 'Solicitată la'}</span><span className="font-medium text-slate-700">{dateTime(request.scheduled_at || request.created_at)}</span>{request.proposed_scheduled_at && <span className="mt-1 block text-amber-700">Oră propusă: {dateTime(request.proposed_scheduled_at)}</span>}</div>
+                  <div><span className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-400"><Wallet size={13} />Plată</span><span className="font-medium text-slate-700">{Number(request.amount || 0).toFixed(2)} MDL</span>{request.payment_status && <span className="ml-2">{{ held: 'Rezervată', captured: 'Achitată', paid: 'Achitată', refunded: 'Restituită', none: 'Fără cost' }[request.payment_status] || request.payment_status}</span>}</div>
                 </div>
-                <p className="text-slate-700 bg-slate-50 p-3 rounded-lg text-sm border border-slate-100 whitespace-pre-wrap">
-                  <strong>Acuzele pacientului (plângerile / simptomele): </strong>
-                  {request.symptoms || request.triage_notes || 'Fără detalii.'}
-                </p>
-                {variant === 'closed' && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{request.cancellation_reason || 'Această solicitare este închisă. Fișa și istoricul rămân disponibile.'}</p>}
+                {variant === 'new' && request.acceptance_expires_at && <p className="mb-3 text-xs text-amber-700">Răspuns până la {dateTime(request.acceptance_expires_at)}</p>}
+                <div className={`grid items-start gap-4 ${request.status === 'completed' ? '2xl:grid-cols-2' : ''}`}>
+                  <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm leading-relaxed text-slate-600"><p className="mb-1 text-xs font-semibold text-slate-500">Acuzele pacientului</p><p className="whitespace-pre-wrap">{request.symptoms || request.triage_notes || 'Fără detalii.'}</p>{request.current_illness_history && <details className="mt-2"><summary className="cursor-pointer text-xs font-medium text-primary">Istoricul bolii actuale</summary><p className="mt-2 whitespace-pre-wrap">{request.current_illness_history}</p></details>}</div>
+                  {request.status === 'completed' && <ConsultationDocuments requestId={request.id} compact />}
+                </div>
+                {variant === 'closed' && <p className="mt-3 text-sm text-slate-500">{request.cancellation_reason || 'Solicitare închisă. Fișa și istoricul sunt disponibile.'}</p>}
                 {['new', 'accepted'].includes(request.status) && <HigoConsultationProposal requestId={request.id} />}
-                {request.status === 'completed' && <ConsultationDocuments requestId={request.id} />}
-                {request.current_illness_history && <p className="mt-2 whitespace-pre-wrap text-sm"><strong>Istoricul bolii actuale: </strong>{request.current_illness_history}</p>}
                 {request.consultation_kind === 'with_exam' && (
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                     <Badge
@@ -362,7 +338,7 @@ export function ConsultationsPage() {
                 )}
               </div>
             </div>
-            <div className="flex flex-col gap-2 w-full md:w-auto shrink-0">
+            <div className="flex w-full shrink-0 flex-wrap gap-2 xl:w-48 xl:flex-col">
               <Button onClick={() => setChartRequest(request)} variant="outline" className="rounded-xl">
                 <Stethoscope className="mr-2 h-4 w-4" /> Fișa pacientului
               </Button>
@@ -413,7 +389,7 @@ export function ConsultationsPage() {
               )}
               {(variant === 'completed' || variant === 'closed') && (
                 <Button asChild variant="ghost" className="rounded-xl text-slate-500">
-                  <Link to={`/doctor/chat?request=${request.id}`}>Vezi istoric</Link>
+                  <Link to={`/doctor/chat?request=${request.id}`}><History className="mr-2 h-4 w-4" />Vezi discuția</Link>
                 </Button>
               )}
             </div>
@@ -424,10 +400,9 @@ export function ConsultationsPage() {
   };
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">Consultații</h1>
-        <p className="text-slate-500">Gestionează solicitările reale de la pacienți.</p><Button type="button" variant="outline" className="mt-3" onClick={() => { setIsLoading(true); void loadRequests(); }} disabled={isLoading}>Reîncarcă consultațiile</Button>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div><h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-1">Consultații</h1><p className="text-sm text-slate-500">Solicitările și consultațiile pacienților tăi.</p></div><Button type="button" variant="outline" className="gap-2 rounded-xl" onClick={() => { setIsLoading(true); void loadRequests(); }} disabled={isLoading}><RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />Actualizează</Button>
       </div>
 
       {error && (

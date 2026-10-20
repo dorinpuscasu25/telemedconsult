@@ -24,7 +24,7 @@ export function dateTime(value: unknown, fallback = '-'): string {
   if (value === null || value === undefined || value === '') return fallback;
 
   const date = new Date(value as string | number | Date);
-  return Number.isNaN(date.getTime()) ? fallback : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? fallback : date.toLocaleString('ro-RO', { dateStyle: 'short', timeStyle: 'short' });
 }
 
 /** Doar data locală; valorile invalide devin "-". */
@@ -32,5 +32,5 @@ export function dateOnly(value: unknown, fallback = '-'): string {
   if (value === null || value === undefined || value === '') return fallback;
 
   const date = new Date(value as string | number | Date);
-  return Number.isNaN(date.getTime()) ? fallback : date.toLocaleDateString();
+  return Number.isNaN(date.getTime()) ? fallback : date.toLocaleDateString('ro-RO');
 }

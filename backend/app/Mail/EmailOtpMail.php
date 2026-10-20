@@ -25,6 +25,8 @@ class EmailOtpMail extends Mailable
 
     public function content(): Content
     {
-        return new Content(view: 'mail.email-otp', text: 'mail.email-otp-text');
+        return new Content(view: 'mail.email-otp', text: 'mail.email-otp-text', with: [
+            'copyUrl' => $this->actionUrl ? $this->actionUrl.'&action=copy' : null,
+        ]);
     }
 }
