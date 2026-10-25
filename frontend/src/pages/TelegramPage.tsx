@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { PageHeader } from '../components/app/PageHeader';
 import { Send, Check, Copy, Loader2, Link2Off, BellRing, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -174,15 +175,9 @@ export function TelegramPage() {
   const waitingForStart = Boolean(status?.deep_link) && !status?.linked;
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-4 p-4 sm:p-6">
+    <div className="w-full space-y-4">
       <div>
-        <h1 className="flex items-center gap-2 text-xl font-semibold text-slate-900">
-          <Send className="size-5 text-sky-500" />
-          Notificări Telegram
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Primește instant în Telegram fiecare programare, consultație, mesaj sau plată nouă.
-        </p>
+        <PageHeader title="Notificări Telegram" description="Primește instant în Telegram fiecare programare, consultație, mesaj sau plată nouă." />
       </div>
 
       {error && (

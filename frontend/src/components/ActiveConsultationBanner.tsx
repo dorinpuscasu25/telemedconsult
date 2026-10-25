@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { MessageSquare, Stethoscope, Video } from 'lucide-react';
+import { MessageSquare, Video } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { apiRequest, type ApiError } from '../lib/api';
 import { Button } from './ui/button';
@@ -46,22 +46,43 @@ export function ActiveConsultationBanner() {
 
   const consultations = snapshot.owner === owner ? snapshot.items : [];
   if (!consultations.length || !user || !role) return null;
-  return <aside aria-label="Consultații active" className="mx-auto w-full max-w-7xl space-y-2 px-4 pt-4 sm:px-6 lg:px-8">
-    {consultations.map((consultation) => {
-      const inVideo = location.pathname === `/consultations/${consultation.id}/video`;
-      const chatPath = `/${role}/chat?${consultation.conversation_id ? `conversation=${consultation.conversation_id}` : `request=${consultation.id}`}`;
-      const scheduled = !consultation.doctor_started_at && consultation.scheduled_at && new Date(consultation.scheduled_at).getTime() > Date.now();
-      const title = consultation.status === 'rescheduled' ? 'Consultație în reprogramare' : consultation.doctor_started_at ? 'Consultație în desfășurare' : scheduled ? 'Consultație programată' : 'Consultație acceptată';
-      const otherPerson = [consultation.patient_name, consultation.patient_code, role === 'patient' ? consultation.doctor_name : null].filter(Boolean).join(' · ');
-      return <div key={consultation.id} className="flex flex-col gap-3 rounded-2xl border border-primary/20 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 items-center gap-3"><span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Stethoscope size={20} /><span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" /></span><div className="min-w-0 break-words"><p className="text-sm font-semibold text-slate-900">{title}{otherPerson ? ` · ${otherPerson}` : ''}</p><p className="mt-0.5 text-xs text-slate-500">{scheduled ? `Programată pentru ${new Intl.DateTimeFormat('ro-MD', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(consultation.scheduled_at!))}.` : 'Poți reveni aici până când medicul finalizează consultația.'}</p></div></div>
-        <div className="flex flex-wrap items-center gap-2">
-          {consultation.video_available && !inVideo && <Button asChild className="bg-gradient-to-r from-primary to-purple-600 text-white shadow-sm"><Link to={`/consultations/${consultation.id}/video`} state={{ returnTo: location.pathname + location.search }}><Video size={16} /> Revino la video</Link></Button>}
-          {inVideo && <span className="rounded-full bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">Pagina apelului este deschisă</span>}
-          {consultation.conversation_id && <Button asChild variant="outline"><Link to={chatPath}><MessageSquare size={16} /> Revino la chat</Link></Button>}
-          {role === 'doctor' && !inVideo && <Button asChild variant="ghost"><Link to={`/doctor/consultations?request=${consultation.id}`}>Vezi consultația</Link></Button>}
-        </div>
-      </div>;
-    })}
+
+  // Pe paginile Acasă și pe lista de consultații / vizite informația e deja
+  // vizibilă; bara ar repeta-o.
+  const listPath = role === 'doctor' ? '/doctor/consultations' : role === 'operator' ? '/operator/patients' : '/patient/consultations';
+  if (location.pathname === listPath || location.pathname === `/${role}` || location.pathname === `/${role}/chat`) return null;
+
+  // O singură bară: consultația cea mai urgentă (în desfășurare, apoi cea mai
+  // apropiată programare) și un link spre restul. Înainte, fiecare consultație
+  // activă avea propriul card mare, iar 3–4 carduri împingeau pagina în jos.
+  const sorted = [...consultations].sort((a, b) =>
+    Number(Boolean(b.doctor_started_at)) - Number(Boolean(a.doctor_started_at)) ||
+    (a.scheduled_at ? new Date(a.scheduled_at).getTime() : Infinity) - (b.scheduled_at ? new Date(b.scheduled_at).getTime() : Infinity));
+  const consultation = sorted[0];
+  const others = consultations.length - 1;
+  const inVideo = location.pathname === `/consultations/${consultation.id}/video`;
+  if (inVideo) return null;
+  const chatPath = `/${role}/chat?${consultation.conversation_id ? `conversation=${consultation.conversation_id}` : `request=${consultation.id}`}`;
+  const live = Boolean(consultation.doctor_started_at);
+  const scheduled = !live && consultation.scheduled_at && new Date(consultation.scheduled_at).getTime() > Date.now();
+  const title = consultation.status === 'rescheduled' ? 'Reprogramare în așteptare' : live ? 'Consultație în desfășurare' : scheduled ? `Programată ${new Intl.DateTimeFormat('ro-MD', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(consultation.scheduled_at ?? Date.now()))}` : 'Consultație confirmată';
+  const person = role === 'patient' ? [consultation.doctor_name && `Dr. ${consultation.doctor_name}`, consultation.patient_name].filter(Boolean).join(' · ') : consultation.patient_name;
+
+  return <aside aria-label="Consultații active" className={`border-b ${live ? 'border-emerald-200 bg-emerald-50' : 'border-blue-100 bg-blue-50/70'}`}>
+    <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:px-6 lg:px-8">
+      <div className="flex min-w-0 basis-full items-center gap-2.5 sm:flex-1 sm:basis-auto">
+        <span className="relative flex h-2.5 w-2.5 shrink-0">
+          {live && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />}
+          <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${live ? 'bg-emerald-500' : 'bg-blue-500'}`} />
+        </span>
+        <p className="min-w-0 text-sm text-slate-700 sm:truncate"><span className="font-semibold text-slate-900">{title}</span>{person ? ` · ${person}` : ''}</p>
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        {consultation.video_available && <Button asChild size="sm" className={live ? 'bg-emerald-600 hover:bg-emerald-700' : undefined}><Link to={`/consultations/${consultation.id}/video`} state={{ returnTo: location.pathname + location.search }}><Video className="h-4 w-4" />Video</Link></Button>}
+        {consultation.conversation_id && <Button asChild size="sm" variant="outline" className="bg-white"><Link to={chatPath}><MessageSquare className="h-4 w-4" />Mesaje</Link></Button>}
+        {role === 'doctor' && !others && <Button asChild size="sm" variant="ghost"><Link to={`/doctor/consultations?request=${consultation.id}`}>Deschide</Link></Button>}
+        {others > 0 && <Button asChild size="sm" variant="ghost"><Link to={listPath}>+{others} {others === 1 ? 'alta' : 'altele'}</Link></Button>}
+      </div>
+    </div>
   </aside>;
 }

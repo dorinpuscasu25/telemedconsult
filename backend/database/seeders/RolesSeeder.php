@@ -20,6 +20,8 @@ class RolesSeeder extends Seeder
         ['name' => 'doctor', 'label' => 'Medic'],
         ['name' => 'operator', 'label' => 'Operator'],
         ['name' => 'coordinator', 'label' => 'Coordonator'],
+        // Clinică parteneră: își administrează propriii medici și plățile lor.
+        ['name' => 'institution', 'label' => 'Instituție medicală'],
     ];
 
     /**

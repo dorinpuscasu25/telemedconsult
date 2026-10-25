@@ -25,6 +25,7 @@ use App\Services\ConsultationStateMachine;
 use App\Services\FeatureFlags;
 use App\Services\FinancialBreakdown;
 use App\Services\FirstTopupPromotion;
+use App\Services\InstitutionLedger;
 use App\Services\MedicalDocumentPublisher;
 use App\Services\ObjectiveDataSchema;
 use App\Services\OperatorAssignmentService;
@@ -478,6 +479,9 @@ class WorkflowController extends Controller
             ]);
 
             $this->captureHeldFunds($consultationRequest, $provider, $consultation->id);
+            if ($provider->hasRole('doctor')) {
+                app(InstitutionLedger::class)->recordEarning($consultationRequest->refresh(), $provider);
+            }
 
             $fhir = $doctorId ? $this->buildFhirEncounter($consultation->load(['patient', 'doctor'])) : null;
             $consultation->forceFill(['fhir_payload' => $fhir])->save();

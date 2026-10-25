@@ -1,15 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { ArrowDownRight, ArrowUpRight, CreditCard, Plus, ShieldCheck, Wallet } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, CreditCard, Gift, Plus, ShieldCheck, Wallet } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle
-} from '../../components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -19,16 +11,12 @@ import {
   DialogTitle
 } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
-} from '../../components/ui/table';
+import { Tabs, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import { ListSkeleton, Skeleton } from '../../components/ui/skeleton';
+import { PageHeader, SectionHeader } from '../../components/app/PageHeader';
+import { EmptyState } from '../../components/app/EmptyState';
 import { apiRequest } from '../../lib/api';
-import { dateTime, money, num } from '../../lib/format';
+import { money, num, relativeDay, timeOnly } from '../../lib/format';
 
 interface WalletData {
   topup_bonus_percent: number;
@@ -77,6 +65,8 @@ export function WalletPage() {
   const [isTopUpOpen, setIsTopUpOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [pocketFilter, setPocketFilter] = useState<'all' | 'base' | 'bonus'>('all');
+  const [showPromoDetails, setShowPromoDetails] = useState(false);
 
   const loadWallet = () => {
     setError('');
@@ -85,9 +75,12 @@ export function WalletPage() {
 
   useEffect(() => {
     loadWallet();
-    const topUpAmount = Number(searchParams.get('topup'));
+    const topUpParam = searchParams.get('topup');
+    const topUpAmount = Number(topUpParam);
     if (Number.isFinite(topUpAmount) && topUpAmount >= 10) {
       setAmount(String(Math.ceil(topUpAmount)));
+      setIsTopUpOpen(true);
+    } else if (topUpParam !== null) {
       setIsTopUpOpen(true);
     }
   }, [searchParams]);
@@ -121,180 +114,123 @@ export function WalletPage() {
   const promoBalance = walletData?.promo_wallet?.balance ?? 0;
   const promotion = walletData?.first_topup_promotion;
   const promoDoctors = promotion?.doctors.map((doctor) => doctor.name).join(', ');
-  const transactions = [...(walletData?.transactions ?? []).map((tx) => ({ ...tx, pocket: 'Bază' })), ...(walletData?.points_transactions ?? []).map((tx) => ({ ...tx, pocket: 'Bonusuri' })), ...(walletData?.promo_transactions ?? []).map((tx) => ({ ...tx, pocket: 'Bonus promoțional' }))].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const transactions = [...(walletData?.transactions ?? []).map((tx) => ({ ...tx, pocket: 'Bază' as Pocket })), ...(walletData?.points_transactions ?? []).map((tx) => ({ ...tx, pocket: 'Bonusuri' as Pocket })), ...(walletData?.promo_transactions ?? []).map((tx) => ({ ...tx, pocket: 'Bonus promoțional' as Pocket }))].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const visibleTransactions = transactions.filter((tx) => pocketFilter === 'all' || (pocketFilter === 'base' ? tx.pocket === 'Bază' : tx.pocket !== 'Bază'));
+  const groups = groupByDay(visibleTransactions);
+  const bonusTotal = (pointsWallet?.balance ?? 0) + promoBalance;
+  const numericAmount = Number(amount) || 0;
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto relative">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">
-          Portofel Electronic
-        </h1>
-        <p className="text-slate-500">
-          Gestionează fondurile și alimentează contul în siguranță.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Portofel"
+        description="Soldul tău, bonusurile și toate plățile pentru consultații."
+        actions={<Button disabled={!walletData} onClick={() => setIsTopUpOpen(true)}><Plus className="h-4 w-4" />Alimentează</Button>}
+      />
 
-      {promotion?.eligible_for_grant && <Card className="border-blue-200 bg-blue-50"><CardContent className="flex flex-wrap items-center justify-between gap-4 p-5"><div className="max-w-2xl"><h2 className="font-semibold text-blue-950">Prima alimentare: {money(promotion.minimum_deposit)} MDL + {money(promotion.bonus_amount)} MDL bonus</h2><p className="mt-1 text-sm text-blue-900">Depune minimum {money(promotion.minimum_deposit)} MDL și primește o singură dată {money(promotion.bonus_amount)} MDL bonus promoțional. Se folosește automat pentru maximum 50% din fiecare consultație cu {promoDoctors || 'medicul eligibil'}. Examinările și deplasarea operatorului se achită separat.</p></div><Button onClick={() => { setAmount(String(promotion.minimum_deposit)); setIsTopUpOpen(true); }}>Alimentează contul</Button></CardContent></Card>}
-      {error && !isTopUpOpen && <div role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}<Button variant="outline" size="sm" className="ml-3" onClick={loadWallet}>Reîncearcă</Button></div>}
-      <div className="grid gap-6 md:grid-cols-3">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="md:col-span-2">
-          <Card className="border-0 h-full bg-gradient-to-br from-primary to-purple-700 text-white shadow-xl shadow-primary/20 relative overflow-hidden">
-            <div className="absolute top-[-20%] right-[-10%] w-[50%] h-[60%] rounded-full bg-white/10 blur-2xl pointer-events-none" />
-            <div className="absolute bottom-[-20%] left-[-10%] w-[40%] h-[50%] rounded-full bg-white/5 blur-2xl pointer-events-none" />
-            <CardContent className="p-8 flex flex-col h-full justify-between relative z-10">
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="text-white/80 font-medium mb-1">Portofel de bază</p>
-                  <h2 className="text-5xl font-bold tracking-tight">
-                    {wallet ? wallet.balance.toFixed(2) : '…'}
-                    <span className="text-2xl font-medium text-white/80 ml-2">{wallet?.currency ?? 'MDL'}</span>
-                  </h2>
-                </div>
-                <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-md">
-                  <Wallet className="h-6 w-6 text-white" />
-                </div>
+      {error && !isTopUpOpen && <div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}<Button variant="outline" size="sm" onClick={loadWallet}>Reîncearcă</Button></div>}
+
+      {promotion?.eligible_for_grant && (
+        <section className="flex flex-col gap-4 rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-5 sm:flex-row sm:items-center">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-blue-600 text-white"><Gift className="h-5 w-5" /></span>
+          <div className="min-w-0 flex-1">
+            <h2 className="font-semibold text-blue-950">+{money(promotion.bonus_amount)} MDL bonus la prima alimentare</h2>
+            <p className="mt-0.5 text-sm text-blue-900">Depune minimum {money(promotion.minimum_deposit)} MDL. <button type="button" className="font-semibold underline" onClick={() => setShowPromoDetails((value) => !value)}>{showPromoDetails ? 'Ascunde detaliile' : 'Detalii'}</button></p>
+            {showPromoDetails && <p className="mt-2 text-sm text-blue-900">Bonusul se acordă o singură dată și se folosește automat pentru maximum 50% din fiecare consultație cu {promoDoctors || 'medicul eligibil'}. Examinările și deplasarea operatorului se achită separat.</p>}
+          </div>
+          <Button onClick={() => { setAmount(String(promotion.minimum_deposit)); setIsTopUpOpen(true); }}>Alimentează {money(promotion.minimum_deposit)} MDL</Button>
+        </section>
+      )}
+
+      <section className="grid gap-4 sm:grid-cols-[1.3fr_1fr] xl:grid-cols-[2fr_1fr]">
+        <div className="relative overflow-hidden rounded-2xl bg-slate-900 p-6 text-white shadow-sm">
+          <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-primary/40 blur-3xl" />
+          <p className="flex items-center gap-2 text-sm font-medium text-white/70"><Wallet className="h-4 w-4" />Sold disponibil</p>
+          {walletData ? <p className="tabular mt-3 text-4xl font-bold tracking-tight">{money(wallet?.balance)} <span className="text-lg font-medium text-white/60">{wallet?.currency ?? 'MDL'}</span></p> : <Skeleton className="mt-3 h-10 w-40 bg-white/10" />}
+          <p className="mt-2 text-sm text-white/60">Folosit pentru consultații, examinări și servicii pe loc.</p>
+          <Button className="mt-5 bg-white text-slate-900 hover:bg-white/90" disabled={!walletData} onClick={() => setIsTopUpOpen(true)}><CreditCard className="h-4 w-4" />Alimentează cu cardul</Button>
+        </div>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-6">
+          <p className="flex items-center gap-2 text-sm font-medium text-amber-800"><Gift className="h-4 w-4" />Bonusuri</p>
+          {walletData ? <p className="tabular mt-3 text-3xl font-bold tracking-tight text-amber-950">{money(bonusTotal)} <span className="text-base font-medium text-amber-700">MDL</span></p> : <Skeleton className="mt-3 h-9 w-28" />}
+          <dl className="mt-3 space-y-1 text-sm text-amber-900">
+            {promoBalance > 0 && <><div className="flex justify-between"><dt>Bonusuri obișnuite</dt><dd className="tabular">{money(pointsWallet?.balance)} MDL</dd></div><div className="flex justify-between"><dt>Bonus promoțional</dt><dd className="tabular">{money(promoBalance)} MDL</dd></div></>}
+          </dl>
+          <p className="mt-3 text-xs leading-5 text-amber-800">Acoperă până la {walletData?.max_bonus_payment_percent ?? 30}% din consultațiile eligibile. Primești {walletData?.topup_bonus_percent ?? 0}% bonus la fiecare alimentare.</p>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-5">
+          <SectionHeader title="Istoric" description={`${transactions.length} ${transactions.length === 1 ? 'operațiune' : 'operațiuni'}`} />
+          <Tabs value={pocketFilter} onValueChange={(value) => setPocketFilter(value as 'all' | 'base' | 'bonus')}>
+            <TabsList>
+              <TabsTrigger value="all">Toate</TabsTrigger>
+              <TabsTrigger value="base">Sold</TabsTrigger>
+              <TabsTrigger value="bonus">Bonusuri</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+        {!walletData && !error ? <div className="p-5"><ListSkeleton rows={3} /></div> : groups.length === 0 ? (
+          <EmptyState icon={Wallet} title="Nicio operațiune încă" description="Alimentările și plățile pentru consultații vor apărea aici." className="m-5" />
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {groups.map(([day, items]) => (
+              <div key={day}>
+                <p className="bg-slate-50/80 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{day}</p>
+                <ul className="divide-y divide-slate-100">
+                  {items.map((tx) => {
+                    const positive = num(tx.amount) > 0;
+                    return (
+                      <li key={`${tx.pocket}-${tx.id}`} className="flex items-center gap-3 px-5 py-3.5">
+                        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${positive ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                          {positive ? <ArrowDownLeft className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-slate-900">{displayTransactionType(tx.type)}</span>
+                          <span className="block text-xs text-slate-500">{timeOnly(tx.date)} · {tx.pocket}</span>
+                        </span>
+                        <span className={`tabular shrink-0 text-sm font-semibold ${positive ? 'text-emerald-600' : 'text-slate-900'}`}>{positive ? '+' : ''}{money(tx.amount)} MDL</span>
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
-
-              <div className="mt-6 flex flex-col sm:flex-row sm:items-end justify-between gap-6">
-                <div className="space-y-1">
-                  <p className="text-white/60 text-xs uppercase tracking-wider">Portofel telemedconsult.md</p>
-                  <p className="font-medium text-white/90">Fonduri disponibile pentru servicii medicale</p>
-                  <p className="text-sm text-white/80">Tranzacții înregistrate: <strong>{transactions.length}</strong></p>
-                </div>
-
-                <Button
-                  disabled={!walletData}
-                  onClick={() => setIsTopUpOpen(true)}
-                  className="bg-white text-primary hover:bg-white/90 rounded-xl font-semibold px-6 shadow-lg shadow-black/10">
-                  <Plus className="mr-2 h-4 w-4" /> Alimentează
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
-          <Card className="h-full border-0 bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-xl">
-            <CardContent className="flex h-full flex-col justify-between p-8">
-              <div>
-                <p className="mb-1 font-medium text-white/80">Portofel de bonusuri</p>
-                <h2 className="text-4xl font-bold">{pointsWallet ? money(pointsWallet.balance + promoBalance) : '…'} <span className="text-lg">MDL</span></h2>
-                <p className="mt-2 text-sm text-white/80">Bonusuri acordate separat de banii depuși</p>
-                {promoBalance > 0 && <div className="mt-4 space-y-1 rounded-xl bg-white/15 p-3 text-sm"><p>Bonusuri obișnuite: {money(pointsWallet?.balance)} MDL</p><p className="font-semibold">Bonus promoțional: {money(promoBalance)} MDL</p><p className="text-xs">Se aplică automat, maximum 50% din consultația medicului: {promoDoctors || 'medicul eligibil din promoția primită'}.</p></div>}
-              </div>
-              <p className="mt-6 text-sm font-medium">Bonusurile obișnuite: până la {walletData?.max_bonus_payment_percent ?? 30}% din consultațiile eligibile</p>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-          <Card className="glass-card border-0 h-full">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg flex items-center">
-                <ShieldCheck className="h-5 w-5 text-green-500 mr-2" />
-                Plăți securizate
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-slate-900 mb-1">Card bancar</div>
-              <p className="text-sm text-slate-500 mb-4">
-                Alimentările sunt procesate securizat, iar istoricul rămâne salvat în cont.
-              </p>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Valută</span>
-                  <span className="font-medium">MDL</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Status</span>
-                  <span className="font-medium text-green-600">Pregătit</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-      </div>
-
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-        <Card className="glass-card border-0">
-          <CardHeader>
-            <CardTitle>Istoric Tranzacții</CardTitle>
-            <CardDescription>Ultimele operațiuni din portofelul tău.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent border-slate-200/50">
-                  <TableHead>Data</TableHead>
-                  <TableHead>Detalii / portofel</TableHead>
-                  <TableHead className="text-right">Suma</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {transactions.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={3} className="text-center text-slate-500 py-8">
-                      Nu există tranzacții încă.
-                    </TableCell>
-                  </TableRow>
-                )}
-                {transactions.map((tx) => (
-                  <TableRow key={tx.id} className="border-slate-200/50 hover:bg-slate-50/50">
-                    <TableCell className="text-slate-500">{dateTime(tx.date)}</TableCell>
-                    <TableCell className="font-medium text-slate-900 flex items-center">
-                      <div className={`h-8 w-8 rounded-full flex items-center justify-center mr-3 ${tx.amount > 0 ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-600'}`}>
-                        {tx.amount > 0 ? <ArrowDownRight className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
-                      </div>
-                      {displayTransactionType(tx.type)}
-                    </TableCell>
-                    <TableCell className={`text-right font-bold ${num(tx.amount) > 0 ? 'text-green-600' : 'text-slate-900'}`}>
-                      {num(tx.amount) > 0 ? '+' : ''}{money(tx.amount)} MDL
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </motion.div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <Dialog open={isTopUpOpen} onOpenChange={setIsTopUpOpen}>
-        <DialogContent className="sm:max-w-[400px] glass-panel border-0 rounded-2xl z-50">
-          <form onSubmit={handleTopUp}>
+        <DialogContent className="sm:max-w-[420px]">
+          <form onSubmit={handleTopUp} className="grid gap-5">
             <DialogHeader>
-              <DialogTitle className="text-2xl">Alimentare Cont</DialogTitle>
-              <DialogDescription>Introduceți suma pentru a alimenta portofelul.</DialogDescription>
+              <DialogTitle>Alimentează portofelul</DialogTitle>
+              <DialogDescription>Plata se face cu cardul, pe pagina securizată a procesatorului.</DialogDescription>
             </DialogHeader>
-            <div className="py-6 space-y-4">
-              {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+            {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+            <div className="space-y-3">
+              <label htmlFor="topup-amount" className="sr-only">Suma</label>
               <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-500">MDL</span>
-                <Input
-                  type="number"
-                  value={amount}
-                  onChange={(event) => setAmount(event.target.value)}
-                  className="pl-14 text-2xl font-bold h-16 rounded-xl bg-slate-50"
-                  min={10}
-                  autoFocus
-                />
+                <Input id="topup-amount" type="number" inputMode="numeric" value={amount} onChange={(event) => setAmount(event.target.value)} className="tabular h-16 pr-16 text-3xl font-bold" min={10} autoFocus />
+                <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 font-semibold text-slate-400">MDL</span>
               </div>
-              <div className="flex gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {[250, 500, 1000].map((value) => (
-                  <Button key={value} type="button" variant="outline" className="flex-1 rounded-xl" onClick={() => setAmount(value.toString())}>
-                    {value}
-                  </Button>
+                  <Button key={value} type="button" variant={numericAmount === value ? 'default' : 'outline'} onClick={() => setAmount(value.toString())}>{value}</Button>
                 ))}
               </div>
             </div>
-            <p className="rounded-xl bg-amber-50 p-3 text-sm">Portofel de bază: +{money(Number(amount) || 0)}<br />Bonus obișnuit estimat: +{money((Number(amount) || 0) * (walletData?.topup_bonus_percent ?? 0) / 100)} ({walletData?.topup_bonus_percent ?? 0}%). Procentul aplicat se salvează la confirmarea plății.</p>
-            {promotion?.eligible_for_grant && <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900"><p className="font-semibold">Promoție la prima alimentare: {money(promotion.minimum_deposit)} + {money(promotion.bonus_amount)} MDL</p><p className="mt-1">{Number(amount) >= promotion.minimum_deposit ? `Bonus promoțional estimat: +${money(promotion.bonus_amount)} MDL.` : `Prima alimentare trebuie să fie de minimum ${money(promotion.minimum_deposit)} MDL pentru a primi bonusul.`} Banii depuși intră integral în portofelul de bază.</p><p className="mt-1">Bonusul se folosește automat pentru maximum 50% din consultația cu {promoDoctors || 'medicul eligibil'}. Examinările și deplasarea operatorului se achită separat.</p></div>}
-          <DialogFooter>
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full rounded-xl bg-gradient-to-r from-primary to-purple-600 border-0 h-12 text-lg">
-                <CreditCard className="mr-2 h-5 w-5" />
-                {isSubmitting ? 'Se inițiază...' : 'Continuă spre Plată'}
+            <dl className="space-y-1.5 rounded-xl bg-slate-50 p-4 text-sm">
+              <div className="flex justify-between"><dt className="text-slate-500">În portofelul de bază</dt><dd className="tabular font-semibold text-slate-900">+{money(numericAmount)} MDL</dd></div>
+              <div className="flex justify-between"><dt className="text-slate-500">Bonus estimat ({walletData?.topup_bonus_percent ?? 0}%)</dt><dd className="tabular font-semibold text-amber-700">+{money(numericAmount * (walletData?.topup_bonus_percent ?? 0) / 100)} MDL</dd></div>
+              {promotion?.eligible_for_grant && <div className="flex justify-between"><dt className="text-slate-500">Bonus prima alimentare</dt><dd className={`tabular font-semibold ${numericAmount >= promotion.minimum_deposit ? 'text-blue-700' : 'text-slate-400'}`}>{numericAmount >= promotion.minimum_deposit ? `+${money(promotion.bonus_amount)} MDL` : `de la ${money(promotion.minimum_deposit)} MDL`}</dd></div>}
+              <p className="pt-1 text-xs text-slate-500">Procentul bonusului se fixează la confirmarea plății.</p>
+            </dl>
+            <DialogFooter>
+              <Button type="submit" disabled={isSubmitting || numericAmount < 10} size="lg" className="w-full">
+                <ShieldCheck className="h-5 w-5" />
+                {isSubmitting ? 'Se inițiază…' : `Plătește ${money(numericAmount)} MDL`}
               </Button>
             </DialogFooter>
           </form>
@@ -302,6 +238,18 @@ export function WalletPage() {
       </Dialog>
     </div>
   );
+}
+
+type Pocket = 'Bază' | 'Bonusuri' | 'Bonus promoțional';
+
+function groupByDay<T extends { date: string }>(items: T[]): Array<[string, T[]]> {
+  const groups = new Map<string, T[]>();
+  items.forEach((item) => {
+    const label = relativeDay(item.date);
+    const day = ['Azi', 'Ieri', 'Mâine'].includes(label) ? label : new Date(item.date).toLocaleDateString('ro-RO', { day: 'numeric', month: 'long', year: 'numeric' });
+    groups.set(day, [...(groups.get(day) ?? []), item]);
+  });
+  return [...groups.entries()];
 }
 
 function displayTransactionType(type: string) {

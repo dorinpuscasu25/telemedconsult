@@ -11,6 +11,7 @@ import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 import { ObjectiveDataForm, toObjectivePayload } from './ObjectiveDataForm';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { useDialogs } from './app/DialogProvider';
 
 export interface MedicalProfile {
   pseudonymized?: boolean; patient_code?: string | null;
@@ -45,6 +46,7 @@ export function PatientMedicalRecord({ profile, regions, onSaved, onDirtyChange,
   initialSection?: string | null; requestedConsultationId?: string | null;
   profile: MedicalProfile; regions: Region[]; onSaved: () => void; onDirtyChange: (dirty: boolean) => void;
 }) {
+  const dialogs = useDialogs();
   const [openedConsultation, setOpenedConsultation] = useState<ConsultationHistory | null>(null);
   const [specialtyFilter, setSpecialtyFilter] = useState('');
   const [doctorFilter, setDoctorFilter] = useState('');
@@ -109,7 +111,7 @@ export function PatientMedicalRecord({ profile, regions, onSaved, onDirtyChange,
 
   const changeTab = async (next: string) => {
     if (next === active || saving) return;
-    if (dirty && !window.confirm('Ai modificări nesalvate. Renunți la ele?')) return;
+    if (dirty && !(await dialogs.confirm({ title: 'Renunți la modificări?', description: 'Ai modificări nesalvate în această secțiune. Dacă schimbi secțiunea, se pierd.', confirmLabel: 'Renunță la modificări', cancelLabel: 'Rămân aici', tone: 'danger' }))) return;
     if (dirty) {
       try { await load(); } catch { setError('Nu am putut reîncărca fișa. Încearcă din nou.'); return; }
       setPersonal(personalValues(profile)); setAddress(profile.address_details ?? {});
@@ -157,7 +159,7 @@ export function PatientMedicalRecord({ profile, regions, onSaved, onDirtyChange,
     } catch (err) { setError(errorText(err)); } finally { setSaving(false); }
   };
   const removeDocument = async (item: RecordDocument) => {
-    if (!window.confirm(`Ștergi „${item.title}”?`)) return;
+    if (!(await dialogs.confirm({ title: `Ștergi „${item.title}”?`, description: 'Fișierul se șterge definitiv din fișa pacientului.', confirmLabel: 'Șterge', tone: 'danger' }))) return;
     setSaving(true); setError('');
     try { await apiRequest(`/patient/profiles/${profile.id}/investigations/${item.id}`, { method: 'DELETE' }); await load(); onSaved(); }
     catch (err) { setError(errorText(err)); } finally { setSaving(false); }
@@ -213,10 +215,10 @@ export function PatientMedicalRecord({ profile, regions, onSaved, onDirtyChange,
           </> : section?.repeated ? <>
             {active === 'vaccinations' && <Choice label="Opțiunea privind vaccinarea" value={vaccination?.refusal ?? 'unknown'} options={[[ 'unknown', 'Nu am precizat' ], [ 'none', 'Fără refuz declarat' ], [ 'temporary', 'Refuz temporar' ], [ 'categorical', 'Refuz categoric' ]]} onChange={(value) => { setRecord({ ...record, vaccinations: { ...vaccination, refusal: value, items: entries } }); setDirty(true); }} />}
             {entries.length === 0 && <p className="rounded-xl border border-dashed p-5 text-sm text-slate-500">Nu sunt înregistrări în această secțiune. Folosește „Adaugă” pentru prima înregistrare.</p>}
-            {active === 'vaccinations' && entries.length > 0 && <div className="overflow-x-auto rounded-xl border"><table className="w-full min-w-[720px] text-left text-sm"><caption className="p-3 text-left font-semibold">Tabelul vaccinărilor din carnet</caption><thead className="bg-slate-50"><tr>{section.fields.map((field) => <th key={field.key} className="p-3">{field.label}</th>)}<th className="p-3">Acțiuni</th></tr></thead><tbody>{entries.map((entry, index) => <tr key={index} className="border-t align-top">{section.fields.map((field) => <td key={field.key} className="min-w-36 p-2"><MedicalInput hideLabel field={field} value={entry[field.key] ?? ''} onChange={(value) => changeEntry(index, field.key, value)} /></td>)}<td className="p-2"><Button type="button" variant="ghost" size="icon" aria-label={`Elimină vaccinul ${index + 1}`} onClick={() => { if (window.confirm('Elimini această vaccinare? Modificarea se aplică la salvare.')) setEntries(entries.filter((_, i) => i !== index)); }}><Trash2 className="h-4 w-4 text-red-600" /></Button></td></tr>)}</tbody></table></div>}
+            {active === 'vaccinations' && entries.length > 0 && <div className="overflow-x-auto rounded-xl border"><table className="w-full min-w-[720px] text-left text-sm"><caption className="p-3 text-left font-semibold">Tabelul vaccinărilor din carnet</caption><thead className="bg-slate-50"><tr>{section.fields.map((field) => <th key={field.key} className="p-3">{field.label}</th>)}<th className="p-3">Acțiuni</th></tr></thead><tbody>{entries.map((entry, index) => <tr key={index} className="border-t align-top">{section.fields.map((field) => <td key={field.key} className="min-w-36 p-2"><MedicalInput hideLabel field={field} value={entry[field.key] ?? ''} onChange={(value) => changeEntry(index, field.key, value)} /></td>)}<td className="p-2"><Button type="button" variant="ghost" size="icon" aria-label={`Elimină vaccinul ${index + 1}`} onClick={async () => { if (await dialogs.confirm({ title: 'Elimini această vaccinare?', description: 'Modificarea se aplică după ce salvezi fișa.', confirmLabel: 'Elimină', tone: 'danger' })) setEntries(entries.filter((_, i) => i !== index)); }}><Trash2 className="h-4 w-4 text-red-600" /></Button></td></tr>)}</tbody></table></div>}
             {active !== 'vaccinations' && entries.map((entry, index) => <div key={index} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="mb-3 flex items-center justify-between gap-3"><p className="text-sm font-semibold">{index + 1}. {entry.name || 'Înregistrare nouă'}</p>
-                <Button type="button" variant="ghost" size="icon" aria-label="Elimină înregistrarea" onClick={() => { if (window.confirm('Elimini această înregistrare? Modificarea se aplică la salvare.')) setEntries(entries.filter((_, i) => i !== index)); }}><Trash2 className="h-4 w-4 text-red-600" /></Button>
+                <Button type="button" variant="ghost" size="icon" aria-label="Elimină înregistrarea" onClick={async () => { if (await dialogs.confirm({ title: 'Elimini această înregistrare?', description: 'Modificarea se aplică după ce salvezi fișa.', confirmLabel: 'Elimină', tone: 'danger' })) setEntries(entries.filter((_, i) => i !== index)); }}><Trash2 className="h-4 w-4 text-red-600" /></Button>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">{section.fields.map((field) => <MedicalInput key={field.key} field={field} value={entry[field.key] ?? ''} onChange={(value) => changeEntry(index, field.key, value)} />)}</div>
             </div>)}

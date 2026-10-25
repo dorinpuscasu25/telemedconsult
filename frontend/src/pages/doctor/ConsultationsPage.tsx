@@ -1,30 +1,47 @@
-import { DoctorSignature } from '../../components/DoctorSignature';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Activity, AlertCircle, CheckCircle2, Clock, FileText, MessageSquare, Microscope, Stethoscope, CalendarDays, Wallet, History, RefreshCw } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { Avatar, AvatarFallback } from '../../components/ui/avatar';
-import { Badge } from '../../components/ui/badge';
-import { Button } from '../../components/ui/button';
-import { Card, CardContent } from '../../components/ui/card';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from '../../components/ui/dialog';
+  Activity,
+  ArrowLeft,
+  CalendarClock,
+  CalendarDays,
+  CheckCircle2,
+  ClipboardList,
+  Clock,
+  FileText,
+  Hourglass,
+  MessageSquare,
+  Microscope,
+  Play,
+  RefreshCw,
+  Search,
+  Stethoscope,
+  Wallet,
+  XCircle
+} from 'lucide-react';
+import { Avatar, AvatarFallback } from '../../components/ui/avatar';
+import { Button } from '../../components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
-import { Textarea } from '../../components/ui/textarea';
+import { ListSkeleton } from '../../components/ui/skeleton';
+import { cn } from '../../components/ui/utils';
+import { PageHeader } from '../../components/app/PageHeader';
+import { EmptyState } from '../../components/app/EmptyState';
+import { StatusBadge, ToneBadge } from '../../components/app/StatusBadge';
+import { MoreMenu, type MoreMenuItem } from '../../components/app/MoreMenu';
+import { useDialogs } from '../../components/app/DialogProvider';
 import { ConsultationVideoButton } from '../../components/ConsultationVideoButton';
 import { HigoConsultationProposal } from '../../components/HigoConsultationProposal';
 import { ConsultationDocuments } from '../../components/ConsultationDocuments';
+import { FinalizeConsultationDialog } from '../../components/doctor/FinalizeConsultationDialog';
 import { useAuth } from '../../contexts/AuthContext';
-import { apiBlob, apiRequest } from '../../lib/api';
-import { dateTime } from '../../lib/format';
+import { apiRequest } from '../../lib/api';
+import { dateTime, money, relativeDay, timeOnly, timeUntil } from '../../lib/format';
+import { CONSULTATION_KIND_LABELS, paymentStatusLabel } from '../../lib/status';
+import { useNow } from '../../lib/use-now';
 import {
   PatientChart,
   type ExamMediaItem,
@@ -61,44 +78,64 @@ interface ConsultationRequest {
   objective_data_completed_at?: string | null;
   ready_for_doctor?: boolean;
   doctor_started_at?: string | null;
-  }
+}
+
+type Bucket = 'new' | 'accepted' | 'completed' | 'closed';
+
+const BUCKETS: Array<{ value: Bucket; label: string; empty: string; emptyDescription: string }> = [
+  { value: 'new', label: 'Cereri noi', empty: 'Nicio cerere nouă', emptyDescription: 'Cererile pacienților apar aici imediat ce sunt trimise.' },
+  { value: 'accepted', label: 'Active', empty: 'Nicio consultație activă', emptyDescription: 'Consultațiile confirmate și cele în desfășurare apar aici.' },
+  { value: 'completed', label: 'Finalizate', empty: 'Nicio consultație finalizată', emptyDescription: 'Consultațiile cu concluzia publicată apar aici.' },
+  { value: 'closed', label: 'Închise', empty: 'Nicio cerere închisă', emptyDescription: 'Cererile anulate, respinse sau expirate apar aici.' }
+];
+
+const bucketOf = (request: ConsultationRequest): Bucket =>
+  ['new', 'rescheduled'].includes(request.status) ? 'new'
+    : request.status === 'accepted' ? 'accepted'
+      : request.status === 'completed' ? 'completed'
+        : 'closed';
+
+const time = (value?: string | null) => (value ? new Date(value).getTime() : 0);
+
+const patientNameOf = (request: ConsultationRequest) => request.patient_profile?.name || request.patient?.name || 'Pacient';
+
+const initialsOf = (name: string) => name.split(' ').map((part) => part.charAt(0)).slice(0, 2).join('').toUpperCase();
+
+const isFuture = (value?: string | null) => Boolean(value && new Date(value).getTime() > Date.now());
+
+/** Ce are medicul de făcut acum, într-o propoziție. */
+function doctorNextStep(request: ConsultationRequest): { text: string; tone: 'warning' | 'info' | 'success' | 'neutral' } | null {
+  if (request.status === 'new') return { text: request.scheduled_at ? `Pacientul a cerut consultația pentru ${dateTime(request.scheduled_at)}. Confirmă ora sau propune alta.` : 'Pacientul așteaptă răspunsul tău.', tone: 'warning' };
+  if (request.status === 'rescheduled') return { text: `Ai propus ${dateTime(request.proposed_scheduled_at)}. Așteptăm confirmarea pacientului.`, tone: 'neutral' };
+  if (request.status !== 'accepted') return null;
+  if (request.doctor_started_at) return { text: 'Consultația este în desfășurare. Publică concluzia când ai terminat.', tone: 'success' };
+  if (!request.ready_for_doctor) return { text: 'Se așteaptă datele examinării de la operator. Te anunțăm când sunt gata.', tone: 'info' };
+  if (isFuture(request.scheduled_at)) return { text: `Poți începe consultația la ${dateTime(request.scheduled_at)}. Pacientul așteaptă să o deschizi.`, tone: 'info' };
+  return { text: 'Totul este pregătit. Poți începe consultația.', tone: 'success' };
+}
 
 export function ConsultationsPage() {
-  const navigate = useNavigate();
   const { user, role } = useAuth();
+  const dialogs = useDialogs();
+  const now = useNow();
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState('');
   const loadSequence = useRef(0);
-  const openedChart = useRef('');
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeStatus, setActiveStatus] = useState('new');
-  const prescriptionInput = useRef<HTMLInputElement>(null);
-  const chartFromExam = useRef(false);
-  const [prescription, setPrescription] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState('');
+  const [bucket, setBucket] = useState<Bucket>('new');
+  const [search, setSearch] = useState('');
   const [requests, setRequests] = useState<ConsultationRequest[]>([]);
-  const [selectedRequest, setSelectedRequest] = useState<ConsultationRequest | null>(null);
-  const [isExamModalOpen, setIsExamModalOpen] = useState(false);
-  const [chartRequest, setChartRequest] = useState<ConsultationRequest | null>(null);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const [startingId, setStartingId] = useState<string | null>(null);
+  const [finalizeRequest, setFinalizeRequest] = useState<ConsultationRequest | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const starting = useRef(new Set<string>());
   const [rescheduleRequest, setRescheduleRequest] = useState<ConsultationRequest | null>(null);
   const [proposedTime, setProposedTime] = useState('');
   const [scheduleError, setScheduleError] = useState('');
   const [scheduleSaving, setScheduleSaving] = useState(false);
-  const [examData, setExamData] = useState({
-    current_illness_history: '',
-    objective_exam: '',
-    higo_reviewed: false,
-    diagnosis: '',
-    treatment_plan: '',
-    recommendations: '',
-    investigation_recommendations: '',
-    prescription_notes: ''
-  });
+  const [detailTab, setDetailTab] = useState<'summary' | 'chart' | 'documents'>('summary');
+
+  const selectedId = searchParams.get('request');
 
   const invalidateRequests = useCallback(() => { loadSequence.current++; }, []);
 
@@ -108,20 +145,17 @@ export function ConsultationsPage() {
       const response = await apiRequest<{ data: ConsultationRequest[] }>('/requests');
       if (sequence !== loadSequence.current) return;
       setRequests(response.data);
-      setChartRequest((current) => current ? response.data.find((item) => String(item.id) === String(current.id)) ?? null : null);
       setLoadError('');
     } catch (err) {
       if (sequence === loadSequence.current) setLoadError(err instanceof Error ? err.message : 'Nu am putut încărca consultațiile.');
     } finally {
-      if (sequence === loadSequence.current) setIsLoading(false);
+      if (sequence === loadSequence.current) { setIsLoading(false); setIsRefreshing(false); }
     }
   }, []);
 
   useEffect(() => {
     setIsLoading(true);
     setRequests([]);
-    setChartRequest(null);
-    openedChart.current = '';
     void loadRequests();
     const timer = window.setInterval(() => void loadRequests(), 15000);
     const refresh = () => void loadRequests();
@@ -129,75 +163,119 @@ export function ConsultationsPage() {
     return () => { invalidateRequests(); window.clearInterval(timer); window.removeEventListener('focus', refresh); };
   }, [invalidateRequests, loadRequests, user?.id, role]);
 
-  const openExam = (request: ConsultationRequest) => {
-    setSelectedRequest(request);
-    setPrescription(null);
-    setPreviewUrl('');
-    setError('');
-    setExamData({
-      current_illness_history: request.current_illness_history || '',
-      objective_exam: '',
-      higo_reviewed: false,
-      diagnosis: '',
-      treatment_plan: '',
-      recommendations: '',
-      investigation_recommendations: '',
-      prescription_notes: ''
-    });
-    setIsExamModalOpen(true);
+  // Un link direct (?request=…) deschide tab-ul potrivit consultației.
+  const selected = requests.find((item) => String(item.id) === selectedId) ?? null;
+  useEffect(() => {
+    if (!selected) return;
+    setBucket(bucketOf(selected));
+  }, [selected?.id, selected?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setDetailTab(searchParams.get('chart') === '1' ? 'chart' : 'summary');
+  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const byBucket = useMemo(() => {
+    const groups: Record<Bucket, ConsultationRequest[]> = { new: [], accepted: [], completed: [], closed: [] };
+    requests.forEach((request) => groups[bucketOf(request)].push(request));
+    // Întâi cererile cu termen de răspuns (cel mai apropiat primul), apoi
+    // reprogramările care așteaptă pacientul, apoi restul după ora cerută.
+    const urgency = (request: ConsultationRequest) => request.status === 'rescheduled' ? Number.MAX_SAFE_INTEGER : time(request.acceptance_expires_at) || Number.MAX_SAFE_INTEGER - 1;
+    groups.new.sort((a, b) => urgency(a) - urgency(b) || (time(a.scheduled_at) || time(a.created_at)) - (time(b.scheduled_at) || time(b.created_at)));
+    groups.accepted.sort((a, b) => Number(Boolean(b.doctor_started_at)) - Number(Boolean(a.doctor_started_at)) || (time(a.scheduled_at) || time(a.created_at)) - (time(b.scheduled_at) || time(b.created_at)));
+    groups.completed.sort((a, b) => time(b.created_at) - time(a.created_at));
+    groups.closed.sort((a, b) => time(b.created_at) - time(a.created_at));
+    return groups;
+  }, [requests]);
+
+  const query = search.trim().toLocaleLowerCase('ro');
+  const list = byBucket[bucket].filter((request) => !query || [patientNameOf(request), request.patient?.name, request.patient_profile?.patient_code, request.id, request.specialty]
+    .some((value) => String(value ?? '').toLocaleLowerCase('ro').includes(query)));
+  const shown = selected ?? list[0] ?? null;
+
+  const selectRequest = (id: string | null) => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('chart');
+    if (id) next.set('request', id); else next.delete('request');
+    setSearchParams(next);
+  };
+
+  const changeBucket = (value: string) => {
+    setBucket(value as Bucket);
+    const next = new URLSearchParams(searchParams);
+    next.delete('request');
+    next.delete('chart');
+    setSearchParams(next, { replace: true });
   };
 
   /**
-   * Ca și la operator: erorile serverului trebuie să ajungă la utilizator, iar
-   * lista să se reîmprospăteze după fiecare acțiune. Fără asta, un refuz al
-   * backendului părea că butonul pur și simplu nu face nimic.
+   * Erorile serverului ajung la medic, iar lista se reîmprospătează după fiecare
+   * acțiune. Fără asta, un refuz al backendului părea că butonul nu face nimic.
    */
-  const runAction = async (action: () => Promise<unknown>, successMessage: string) => {
-    setError('');
-    setMessage('');
-
+  const runAction = async (request: ConsultationRequest, action: () => Promise<unknown>, successMessage: string) => {
+    setBusyId(request.id);
     try {
       await action();
-      setMessage(successMessage);
+      toast.success(successMessage);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Acțiunea nu a putut fi finalizată.');
+      toast.error(err instanceof Error ? err.message : 'Acțiunea nu a putut fi finalizată.');
     } finally {
-      loadRequests();
+      setBusyId(null);
+      void loadRequests();
     }
   };
 
   const startConsultation = async (request: ConsultationRequest) => {
     if (request.doctor_started_at || starting.current.has(request.id)) return;
     starting.current.add(request.id);
-    setStartingId(request.id);
-    setError('');
+    setBusyId(request.id);
     try {
       const response = await apiRequest<{ request: ConsultationRequest }>(`/requests/${request.id}/start`, { method: 'POST' });
       setRequests((items) => items.map((item) => item.id === request.id ? response.request : item));
-      setMessage('Consultația a început. Poți intra în apelul video sau în chat.');
+      toast.success('Consultația a început. Poți intra în apelul video sau în chat.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nu am putut începe consultația.');
+      toast.error(err instanceof Error ? err.message : 'Nu am putut începe consultația.');
     } finally {
       starting.current.delete(request.id);
-      setStartingId(null);
+      setBusyId(null);
     }
   };
 
-  const acceptRequest = async (request: ConsultationRequest) => {
+  const acceptRequest = (request: ConsultationRequest) => runAction(
+    request,
+    () => apiRequest(`/requests/${request.id}/accept`, { method: 'POST' }),
+    'Solicitare acceptată. Pacientul a fost anunțat.'
+  );
+
+  const rejectRequest = async (request: ConsultationRequest) => {
+    const confirmed = await dialogs.confirm({
+      title: 'Respingi solicitarea?',
+      description: <p>Pacientul <strong>{patientNameOf(request)}</strong> primește înapoi suma de {money(request.amount)} MDL. Acțiunea nu poate fi anulată.</p>,
+      confirmLabel: 'Respinge și returnează banii',
+      tone: 'danger'
+    });
+    if (!confirmed) return;
     await runAction(
-      () => apiRequest(`/requests/${request.id}/accept`, { method: 'POST' }),
-      'Solicitare acceptată.'
+      request,
+      () => apiRequest(`/requests/${request.id}/reject`, { method: 'POST', body: JSON.stringify({ reason: 'Solicitare respinsă de medic.' }) }),
+      'Solicitare respinsă. Banii au fost returnați pacientului.'
     );
   };
 
-  const rejectRequest = async (request: ConsultationRequest) => {
-    if (!window.confirm('Respingi solicitarea și returnezi banii pacientului?')) return;
+  const requestInvestigation = async (request: ConsultationRequest) => {
+    const values = await dialogs.form({
+      title: 'Cere o investigație suplimentară',
+      description: 'Pacientul și operatorul primesc cererea împreună cu notele tale.',
+      confirmLabel: 'Trimite cererea',
+      fields: [
+        { name: 'title', label: 'Investigația', placeholder: 'Ex: Hemoleucogramă completă', required: true },
+        { name: 'notes', label: 'Note pentru pacient / operator', type: 'textarea' }
+      ]
+    });
+    if (!values) return;
     await runAction(
-      () => apiRequest(`/requests/${request.id}/reject`, {
-        method: 'POST',
-        body: JSON.stringify({ reason: 'Solicitare respinsă de medic.' })
-      }),
-      'Solicitare respinsă, banii au fost returnați.'
+      request,
+      () => apiRequest(`/requests/${request.id}/additional-investigation`, { method: 'POST', body: JSON.stringify({ title: values.title, notes: values.notes || '' }) }),
+      'Investigație suplimentară solicitată.'
     );
   };
 
@@ -222,8 +300,8 @@ export function ConsultationsPage() {
         body: JSON.stringify({ scheduled_at: new Date(proposedTime).toISOString() })
       });
       setRescheduleRequest(null);
-      setMessage('Oră nouă propusă pacientului. Așteptăm confirmarea sa.');
-      loadRequests();
+      toast.success('Oră nouă propusă. Așteptăm confirmarea pacientului.');
+      void loadRequests();
     } catch (err) {
       setScheduleError(err instanceof Error ? err.message : 'Nu am putut propune ora.');
     } finally {
@@ -231,394 +309,317 @@ export function ConsultationsPage() {
     }
   };
 
-  const completeRequest = async () => {
-    if (!selectedRequest) return;
-    setError('');
-    setIsSaving(true);
-    try {
-      await apiRequest(`/requests/${selectedRequest.id}/complete`, {
-        method: 'POST',
-        body: (() => { const body = new FormData(); Object.entries(examData).forEach(([key, value]) => body.append(key, typeof value === 'boolean' ? (value ? '1' : '0') : value)); if (prescription) body.append('prescription', prescription); return body; })()
-      });
-      setIsExamModalOpen(false);
-      loadRequests();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nu am putut finaliza consultația.');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const preview = async () => {
-    if (!selectedRequest) return;
-    setError(''); setIsSaving(true);
-    try { const blob = await apiBlob(`/requests/${selectedRequest.id}/documents/preview`, { method: 'POST', body: JSON.stringify({ ...examData, has_prescription: !!prescription }) }); setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return URL.createObjectURL(blob); }); }
-    catch (err) { setError(err instanceof Error ? err.message : 'Previzualizarea nu a reușit.'); }
-    finally { setIsSaving(false); }
-  };
-  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
-  useEffect(() => {
-    const id = searchParams.get('request');
-    if (!id || !requests.length) return;
-    const item = requests.find((item) => String(item.id) === id);
-    if (item) {
-      setActiveStatus(['new', 'rescheduled'].includes(item.status) ? 'new' : ['accepted', 'completed'].includes(item.status) ? item.status : 'closed');
-      if (searchParams.get('chart') === '1' && openedChart.current !== id) {
-        setChartRequest(item);
-        openedChart.current = id;
-      }
-      document.getElementById(`consultation-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-  }, [requests, searchParams, activeStatus]);
-
-  const requestInvestigation = async (request: ConsultationRequest) => {
-    const title = window.prompt('Ce investigație suplimentară soliciți?');
-    if (!title) return;
-    const notes = window.prompt('Note pentru pacient/operator (opțional)') || '';
-    await runAction(() => apiRequest(`/requests/${request.id}/additional-investigation`, {
-      method: 'POST',
-      body: JSON.stringify({ title, notes })
-    }), 'Investigație suplimentară solicitată.');
-  };
-
-  const requestsByStatus = (status: string) => requests.filter((request) => status === 'new' ? ['new', 'rescheduled'].includes(request.status) : status === 'closed' ? !['new', 'rescheduled', 'accepted', 'completed'].includes(request.status) : request.status === status);
-
-  const renderRequestCard = ({ request, index, variant }: { request: ConsultationRequest; index: number; variant: 'new' | 'accepted' | 'completed' | 'closed' }) => {
-    // Titularul contului nu e pacientul: consultația e pentru profilul ales la
-    // programare, iar numele lui e cel pe care îl caută și operatorul în HIGO.
-    const patientName = request.patient_profile?.name || request.patient?.name || 'Pacient';
-    const border = variant === 'new' ? 'border-l-amber-500' : variant === 'accepted' ? 'border-l-green-500' : 'border-l-slate-300';
-    return (
-      <motion.div
-        key={request.id} id={`consultation-${request.id}`}
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: index * 0.05 }}>
-        <Card className={`glass-card py-0 gap-0 border-l-4 ${border} border-y-0 border-r-0  ${searchParams.get('request') === String(request.id) ? 'ring-2 ring-blue-400' : ''}`}>
-          <CardContent className="p-5 flex flex-col xl:flex-row items-start justify-between gap-5 sm:p-6">
-            <div className="flex min-w-0 w-full flex-1 items-start gap-4">
-              <Avatar className="h-12 w-12 bg-primary/10 text-primary">
-                <AvatarFallback>{patientName.charAt(0)}</AvatarFallback>
-              </Avatar>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <h3 className="font-bold text-lg text-slate-900"><button type="button" onClick={() => setChartRequest(request)} className="text-left text-blue-700 hover:underline" aria-label={`Deschide fișa pacientului ${patientName}`}>{patientName}</button></h3>
-                  {variant === 'new' && <Badge variant="outline" className="bg-amber-50 text-amber-600 border-amber-200">Nou</Badge>}
-                  {variant === 'accepted' && <Badge variant="outline" className="bg-green-50 text-green-600 border-green-200"><Clock className="w-3 h-3 mr-1" /> Activ</Badge>}
-                  {variant === 'closed' && <Badge variant="secondary">{{ expired: 'Expirată', cancelled: 'Anulată', rejected: 'Respinsă', no_operator_available: 'Fără operator disponibil' }[request.status] || request.status}</Badge>}
-                  {variant === 'completed' && <Badge variant="secondary" className="bg-slate-100 text-slate-500"><CheckCircle2 className="w-3 h-3 mr-1" /> Finalizat</Badge>}
-                </div>
-                <p className="mb-4 text-sm text-slate-500">{request.specialty || 'Consultație'} · #{request.id}</p>
-                <div className="mb-4 grid gap-x-6 gap-y-3 text-xs text-slate-500 sm:grid-cols-2 2xl:grid-cols-3">
-                  <div><span className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-400">Pacient</span><span className="text-slate-600">{request.patient_profile?.patient_code && `${request.patient_profile.patient_code} · `}Titular: {request.patient?.name || '—'}</span></div>
-                  <div><span className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-400"><CalendarDays size={13} />{request.scheduled_at ? request.status === 'new' ? 'Ora solicitată' : 'Data consultației' : 'Solicitată la'}</span><span className="font-medium text-slate-700">{dateTime(request.scheduled_at || request.created_at)}</span>{request.proposed_scheduled_at && <span className="mt-1 block text-amber-700">Oră propusă: {dateTime(request.proposed_scheduled_at)}</span>}</div>
-                  <div><span className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-400"><Wallet size={13} />Plată</span><span className="font-medium text-slate-700">{Number(request.amount || 0).toFixed(2)} MDL</span>{request.payment_status && <span className="ml-2">{{ held: 'Rezervată', captured: 'Achitată', paid: 'Achitată', refunded: 'Restituită', none: 'Fără cost' }[request.payment_status] || request.payment_status}</span>}</div>
-                </div>
-                {variant === 'new' && request.acceptance_expires_at && <p className="mb-3 text-xs text-amber-700">Răspuns până la {dateTime(request.acceptance_expires_at)}</p>}
-                <div className={`grid items-start gap-4 ${request.status === 'completed' ? '2xl:grid-cols-2' : ''}`}>
-                  <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm leading-relaxed text-slate-600"><p className="mb-1 text-xs font-semibold text-slate-500">Acuzele pacientului</p><p className="whitespace-pre-wrap">{request.symptoms || request.triage_notes || 'Fără detalii.'}</p>{request.current_illness_history && <details className="mt-2"><summary className="cursor-pointer text-xs font-medium text-primary">Istoricul bolii actuale</summary><p className="mt-2 whitespace-pre-wrap">{request.current_illness_history}</p></details>}</div>
-                  {request.status === 'completed' && <ConsultationDocuments requestId={request.id} compact />}
-                </div>
-                {variant === 'closed' && <p className="mt-3 text-sm text-slate-500">{request.cancellation_reason || 'Solicitare închisă. Fișa și istoricul sunt disponibile.'}</p>}
-                {['new', 'accepted'].includes(request.status) && <HigoConsultationProposal requestId={request.id} />}
-                {request.consultation_kind === 'with_exam' && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                    <Badge
-                      variant="outline"
-                      className={`rounded-full ${request.objective_data_completed_at ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
-                      <Activity className="mr-1 h-3 w-3" />
-                      Date obiective {request.objective_data_completed_at ? '✓' : 'în așteptare'}
-                    </Badge>
-                    {(request.objective_data ?? []).some((entry) => entry.from_device) && (
-                      <Badge variant="outline" className="rounded-full border-sky-200 bg-sky-50 text-sky-700">
-                        Aparat HIGO
-                      </Badge>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="flex w-full shrink-0 flex-wrap gap-2 xl:w-48 xl:flex-col">
-              <Button onClick={() => setChartRequest(request)} variant="outline" className="rounded-xl">
-                <Stethoscope className="mr-2 h-4 w-4" /> Fișa pacientului
-              </Button>
-              {variant === 'new' && request.status !== 'rescheduled' && (
-                <>
-                  <Button onClick={() => acceptRequest(request)} className="rounded-xl bg-gradient-to-r from-primary to-purple-600 border-0">
-                    <CheckCircle2 className="mr-2 h-4 w-4" /> {request.scheduled_at ? 'Confirmă ora solicitată' : 'Acceptă'}
-                  </Button>
-                  <Button onClick={() => rejectRequest(request)} variant="outline" className="rounded-xl border-red-200 text-red-600 hover:bg-red-50">
-                    Respinge și refund
-                  </Button>
-                  <Button onClick={() => proposeTime(request)} variant="outline" className="rounded-xl">
-                    Propune altă oră
-                  </Button>
-                  <Button onClick={() => openExam(request)} variant="outline" className="rounded-xl">
-                    <FileText className="mr-2 h-4 w-4" /> Finalizează direct
-                  </Button>
-                </>
-              )}
-              {request.status === 'rescheduled' && <p className="max-w-64 text-sm text-amber-700">Așteptăm confirmarea pacientului pentru ora propusă.</p>}
-              {variant === 'accepted' && (
-                <>
-                  {request.scheduled_at && !request.doctor_started_at && new Date(request.scheduled_at).getTime() > Date.now() && <p className="max-w-64 text-sm text-slate-500">Poți deschide consultația la {dateTime(request.scheduled_at)}. Pacientul așteaptă să începi.</p>}
-                  {request.ready_for_doctor && (
-                    <Button
-                      disabled={!!request.doctor_started_at || startingId === request.id || !!(request.scheduled_at && new Date(request.scheduled_at).getTime() > Date.now())}
-                      onClick={() => startConsultation(request)}
-                      variant="outline"
-                      className="rounded-xl disabled:opacity-100 disabled:bg-emerald-50 disabled:text-emerald-700 disabled:border-emerald-200">
-                      {request.doctor_started_at ? <CheckCircle2 className="mr-2 h-4 w-4" /> : <Stethoscope className="mr-2 h-4 w-4" />}
-                      {request.doctor_started_at ? 'Consultație începută' : startingId === request.id ? 'Se începe...' : 'Începe consultația'}
-                    </Button>
-                  )}
-                  <Button asChild variant="outline" className="rounded-xl border-primary text-primary hover:bg-primary/5">
-                    <Link to={`/doctor/chat?request=${request.id}`}><MessageSquare className="mr-2 h-4 w-4" /> Chat</Link>
-                  </Button>
-                  <ConsultationVideoButton requestId={request.id} />
-                  {request.consultation_kind === 'with_exam' && <Button onClick={() => requestInvestigation(request)} variant="outline" className="rounded-xl">
-                    <Microscope className="mr-2 h-4 w-4" /> Cere investigație
-                  </Button>}
-                  <Button onClick={() => openExam(request)} className="rounded-xl bg-slate-900 text-white">
-                    <FileText className="mr-2 h-4 w-4" /> Finalizează
-                  </Button>
-                  <Button onClick={() => proposeTime(request)} variant="outline" className="rounded-xl">
-                    Reprogramează
-                  </Button>
-                </>
-              )}
-              {(variant === 'completed' || variant === 'closed') && (
-                <Button asChild variant="ghost" className="rounded-xl text-slate-500">
-                  <Link to={`/doctor/chat?request=${request.id}`}><History className="mr-2 h-4 w-4" />Vezi discuția</Link>
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
-    );
-  };
+  const requestedMissing = !isLoading && !loadError && selectedId && !selected;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div><h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-1">Consultații</h1><p className="text-sm text-slate-500">Solicitările și consultațiile pacienților tăi.</p></div><Button type="button" variant="outline" className="gap-2 rounded-xl" onClick={() => { setIsLoading(true); void loadRequests(); }} disabled={isLoading}><RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />Actualizează</Button>
+    <div className="space-y-5">
+      <PageHeader
+        title="Consultații"
+        description="Cererile pacienților, programările și concluziile tale."
+        actions={
+          <Button type="button" variant="outline" onClick={() => { setIsRefreshing(true); void loadRequests(); }} disabled={isRefreshing}>
+            <RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} />Actualizează
+          </Button>
+        }
+      />
+
+      {loadError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{loadError}</p>}
+      {requestedMissing && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Consultația solicitată nu este disponibilă pentru acest cont de medic.</p>}
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)] lg:items-start">
+        {/* Lista */}
+        <section className={cn('space-y-3 lg:sticky lg:top-24', selected && 'hidden lg:block')} aria-label="Lista consultațiilor">
+          <Tabs value={bucket} onValueChange={changeBucket}>
+            <TabsList className="grid w-full grid-cols-4">
+              {BUCKETS.map((item) => (
+                <TabsTrigger key={item.value} value={item.value} className="flex-col gap-0 px-1 py-1.5 text-xs sm:flex-row sm:gap-1.5 sm:text-[13px]">
+                  <span className="truncate">{item.label}</span>
+                  <span className={cn('tabular text-[11px] font-bold', item.value === 'new' && byBucket.new.length > 0 ? 'text-amber-600' : 'text-slate-400')}>{byBucket[item.value].length}</span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Caută pacient, cod sau #ID" className="pl-9" aria-label="Caută consultații" />
+          </div>
+
+          {isLoading ? <ListSkeleton rows={4} /> : list.length === 0 ? (
+            <EmptyState
+              compact
+              icon={ClipboardList}
+              title={query ? 'Niciun rezultat' : BUCKETS.find((item) => item.value === bucket)?.empty}
+              description={query ? 'Încearcă alt nume sau cod de pacient.' : BUCKETS.find((item) => item.value === bucket)?.emptyDescription}
+            />
+          ) : (
+            <ul className="space-y-2">
+              {list.map((request) => (
+                <li key={request.id}>
+                  <RequestListItem request={request} active={selected?.id === request.id} implicitActive={!selected && shown?.id === request.id} now={now} onSelect={() => selectRequest(request.id)} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* Detaliul */}
+        <section className={cn('min-w-0', !selected && 'hidden lg:block')} aria-label="Detaliile consultației">
+          {selected && (
+            <Button variant="ghost" size="sm" className="-ml-2 mb-2 lg:hidden" onClick={() => selectRequest(null)}>
+              <ArrowLeft className="h-4 w-4" />Înapoi la listă
+            </Button>
+          )}
+          {shown ? (
+            <RequestDetail
+              key={shown.id}
+              request={shown}
+              now={now}
+              busy={busyId === shown.id}
+              tab={detailTab}
+              onTabChange={setDetailTab}
+              onAccept={() => void acceptRequest(shown)}
+              onReject={() => void rejectRequest(shown)}
+              onPropose={() => proposeTime(shown)}
+              onStart={() => void startConsultation(shown)}
+              onFinalize={() => setFinalizeRequest(shown)}
+              onInvestigation={() => void requestInvestigation(shown)}
+            />
+          ) : !isLoading && (
+            <EmptyState icon={Stethoscope} title="Selectează o consultație" description="Detaliile, fișa pacientului și acțiunile apar aici." className="py-20" />
+          )}
+        </section>
       </div>
 
-      {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
-      )}
-      {!isLoading && !loadError && searchParams.get('request') && !requests.some((item) => String(item.id) === searchParams.get('request')) && <p role="status" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Consultația solicitată nu este disponibilă pentru acest cont de medic.</p>}
-      {loadError && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{loadError}</p>}
-      {isLoading && <p role="status" className="text-sm text-slate-500">Se încarcă consultațiile...</p>}
-      {message && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div>
-      )}
-
-      <Tabs value={activeStatus} onValueChange={(value) => { setActiveStatus(value); const next = new URLSearchParams(searchParams); next.delete('request'); setSearchParams(next, { replace: true }); }} className="w-full">
-        <TabsList className="grid w-full max-w-2xl grid-cols-4 bg-white/50 backdrop-blur-sm p-1 rounded-xl mb-6">
-          <TabsTrigger value="new" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm relative">
-            În așteptare ({requestsByStatus('new').length})
-            {requestsByStatus('new').length > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />}
-          </TabsTrigger>
-          <TabsTrigger value="accepted" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
-            Active ({requestsByStatus('accepted').length})
-          </TabsTrigger>
-          <TabsTrigger value="completed" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
-            Finalizate ({requestsByStatus('completed').length})
-          </TabsTrigger>
-          <TabsTrigger value="closed" className="rounded-lg">Închise ({requestsByStatus('closed').length})</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="new" className="grid gap-4">
-          {requestsByStatus('new').map((request, index) => renderRequestCard({ request, index, variant: 'new' }))}
-          {!isLoading && !loadError && requestsByStatus('new').length === 0 && <EmptyState text="Nu există solicitări noi." />}
-        </TabsContent>
-        <TabsContent value="accepted" className="grid gap-4">
-          {requestsByStatus('accepted').map((request, index) => renderRequestCard({ request, index, variant: 'accepted' }))}
-          {!isLoading && !loadError && requestsByStatus('accepted').length === 0 && <EmptyState text="Nu există consultații active." />}
-        </TabsContent>
-        <TabsContent value="completed" className="grid gap-4">
-          {requestsByStatus('completed').map((request, index) => renderRequestCard({ request, index, variant: 'completed' }))}
-          {!isLoading && !loadError && requestsByStatus('completed').length === 0 && <EmptyState text="Nu există consultații finalizate." />}
-        </TabsContent>
-        <TabsContent value="closed" className="grid gap-4">
-          {requestsByStatus('closed').map((request, index) => renderRequestCard({ request, index, variant: 'closed' }))}
-          {!isLoading && !loadError && requestsByStatus('closed').length === 0 && <EmptyState text="Nu există solicitări închise." />}
-        </TabsContent>
-      </Tabs>
-
       <Dialog open={!!rescheduleRequest} onOpenChange={(open) => { if (!open && !scheduleSaving) setRescheduleRequest(null); }}>
-        <DialogContent className="sm:max-w-md rounded-2xl">
-          <DialogHeader><DialogTitle>Propune altă oră</DialogTitle><DialogDescription>Alege când poți consulta pacientul. Acesta va primi propunerea pentru confirmare.</DialogDescription></DialogHeader>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Propune altă oră</DialogTitle>
+            <DialogDescription>Alege când poți consulta pacientul. Acesta primește propunerea și o confirmă.</DialogDescription>
+          </DialogHeader>
           <form onSubmit={submitProposedTime} className="space-y-5">
-            {rescheduleRequest?.scheduled_at && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">Programarea actuală: {dateTime(rescheduleRequest.scheduled_at)}</p>}
-            <div className="space-y-2"><Label htmlFor="proposed-time">Data și ora nouă</Label><Input id="proposed-time" type="datetime-local" required value={proposedTime} onChange={(event) => setProposedTime(event.target.value)} disabled={scheduleSaving} /><p className="text-xs text-slate-500">Ora locală: {Intl.DateTimeFormat().resolvedOptions().timeZone}</p></div>
+            {rescheduleRequest?.scheduled_at && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">Programarea actuală: <strong className="text-slate-900">{dateTime(rescheduleRequest.scheduled_at)}</strong></p>}
+            <div className="space-y-2">
+              <Label htmlFor="proposed-time">Data și ora nouă</Label>
+              <Input id="proposed-time" type="datetime-local" required value={proposedTime} onChange={(event) => setProposedTime(event.target.value)} disabled={scheduleSaving} />
+              <p className="text-xs text-slate-500">Fus orar: {Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
+            </div>
             {scheduleError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{scheduleError}</p>}
-            <DialogFooter><Button type="button" variant="outline" disabled={scheduleSaving} onClick={() => setRescheduleRequest(null)}>Anulează</Button><Button type="submit" disabled={scheduleSaving || !proposedTime} className="bg-gradient-to-r from-primary to-purple-600">{scheduleSaving ? 'Se trimite...' : 'Trimite propunerea'}</Button></DialogFooter>
+            <DialogFooter>
+              <Button type="button" variant="outline" disabled={scheduleSaving} onClick={() => setRescheduleRequest(null)}>Renunță</Button>
+              <Button type="submit" disabled={scheduleSaving || !proposedTime}>{scheduleSaving ? 'Se trimite…' : 'Trimite propunerea'}</Button>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isExamModalOpen} onOpenChange={setIsExamModalOpen}>
-        <DialogContent className="sm:max-w-[620px] glass-panel border-0 rounded-2xl z-50 max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-2xl">Finalizare consultație</DialogTitle>
-            <DialogDescription>
-              Completează concluzia medicală și verifică PDF-ul înainte de publicare. Pacientul îl va găsi în istoricul consultațiilor.
-            </DialogDescription>
-          </DialogHeader>
-
-          {selectedRequest && (
-            <div className="py-4 space-y-6">
-              {error && <div className="flex items-center rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"><AlertCircle className="mr-2 h-4 w-4" /> {error}</div>}
-              <PatientChart
-                consultationOnly
-                profile={selectedRequest.patient_profile}
-                illnessHistory={selectedRequest.current_illness_history}
-                symptoms={selectedRequest.symptoms}
-                triageNotes={selectedRequest.triage_notes}
-                objectiveData={selectedRequest.objective_data}
-                examMedia={selectedRequest.exam_media}
-                investigations={selectedRequest.investigations}
-                anamnesisCompletedAt={selectedRequest.anamnesis_completed_at}
-                objectiveDataCompletedAt={selectedRequest.objective_data_completed_at}
-              />
-
-              <Button variant="outline" onClick={() => { chartFromExam.current = true; setIsExamModalOpen(false); setChartRequest(selectedRequest); }}>Istoricul vieții și fișa electronică a pacientului</Button>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="block space-y-2"><span>Istoricul bolii actuale</span><Textarea value={examData.current_illness_history} onChange={(event) => setExamData({ ...examData, current_illness_history: event.target.value })} /></label>
-                  <p className="whitespace-pre-wrap text-sm"><strong>Acuzele pacientului (plângerile / simptomele): </strong>{selectedRequest?.symptoms}</p>
-                  <label className="block space-y-2"><span>Examen obiectiv / observațiile medicului</span><Textarea value={examData.objective_exam} onChange={(event) => setExamData({ ...examData, objective_exam: event.target.value })} /></label>
-                  {selectedRequest?.consultation_kind === 'with_exam' && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={examData.higo_reviewed} onChange={(event) => setExamData({ ...examData, higo_reviewed: event.target.checked })} />Confirm că am examinat datele HIGO disponibile</label>}
-                  <Label htmlFor="diagnosis">Diagnostic</Label>
-                  <Input
-                    id="diagnosis"
-                    value={examData.diagnosis}
-                    onChange={(event) => setExamData({ ...examData, diagnosis: event.target.value })}
-                    placeholder="Ex: Faringită acută"
-                    className="rounded-xl"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="treatment_plan">Plan tratament</Label>
-                  <Textarea
-                    id="treatment_plan"
-                    value={examData.treatment_plan}
-                    onChange={(event) => setExamData({ ...examData, treatment_plan: event.target.value })}
-                    className="rounded-xl min-h-[80px]"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="recommendations">Recomandări</Label>
-                  <Textarea
-                    id="recommendations"
-                    value={examData.recommendations}
-                    onChange={(event) => setExamData({ ...examData, recommendations: event.target.value })}
-                    className="rounded-xl min-h-[80px]"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="investigation_recommendations">Investigații recomandate</Label>
-                  <Textarea
-                    id="investigation_recommendations"
-                    maxLength={4000}
-                    value={examData.investigation_recommendations}
-                    onChange={(event) => setExamData({ ...examData, investigation_recommendations: event.target.value })}
-                    placeholder="Analize și investigații recomandate pacientului"
-                    className="min-h-[80px] rounded-xl"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="prescription-upload">Rețetă scanată / fotografiată</Label><input ref={prescriptionInput} id="prescription-upload" className="sr-only" type="file" accept="application/pdf,image/jpeg,image/png" onChange={(event) => { const file = event.target.files?.[0] ?? null; if (file && (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.type) || file.size > 10 * 1024 * 1024)) { setError('Încarcă rețeta în format PDF, JPG sau PNG, maximum 10 MB.'); event.target.value = ''; setPrescription(null); return; } setPrescription(file); }} />
-                  <div className="flex flex-wrap items-center gap-2"><Button variant="outline" type="button" onClick={() => prescriptionInput.current?.click()}>Încarcă rețeta PDF / JPG / PNG</Button>{prescription && <><span className="text-sm">{prescription.name}</span><Button type="button" variant="ghost" onClick={() => { setPrescription(null); if (prescriptionInput.current) prescriptionInput.current.value = ''; }}>Elimină</Button></>}</div>
-                  <p className="rounded-xl bg-blue-50 p-3 text-sm text-blue-900">Mesaj transmis automat pacientului: Spuneți-ne din ce rețea de farmacii ați luat medicamentul pe rețetă, pentru a transmite rețeta originală în rețeaua respectivă.</p>
-                  <Label htmlFor="prescription_notes">Medicamente / rețetă</Label>
-                  <Textarea
-                    id="prescription_notes"
-                    value={examData.prescription_notes}
-                    onChange={(event) => setExamData({ ...examData, prescription_notes: event.target.value })}
-                    className="rounded-xl min-h-[80px]"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          <DoctorSignature onSaved={() => setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return ''; })} />
-          {previewUrl && <a href={previewUrl} target="_blank" rel="noreferrer" className="font-medium text-blue-700">Deschide previzualizarea PDF</a>}
-          <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:justify-between">
-            <Button variant="outline" onClick={() => setIsExamModalOpen(false)} className="rounded-xl sm:w-auto w-full">
-              Anulare
-            </Button>
-            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              <Button onClick={() => navigate(`/doctor/chat?request=${selectedRequest?.id}`)} variant="secondary" className="rounded-xl w-full sm:w-auto">
-                <MessageSquare className="h-4 w-4 mr-2" /> Chat
-              </Button>
-              <Button onClick={preview} disabled={isSaving || !examData.diagnosis} variant="outline">Previzualizează PDF</Button>
-              <Button onClick={completeRequest} disabled={isSaving || !examData.diagnosis} className="rounded-xl bg-gradient-to-r from-primary to-purple-600 border-0 w-full sm:w-auto">
-                {isSaving ? 'Se publică...' : 'Publică consultația PDF'}
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={Boolean(chartRequest)} onOpenChange={(open) => { if (!open) { setChartRequest(null); if (chartFromExam.current) { chartFromExam.current = false; setIsExamModalOpen(true); } } }}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-2xl">Fișa pacientului — {chartRequest?.patient_profile?.name || chartRequest?.patient?.name}</DialogTitle>
-            <DialogDescription>
-              Consultația #{chartRequest?.id} · Titular cont: {chartRequest?.patient?.name || '—'}. Datele de mai jos aparțin pacientului selectat.
-            </DialogDescription>
-          </DialogHeader>
-
-          {chartRequest && (
-            <div className="py-2">
-              <PatientChart
-                profile={chartRequest.patient_profile}
-                illnessHistory={chartRequest.current_illness_history}
-                symptoms={chartRequest.symptoms}
-                triageNotes={chartRequest.triage_notes}
-                objectiveData={chartRequest.objective_data}
-                examMedia={chartRequest.exam_media}
-                investigations={chartRequest.investigations}
-                anamnesisCompletedAt={chartRequest.anamnesis_completed_at}
-                objectiveDataCompletedAt={chartRequest.objective_data_completed_at}
-              />
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button asChild variant="outline" className="rounded-xl">
-              <Link to={`/doctor/chat?request=${chartRequest?.id}`}>
-                <MessageSquare className="mr-2 h-4 w-4" /> Întreabă pacientul
-              </Link>
-            </Button>
-            {chartRequest?.ready_for_doctor && (
-              <Button
-                onClick={() => {
-                  const request = chartRequest;
-                  setChartRequest(null);
-                  openExam(request);
-                }}
-                className="rounded-xl bg-slate-900 text-white">
-                <FileText className="mr-2 h-4 w-4" /> Finalizează
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <FinalizeConsultationDialog
+        request={finalizeRequest}
+        open={Boolean(finalizeRequest)}
+        onOpenChange={(open) => { if (!open) setFinalizeRequest(null); }}
+        onCompleted={() => { toast.success('Concluzia a fost publicată. Pacientul a primit documentul PDF.'); void loadRequests(); }}
+      />
     </div>
   );
 }
 
-function EmptyState({ text }: { text: string }) {
+function RequestListItem({ request, active, implicitActive = false, now, onSelect }: { request: ConsultationRequest; active: boolean; implicitActive?: boolean; now: number; onSelect: () => void }) {
+  const name = patientNameOf(request);
+  const when = request.scheduled_at || request.created_at;
+  const expiresIn = request.status === 'new' ? timeUntil(request.acceptance_expires_at, now) : null;
   return (
-    <Card className="glass-card border-0">
-      <CardContent className="p-8 text-center text-slate-500">{text}</CardContent>
-    </Card>
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-current={active ? 'true' : undefined}
+      className={cn(
+        'flex w-full items-start gap-3 rounded-2xl border bg-white p-3.5 text-left transition',
+        active ? 'border-primary/40 shadow-sm ring-2 ring-primary/15' : implicitActive ? 'border-slate-200 hover:border-slate-300 lg:border-primary/40 lg:shadow-sm lg:ring-2 lg:ring-primary/15' : 'border-slate-200 hover:border-slate-300 hover:shadow-sm'
+      )}>
+      <Avatar className="size-10 shrink-0">
+        <AvatarFallback className={cn('text-xs font-semibold', active || implicitActive ? 'bg-primary text-white' : 'bg-slate-100 text-slate-600')}>{initialsOf(name)}</AvatarFallback>
+      </Avatar>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-start justify-between gap-2">
+          <span className="truncate font-semibold text-slate-900">{name}</span>
+          <span className="tabular shrink-0 text-xs text-slate-500">{relativeDay(when)}, {timeOnly(when)}</span>
+        </span>
+        <span className="mt-0.5 block truncate text-sm text-slate-500">{request.specialty || 'Consultație'} · {CONSULTATION_KIND_LABELS[request.consultation_kind ?? ''] ?? 'Consultație'}</span>
+        <span className="mt-2 flex flex-wrap items-center gap-1.5">
+          <StatusBadge request={request} perspective="doctor" />
+          {expiresIn && <span className={cn('inline-flex items-center gap-1 text-xs font-medium', expiresIn === 'expirat' ? 'text-red-600' : 'text-amber-700')}><Hourglass className="h-3 w-3" />{expiresIn === 'expirat' ? 'Termen depășit' : `Răspunde în ${expiresIn}`}</span>}
+          {request.consultation_kind === 'with_exam' && request.status === 'accepted' && !request.ready_for_doctor && <span className="text-xs text-slate-500">· așteaptă examinarea</span>}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function RequestDetail({
+  request,
+  now,
+  busy,
+  tab,
+  onTabChange,
+  onAccept,
+  onReject,
+  onPropose,
+  onStart,
+  onFinalize,
+  onInvestigation
+}: {
+  request: ConsultationRequest;
+  now: number;
+  busy: boolean;
+  tab: 'summary' | 'chart' | 'documents';
+  onTabChange: (tab: 'summary' | 'chart' | 'documents') => void;
+  onAccept: () => void;
+  onReject: () => void;
+  onPropose: () => void;
+  onStart: () => void;
+  onFinalize: () => void;
+  onInvestigation: () => void;
+}) {
+  const name = patientNameOf(request);
+  const bucket = bucketOf(request);
+  const next = doctorNextStep(request);
+  const expiresIn = request.status === 'new' ? timeUntil(request.acceptance_expires_at, now) : null;
+  const startBlocked = isFuture(request.scheduled_at);
+
+  // O singură acțiune principală pe etapă; restul în „⋯”.
+  let primary: React.ReactNode = null;
+  const secondary: React.ReactNode[] = [];
+  const more: MoreMenuItem[] = [];
+
+  if (request.status === 'new') {
+    primary = <Button onClick={onAccept} disabled={busy}><CheckCircle2 className="h-4 w-4" />{busy ? 'Se confirmă…' : request.scheduled_at ? 'Confirmă ora' : 'Acceptă'}</Button>;
+    secondary.push(<Button key="propose" variant="outline" onClick={onPropose} disabled={busy}><CalendarClock className="h-4 w-4" />Propune altă oră</Button>);
+    more.push({ label: 'Finalizează direct', icon: FileText, onSelect: onFinalize });
+    more.push({ label: 'Respinge și returnează banii', icon: XCircle, onSelect: onReject, danger: true, separatorBefore: true });
+  } else if (request.status === 'accepted') {
+    if (request.ready_for_doctor && !request.doctor_started_at) {
+      primary = <Button onClick={onStart} disabled={busy || startBlocked} title={startBlocked ? `Disponibil de la ${dateTime(request.scheduled_at)}` : undefined}><Play className="h-4 w-4" />{busy ? 'Se începe…' : 'Începe consultația'}</Button>;
+      more.push({ label: 'Finalizează consultația', icon: FileText, onSelect: onFinalize });
+    } else {
+      primary = <Button onClick={onFinalize}><FileText className="h-4 w-4" />Scrie concluzia</Button>;
+    }
+    secondary.push(<ConsultationVideoButton key="video" requestId={request.id} size="default" variant="outline" label="Apel video" />);
+    secondary.push(<Button key="chat" asChild variant="outline"><Link to={`/doctor/chat?request=${request.id}`}><MessageSquare className="h-4 w-4" />Mesaje</Link></Button>);
+    if (request.consultation_kind === 'with_exam') more.unshift({ label: 'Cere investigație suplimentară', icon: Microscope, onSelect: onInvestigation });
+    more.push({ label: 'Reprogramează', icon: CalendarClock, onSelect: onPropose });
+  } else {
+    secondary.push(<Button key="history" asChild variant="outline"><Link to={`/doctor/chat?request=${request.id}`}><MessageSquare className="h-4 w-4" />Vezi discuția</Link></Button>);
+  }
+
+  return (
+    <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      {/* Antet */}
+      <header className="border-b border-slate-100 p-5 sm:p-6">
+        <div className="flex items-start gap-4">
+          <Avatar className="size-12 shrink-0">
+            <AvatarFallback className="bg-primary/10 text-sm font-semibold text-primary">{initialsOf(name)}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <h2 className="text-xl font-bold tracking-tight text-slate-950">{name}</h2>
+              <StatusBadge request={request} perspective="doctor" />
+            </div>
+            <p className="mt-1 text-sm text-slate-500">
+              {[request.patient_profile?.patient_code && `Cod ${request.patient_profile.patient_code}`, request.patient?.name && `Titular: ${request.patient.name}`, `#${request.id}`].filter(Boolean).join(' · ')}
+            </p>
+          </div>
+        </div>
+
+        <dl className="mt-5 grid gap-3 sm:grid-cols-3">
+          <Fact icon={CalendarDays} label={request.scheduled_at ? (request.status === 'new' ? 'Ora solicitată' : 'Programare') : 'Trimisă la'} value={dateTime(request.scheduled_at || request.created_at)} />
+          <Fact icon={Stethoscope} label="Tip" value={`${request.specialty || 'Consultație'} · ${CONSULTATION_KIND_LABELS[request.consultation_kind ?? ''] ?? '—'}`} />
+          <Fact icon={Wallet} label="Plată" value={`${money(request.amount)} MDL`} detail={paymentStatusLabel(request.payment_status)} />
+        </dl>
+
+        {next && (
+          <div className={cn('mt-5 flex items-start gap-2.5 rounded-xl px-3.5 py-3 text-sm',
+            next.tone === 'warning' ? 'bg-amber-50 text-amber-900' : next.tone === 'success' ? 'bg-emerald-50 text-emerald-900' : next.tone === 'info' ? 'bg-blue-50 text-blue-900' : 'bg-slate-50 text-slate-700')}>
+            <Clock className="mt-0.5 h-4 w-4 shrink-0 opacity-70" />
+            <p className="flex-1">{next.text}{expiresIn && <strong className="ml-1 font-semibold">{expiresIn === 'expirat' ? 'Termenul de răspuns a expirat.' : `Termen de răspuns: ${expiresIn}.`}</strong>}</p>
+          </div>
+        )}
+
+        {(primary || secondary.length > 0) && (
+          <div className="mt-5 flex flex-wrap items-center gap-2">
+            {primary}
+            {secondary}
+            <MoreMenu items={more} />
+          </div>
+        )}
+      </header>
+
+      {/* Conținut */}
+      <Tabs value={tab} onValueChange={(value) => onTabChange(value as 'summary' | 'chart' | 'documents')} className="gap-0">
+        <TabsList variant="line" className="w-full justify-start gap-4 overflow-x-auto px-5 sm:px-6">
+          <TabsTrigger value="summary" className="flex-none rounded-none border-b-2 border-transparent px-1 pb-3 pt-3 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">Rezumat</TabsTrigger>
+          <TabsTrigger value="chart" className="flex-none rounded-none border-b-2 border-transparent px-1 pb-3 pt-3 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">Fișa pacientului</TabsTrigger>
+          {bucket === 'completed' && <TabsTrigger value="documents" className="flex-none rounded-none border-b-2 border-transparent px-1 pb-3 pt-3 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">Documente</TabsTrigger>}
+        </TabsList>
+
+        <TabsContent value="summary" className="space-y-5 p-5 sm:p-6">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">Acuzele pacientului</h3>
+            <p className="mt-2 whitespace-pre-wrap rounded-xl bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700">{request.symptoms || request.triage_notes || 'Pacientul nu a descris acuzele.'}</p>
+          </div>
+          {request.current_illness_history && (
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">Istoricul bolii actuale</h3>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{request.current_illness_history}</p>
+            </div>
+          )}
+          {request.consultation_kind === 'with_exam' && (
+            <div className="flex flex-wrap items-center gap-2">
+              <ToneBadge tone={request.objective_data_completed_at ? 'success' : 'warning'}>
+                <Activity className="h-3 w-3" />Date obiective {request.objective_data_completed_at ? 'primite' : 'în așteptare'}
+              </ToneBadge>
+              {(request.objective_data ?? []).some((entry) => entry.from_device) && <ToneBadge tone="info" dot={false}>Aparat HIGO</ToneBadge>}
+              <button type="button" className="text-sm font-medium text-primary hover:underline" onClick={() => onTabChange('chart')}>Vezi datele în fișă</button>
+            </div>
+          )}
+          {['new', 'accepted'].includes(request.status) && <HigoConsultationProposal requestId={request.id} />}
+          {bucket === 'closed' && <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">{request.cancellation_reason || 'Solicitare închisă. Fișa și istoricul rămân disponibile.'}</p>}
+          {bucket === 'completed' && (
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-slate-900">Documente publicate</h3>
+              <ConsultationDocuments requestId={request.id} compact />
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="chart" className="p-5 sm:p-6">
+          <PatientChart
+            profile={request.patient_profile}
+            illnessHistory={request.current_illness_history}
+            symptoms={request.symptoms}
+            triageNotes={request.triage_notes}
+            objectiveData={request.objective_data}
+            examMedia={request.exam_media}
+            investigations={request.investigations}
+            anamnesisCompletedAt={request.anamnesis_completed_at}
+            objectiveDataCompletedAt={request.objective_data_completed_at}
+          />
+        </TabsContent>
+
+        {bucket === 'completed' && (
+          <TabsContent value="documents" className="p-5 sm:p-6">
+            <ConsultationDocuments requestId={request.id} />
+          </TabsContent>
+        )}
+      </Tabs>
+    </article>
+  );
+}
+
+function Fact({ icon: Icon, label, value, detail }: { icon: React.ElementType; label: string; value: React.ReactNode; detail?: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-slate-100 bg-slate-50/60 px-3.5 py-3">
+      <dt className="flex items-center gap-1.5 text-xs font-medium text-slate-500"><Icon className="h-3.5 w-3.5" />{label}</dt>
+      <dd className="mt-1 text-sm font-semibold text-slate-900">{value}</dd>
+      {detail && <dd className="text-xs text-slate-500">{detail}</dd>}
+    </div>
   );
 }

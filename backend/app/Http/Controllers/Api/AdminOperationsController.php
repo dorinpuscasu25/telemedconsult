@@ -15,6 +15,7 @@ use App\Models\WalletTransaction;
 use App\Models\WithdrawalRequest;
 use App\Notifications\AppEventNotification;
 use App\Services\DoctorPerformance;
+use App\Services\InstitutionLedger;
 use App\Services\PlatformConfig;
 use App\Services\WalletAdjustment;
 use Illuminate\Http\JsonResponse;
@@ -47,12 +48,17 @@ class AdminOperationsController extends Controller
                 'wallet_type' => $transaction->wallet_type ?? $transaction->wallet?->type ?? 'real',
             ]);
 
-        $withdrawals = WithdrawalRequest::with(['user', 'processor'])
+        // Cererile medicilor afiliați le procesează instituția, nu adminul.
+        $withdrawals = WithdrawalRequest::with(['user', 'processor', 'institution'])
+            ->where('payer', InstitutionLedger::PAYER_PLATFORM)
             ->latest()
             ->get()
             ->map(fn (WithdrawalRequest $withdrawal) => [
                 'id' => $withdrawal->id,
-                'doctor' => $withdrawal->user?->name ?? 'Utilizator',
+                'doctor' => $withdrawal->medical_institution_id ? ($withdrawal->institution?->name ?? 'Instituție') : ($withdrawal->user?->name ?? 'Utilizator'),
+                'beneficiary_type' => $withdrawal->medical_institution_id ? 'institution' : 'doctor',
+                'requested_by' => $withdrawal->user?->name,
+                'institution_iban' => $withdrawal->institution?->iban,
                 'amount' => $withdrawal->amount_minor / 100,
                 'approved_amount' => $withdrawal->approved_amount_minor ? $withdrawal->approved_amount_minor / 100 : null,
                 'currency' => $withdrawal->currency,
@@ -75,7 +81,7 @@ class AdminOperationsController extends Controller
                 'points_balance' => Wallet::where('type', 'points')->sum('balance_minor') / 100,
                 'top_ups' => Payment::where('purpose', 'wallet_top_up')->whereIn('status', ['paid', 'pending'])->sum('amount_minor') / 100,
                 'platform_fees' => $transactions->sum('fee'),
-                'pending_withdrawals' => WithdrawalRequest::where('status', 'pending')->sum('amount_minor') / 100,
+                'pending_withdrawals' => WithdrawalRequest::where('payer', InstitutionLedger::PAYER_PLATFORM)->where('status', 'pending')->sum('amount_minor') / 100,
             ],
             'transactions' => $transactions,
             'withdrawals' => $withdrawals,
@@ -170,6 +176,7 @@ class AdminOperationsController extends Controller
         ]);
 
         abort_unless($withdrawalRequest->status === 'pending', 422, 'Cererea a fost deja procesată.');
+        abort_if($withdrawalRequest->payer === InstitutionLedger::PAYER_INSTITUTION, 403, 'Această cerere este plătită de instituția medicului.');
 
         DB::transaction(function () use ($request, $withdrawalRequest, $validated) {
             $approvedAmountMinor = isset($validated['approved_amount'])
@@ -177,8 +184,10 @@ class AdminOperationsController extends Controller
                 : $withdrawalRequest->amount_minor;
 
             if ($validated['status'] === 'approved') {
-                $availableMinor = $this->doctorAvailableBalanceMinor($withdrawalRequest);
-                abort_if($approvedAmountMinor > $availableMinor, 422, 'Suma depășește balanța disponibilă a medicului.');
+                $availableMinor = $withdrawalRequest->medical_institution_id
+                    ? app(InstitutionLedger::class)->institutionBalanceMinor($withdrawalRequest->medical_institution_id, $withdrawalRequest->id)
+                    : $this->doctorAvailableBalanceMinor($withdrawalRequest);
+                abort_if($approvedAmountMinor > $availableMinor, 422, $withdrawalRequest->medical_institution_id ? 'Suma depășește soldul instituției.' : 'Suma depășește balanța disponibilă a medicului.');
             }
 
             $withdrawalRequest->update([
@@ -194,7 +203,7 @@ class AdminOperationsController extends Controller
                 'processed_by' => $request->user()->id,
             ]);
 
-            if ($validated['status'] === 'approved') {
+            if ($validated['status'] === 'approved' && ! $withdrawalRequest->medical_institution_id) {
                 $wallet = Wallet::firstOrCreate(
                     ['user_id' => $withdrawalRequest->user_id],
                     ['balance_minor' => 0, 'currency' => $withdrawalRequest->currency],
@@ -543,19 +552,7 @@ class AdminOperationsController extends Controller
 
     private function doctorAvailableBalanceMinor(WithdrawalRequest $withdrawalRequest): int
     {
-        $consultationRevenueMinor = (int) (DB::table('consultations')
-            ->where('doctor_id', $withdrawalRequest->user_id)
-            ->where('status', 'completed')
-            ->sum('price') * 100);
-
-        $processedWithdrawalsMinor = (int) WithdrawalRequest::query()
-            ->where('user_id', $withdrawalRequest->user_id)
-            ->where('status', 'approved')
-            ->whereKeyNot($withdrawalRequest->id)
-            ->selectRaw('COALESCE(SUM(COALESCE(approved_amount_minor, amount_minor)), 0) as total')
-            ->value('total');
-
-        return max(0, $consultationRevenueMinor - $processedWithdrawalsMinor);
+        return app(InstitutionLedger::class)->platformDoctorBalanceMinor($withdrawalRequest->user_id, $withdrawalRequest->id);
     }
 
     private function serializeComplaint(Complaint $complaint): array

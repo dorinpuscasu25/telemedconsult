@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardFooter, CardHeader } from '../../components/ui/card';
+import { toast } from 'sonner';
+import { Check, CheckCircle2, MapPin, Search, UserRound } from 'lucide-react';
+import { Avatar, AvatarFallback } from '../../components/ui/avatar';
+import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import {
@@ -12,19 +15,13 @@ import {
   DialogTitle
 } from '../../components/ui/dialog';
 import { Label } from '../../components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '../../components/ui/select';
 import { Textarea } from '../../components/ui/textarea';
+import { ListSkeleton } from '../../components/ui/skeleton';
+import { cn } from '../../components/ui/utils';
+import { PageHeader } from '../../components/app/PageHeader';
+import { EmptyState } from '../../components/app/EmptyState';
+import { ToneBadge } from '../../components/app/StatusBadge';
 import { ConsultationComplaintFields } from '../../components/ConsultationComplaintFields';
-import { Avatar, AvatarFallback } from '../../components/ui/avatar';
-import { Badge } from '../../components/ui/badge';
-import { Activity, CheckCircle2, MapPin, Search } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { apiRequest } from '../../lib/api';
 
 interface Operator {
@@ -66,12 +63,14 @@ export function OperatorsList() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
     apiRequest<{data: Operator[]}>('/catalog/operators', { auth: false })
       .then((response) => setOperators(response.data ?? []))
-      .catch(() => setOperators([]));
+      .catch(() => setOperators([]))
+      .finally(() => setIsLoading(false));
     apiRequest<{patient_profiles: PatientProfile[]}>('/patient/profile')
       .then((response) => {
         const profiles = response.patient_profiles ?? [];
@@ -133,6 +132,7 @@ export function OperatorsList() {
         })
       });
       if (response.conversation?.id) {
+        toast.success(`Cererea a fost trimisă către ${selectedOperator.name}.`, { description: 'Te anunțăm când operatorul confirmă vizita.' });
         navigate(`/patient/chat?conversation=${response.conversation.id}`);
         return;
       }
@@ -144,214 +144,142 @@ export function OperatorsList() {
     }
   };
 
+  const requestableProfiles = patientProfiles.filter(canRequestConsultation);
+
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">
-          Operatori pentru Examinare
-        </h1>
-        <p className="text-slate-500">
-          Solicită un operator disponibil și creează o conversație reală în sistem.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Examinare la domiciliu"
+        description="Un operator vine la pacient, face măsurătorile cu aparatul HIGO, iar rezultatele ajung la medic."
+      />
+
+      <ol className="grid gap-3 sm:grid-cols-3">
+        {[
+          ['Alegi operatorul', 'din regiunea pacientului'],
+          ['Operatorul vine acasă', 'la ora stabilită împreună'],
+          ['Rezultatele ajung la medic', 'și le găsești în consultații']
+        ].map(([title, detail], index) => (
+          <li key={title} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/10 text-sm font-bold text-primary">{index + 1}</span>
+            <span><span className="block text-sm font-semibold text-slate-900">{title}</span><span className="block text-xs text-slate-500">{detail}</span></span>
+          </li>
+        ))}
+      </ol>
 
       <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-        <Input
-          placeholder="Caută după nume sau regiune..."
-          className="pl-10 bg-white/80 backdrop-blur-sm border-slate-200/60 rounded-xl h-12"
-          value={searchTerm}
-          onChange={(event) => setSearchTerm(event.target.value)}
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <Input placeholder="Caută după nume sau regiune" aria-label="Caută operator" className="h-12 pl-10" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} />
+      </div>
+
+      {isLoading ? <ListSkeleton rows={3} /> : filteredOperators.length === 0 ? (
+        <EmptyState
+          icon={MapPin}
+          title={operators.length === 0 ? 'Niciun operator disponibil momentan' : 'Niciun operator în această zonă'}
+          description={operators.length === 0 ? 'Operatorii apar aici după ce sunt verificați. Revino puțin mai târziu.' : 'Încearcă alt nume sau altă regiune.'}
         />
-      </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {filteredOperators.map((operator) => (
+            <article key={operator.id} className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-start gap-4">
+                <Avatar className="size-12 shrink-0"><AvatarFallback className="bg-primary/10 font-semibold text-primary">{operator.name.split(' ').map((part) => part.charAt(0)).slice(0, 2).join('')}</AvatarFallback></Avatar>
+                <div className="min-w-0 flex-1">
+                  <h3 className="truncate font-semibold text-slate-950">{operator.name}</h3>
+                  <p className="mt-0.5 flex items-center gap-1 text-sm text-slate-500"><MapPin className="h-3.5 w-3.5" />{operator.region || 'Regiune nesetată'}</p>
+                </div>
+                <ToneBadge tone={operator.is_available ? 'success' : 'neutral'}>{operator.is_available ? 'Disponibil' : 'Ocupat'}</ToneBadge>
+              </div>
+              {operator.equipment.length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-1.5">
+                  {operator.equipment.map((item) => <Badge key={item} variant="secondary" className="bg-slate-100 text-xs text-slate-600">{item}</Badge>)}
+                </div>
+              )}
+              <div className="mt-auto flex items-center justify-between gap-3 pt-5">
+                <p className="text-sm text-slate-500">Examinare <strong className="tabular block text-base text-slate-950">{operator.exam_price} MDL</strong></p>
+                <Button onClick={() => openDialog(operator)} disabled={!operator.is_available}>Solicită</Button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredOperators.length === 0 && (
-          <Card className="md:col-span-2 lg:col-span-3 border-slate-200/70 bg-white shadow-sm">
-            <CardContent className="p-8 text-center">
-              <h3 className="text-lg font-semibold text-slate-900">Nu există operatori aprobați</h3>
-              <p className="mt-2 text-sm text-slate-500">
-                Operatorii vor apărea aici după ce sunt adăugați și aprobați din panoul admin.
-              </p>
-            </CardContent>
-          </Card>
-        )}
-        {filteredOperators.map((operator, index) => (
-          <motion.div
-            key={operator.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.05 }}>
-            <Card className="glass-card overflow-hidden border-0 h-full flex flex-col">
-              <CardHeader className="pb-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-4">
-                      <Avatar className="h-14 w-14 border-2 border-white shadow-sm">
-                      <AvatarFallback>{operator.name.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <h3 className="font-bold text-lg text-slate-900 leading-tight">{operator.name}</h3>
-                      <div className="flex items-center text-sm text-slate-500 mt-1">
-                        <MapPin className="h-3 w-3 mr-1" />
-                        {operator.region || 'Regiune nesetată'}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="pb-4 flex-1 space-y-4">
-                <div className="flex items-center justify-between text-sm">
-                  <Badge
-                    variant={operator.is_available ? 'default' : 'secondary'}
-                    className={operator.is_available ? 'bg-green-100 text-green-800 hover:bg-green-100' : ''}>
-                    {operator.is_available ? 'Disponibil' : 'Ocupat'}
-                  </Badge>
-                  <div className="text-slate-500 flex items-center">
-                    <Activity className="h-3 w-3 mr-1" />
-                    Echipament
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {operator.equipment.map((item) => (
-                    <Badge key={item} variant="secondary" className="text-[10px] bg-slate-100 text-slate-600">
-                      {item}
-                    </Badge>
-                  ))}
-                </div>
-              </CardContent>
-              <CardFooter className="pt-0">
-                <Button
-                  className="w-full rounded-xl bg-slate-900 hover:bg-slate-800 text-white"
-                  onClick={() => openDialog(operator)}
-                  disabled={!operator.is_available}>
-                  Solicită Examinare ({operator.exam_price} MDL)
-                </Button>
-              </CardFooter>
-            </Card>
-          </motion.div>
-        ))}
-      </div>
-
-      <Dialog open={isDialogOpen} onOpenChange={(open) => !open && closeDialog()}>
-        <DialogContent className="sm:max-w-[460px] glass-panel border-0 rounded-2xl z-50">
+      <Dialog open={isDialogOpen} onOpenChange={(open) => !open && !isSubmitting && closeDialog()}>
+        <DialogContent className="flex max-h-[min(92dvh,860px)] flex-col gap-0 p-0 sm:max-w-[560px] sm:p-0">
           {selectedOperator && !isSuccess && (
-            <form onSubmit={handleRequest}>
-              <DialogHeader>
-                <DialogTitle className="text-2xl">Confirmare Solicitare</DialogTitle>
-                <DialogDescription>
-                  Operatorul se va deplasa la adresa indicată pentru examinare.
-                </DialogDescription>
+            <form onSubmit={handleRequest} className="flex min-h-0 flex-1 flex-col">
+              <DialogHeader className="shrink-0 border-b border-slate-100 px-5 pb-4 pt-5 sm:px-6">
+                <DialogTitle>Solicită examinarea</DialogTitle>
+                <DialogDescription>{selectedOperator.name}{selectedOperator.region ? ` · ${selectedOperator.region}` : ''}</DialogDescription>
               </DialogHeader>
-              <div className="grid gap-4 py-6">
-                {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
-                <div className="flex items-center space-x-3 p-3 bg-slate-50 rounded-xl">
-                  <Avatar className="h-10 w-10">
-                    <AvatarFallback>{selectedOperator.name.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-medium text-sm">{selectedOperator.name}</p>
-                    <p className="text-xs text-slate-500">{selectedOperator.region}</p>
-                  </div>
-                </div>
+              <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6">
+                {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 
-                <div className="space-y-2">
-                  <Label>Profil pacient</Label>
-                  {patientProfiles.filter(canRequestConsultation).length > 0 ? (
-                    <Select value={patientProfileId} onValueChange={setPatientProfileId}>
-                      <SelectTrigger className="rounded-xl"><SelectValue placeholder="Alege pacientul" /></SelectTrigger>
-                      <SelectContent>
-                        {patientProfiles.filter(canRequestConsultation).map((profile) => (
-                          <SelectItem key={profile.id} value={String(profile.id)}>
-                            {patientProfileName(profile)} {profile.region ? `• ${profile.region}` : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                <fieldset>
+                  <legend className="mb-2 text-sm font-semibold text-slate-900">Pentru cine?</legend>
+                  {requestableProfiles.length > 0 ? (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {requestableProfiles.map((profile) => {
+                        const selected = patientProfileId === String(profile.id);
+                        return (
+                          <button key={profile.id} type="button" role="radio" aria-checked={selected} onClick={() => setPatientProfileId(String(profile.id))} className={cn('flex items-center gap-3 rounded-xl border p-3 text-left transition', selected ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-slate-200 hover:border-slate-300')}>
+                            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600"><UserRound className="h-4 w-4" /></span>
+                            <span className="min-w-0 flex-1"><span className="block truncate font-semibold text-slate-900">{patientProfileName(profile)}</span>{profile.region && <span className="block truncate text-xs text-slate-500">{profile.region}</span>}</span>
+                            {selected && <Check className="h-4 w-4 text-primary" />}
+                          </button>
+                        );
+                      })}
+                    </div>
                   ) : (
                     <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
-                      <p className="font-medium text-slate-900">Examinarea este blocată până activezi un pacient.</p>
-                      <p className="mt-1">Ca să poți continua, cumpără un pachet din wallet, apoi adaugă profilul pacientului. Fără pachet activ nu se poate crea pacient și fără pacient nu se poate achita examinarea.</p>
-                      <Button type="button" variant="outline" className="mt-3 rounded-xl" onClick={() => navigate('/patient/profile')}>
-                        Cumpără pachet → adaugă pacient
-                      </Button>
+                      <p className="font-semibold text-slate-900">Adaugă mai întâi pacientul</p>
+                      <p className="mt-1">Examinarea se face pentru un profil de pacient activ. Îl adaugi din „Pacienții mei”.</p>
+                      <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => navigate('/patient/profile')}>Deschide Pacienții mei</Button>
                     </div>
                   )}
-                </div>
+                </fieldset>
 
-                <div className="space-y-2">
-                  <Label htmlFor="address">Adresa completă</Label>
-                  <Input
-                    id="address"
-                    value={address}
-                    onChange={(event) => setAddress(event.target.value)}
-                    placeholder="Strada, bloc, apartament..."
-                    className="rounded-xl"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Telefon de contact</Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    value={phone}
-                    onChange={(event) => setPhone(event.target.value)}
-                    placeholder="+373 6X XXX XXX"
-                    className="rounded-xl"
-                    required
-                  />
-                </div>
-                <ConsultationComplaintFields history={illnessHistory} symptoms={symptoms} onHistoryChange={setIllnessHistory} onSymptomsChange={setSymptoms} />
-                <div className="space-y-2">
-                  <Label htmlFor="notes">Detalii de acces pentru operator</Label>
-                  <Textarea
-                    id="notes"
-                    value={notes}
-                    onChange={(event) => setNotes(event.target.value)}
-                    placeholder="Etaj, cod interfon, indicații de acces…"
-                    maxLength={2000}
-                    className="rounded-xl min-h-[90px] resize-none"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="operator_scheduled_at">Data și ora preferată</Label>
-                  <Input
-                    id="operator_scheduled_at"
-                    type="datetime-local"
-                    value={scheduledAt}
-                    onChange={(event) => setScheduledAt(event.target.value)}
-                    className="rounded-xl"
-                    required
-                  />
-                </div>
+                <fieldset className="space-y-4">
+                  <legend className="mb-2 text-sm font-semibold text-slate-900">Unde și când?</legend>
+                  <div className="space-y-2">
+                    <Label htmlFor="address">Adresa completă</Label>
+                    <Input id="address" value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Strada, numărul, blocul, apartamentul" autoComplete="street-address" required />
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="phone">Telefon de contact</Label>
+                      <Input id="phone" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+373 6X XXX XXX" autoComplete="tel" required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="operator_scheduled_at">Data și ora preferată</Label>
+                      <Input id="operator_scheduled_at" type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} required />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="notes">Indicații de acces <span className="font-normal text-slate-400">(opțional)</span></Label>
+                    <Textarea id="notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Etaj, cod interfon, unde se parchează…" maxLength={2000} className="min-h-[72px]" />
+                  </div>
+                </fieldset>
+
+                <fieldset>
+                  <legend className="mb-2 text-sm font-semibold text-slate-900">Ce vă supără?</legend>
+                  <ConsultationComplaintFields history={illnessHistory} symptoms={symptoms} onHistoryChange={setIllnessHistory} onSymptomsChange={setSymptoms} />
+                </fieldset>
               </div>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={closeDialog} className="rounded-xl">
-                  Anulare
-                </Button>
-                <Button type="submit" disabled={isSubmitting || !patientProfileId} className="rounded-xl bg-slate-900 text-white">
-                  {isSubmitting ? 'Se trimite...' : `Achită ${selectedOperator.exam_price} MDL`}
-                </Button>
+              <DialogFooter className="shrink-0 border-t border-slate-100 px-5 py-3 sm:px-6">
+                <Button type="button" variant="ghost" onClick={closeDialog}>Renunță</Button>
+                <Button type="submit" disabled={isSubmitting || !patientProfileId}>{isSubmitting ? 'Se trimite…' : `Confirmă și achită ${selectedOperator.exam_price} MDL`}</Button>
               </DialogFooter>
             </form>
           )}
 
           {selectedOperator && isSuccess && (
-            <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
-              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', bounce: 0.5 }}>
-                <CheckCircle2 className="h-20 w-20 text-green-500" />
-              </motion.div>
-              <h2 className="text-2xl font-bold text-slate-900">Operator solicitat</h2>
-              <p className="text-slate-500">
-                Solicitarea a fost salvată și conversația este disponibilă în Chat.
-              </p>
-              <div className="grid grid-cols-2 gap-3 w-full">
-                <Button variant="outline" onClick={closeDialog} className="rounded-xl">
-                  Închide
-                </Button>
-                <Button onClick={() => navigate('/patient/chat')} className="rounded-xl">
-                  Deschide Chat
-                </Button>
+            <div className="px-6 py-10 text-center">
+              <span className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full bg-emerald-50 text-emerald-600"><CheckCircle2 className="h-9 w-9" /></span>
+              <h2 className="text-2xl font-bold text-slate-950">Cerere trimisă</h2>
+              <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500">{selectedOperator.name} confirmă vizita. Te anunțăm imediat, iar discuția e deja deschisă în Mesaje.</p>
+              <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
+                <Button variant="outline" onClick={() => navigate('/patient/consultations')}>Vezi consultațiile mele</Button>
+                <Button onClick={() => navigate('/patient/chat')}>Deschide mesajele</Button>
               </div>
             </div>
           )}

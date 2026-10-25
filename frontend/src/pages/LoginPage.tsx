@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Activity, CheckCircle2, Mail } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import {
@@ -28,8 +28,12 @@ export function LoginPage() {
   const { login, verifyEmailOtp, verifyLoginOtp, resendEmailOtp } = useAuth();
   const navigate = useNavigate();
   const routeForRole = (role: string) => role === 'admin' ? '/admin' : `/${role}`;
+  // `?next=/invitatie/…` readuce utilizatorul de unde a venit; doar căi interne.
+  const [searchParams] = useSearchParams();
+  const nextPath = searchParams.get('next');
+  const safeNext = nextPath && nextPath.startsWith('/') && !nextPath.startsWith('//') ? nextPath : null;
   const routeForUser = (user: { role: string; status?: string }) =>
-    user.status === 'pending' ? '/pending' : routeForRole(user.role);
+    user.status === 'pending' ? '/pending' : safeNext ?? routeForRole(user.role);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -104,7 +104,8 @@ const ROLE_LABELS: Record<RoleName, string> = {
   patient: 'Utilizator',
   doctor: 'Medic',
   operator: 'Operator',
-  coordinator: 'Coordonator'
+  coordinator: 'Coordonator',
+  institution: 'Instituție medicală'
 };
 
 const MANAGED_ROLES: RoleName[] = ['admin', 'patient', 'doctor', 'operator'];

@@ -1,7 +1,9 @@
 import { DoctorPerformanceCard, type DoctorPerformance } from '../../components/DoctorPerformanceCard';
+import { PageHeader } from '../../components/app/PageHeader';
 import React, { useEffect, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { CheckCircle2, Clock3, Star, TrendingUp, Users, Wallet } from 'lucide-react';
+import { Building2, CheckCircle2, Clock3, Star, TrendingUp, Users, Wallet } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import {
@@ -46,7 +48,17 @@ interface DoctorStats {
     approved_amount?: number | null;
     status: string;
     admin_note?: string | null;
+    payer?: 'platform' | 'institution';
+    institution?: string | null;
   }>;
+  institution: {
+    id: number;
+    name: string;
+    doctor_share_percent: number;
+    balance: number;
+    pending: number;
+    earned_total: number;
+  } | null;
 }
 
 const statusLabel: Record<string, string> = {
@@ -59,6 +71,7 @@ export function StatsPage() {
   const [data, setData] = useState<DoctorStats | null>(null);
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawSource, setWithdrawSource] = useState<'platform' | 'institution'>('platform');
   const [error, setError] = useState('');
 
   const loadStats = () => {
@@ -77,9 +90,11 @@ export function StatsPage() {
       await apiRequest('/doctor/withdrawals', {
         method: 'POST',
         body: JSON.stringify({
-          amount: Number(withdrawAmount)
+          amount: Number(withdrawAmount),
+          source: withdrawSource
         })
       });
+      toast.success(withdrawSource === 'institution' ? `Cererea a fost trimisă către ${institution?.name}.` : 'Cererea a fost trimisă administratorului.');
       setIsWithdrawModalOpen(false);
       setWithdrawAmount('');
       loadStats();
@@ -90,19 +105,39 @@ export function StatsPage() {
 
   const summary = data?.summary;
   const availableBalance = summary?.available_balance ?? 0;
+  const institution = data?.institution ?? null;
+  const institutionAvailable = Math.max(0, (institution?.balance ?? 0) - (institution?.pending ?? 0));
+  const sourceAvailable = withdrawSource === 'institution' ? institutionAvailable : availableBalance;
+  const openWithdraw = (source: 'platform' | 'institution') => {
+    setWithdrawSource(source);
+    setWithdrawAmount('');
+    setError('');
+    setIsWithdrawModalOpen(true);
+  };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-950">Statistici și venituri</h1>
-          <p className="mt-1 text-sm text-slate-500">Performanță calculată din consultații și cereri reale de extragere.</p>
-        </div>
-        <Button className="h-11 rounded-xl px-4" onClick={() => setIsWithdrawModalOpen(true)}>
-          <Wallet className="mr-2 h-4 w-4" />
-          Solicită extragere
-        </Button>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Statistici și venituri"
+        description="Veniturile, consultațiile și extragerile tale, lună de lună."
+        actions={<Button onClick={() => openWithdraw(institution ? 'institution' : 'platform')}><Wallet className="h-4 w-4" />{institution ? `Cere plata de la ${institution.name}` : 'Solicită extragere'}</Button>}
+      />
+
+      {institution && (
+        <section className="flex flex-col gap-4 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 to-white p-5 sm:flex-row sm:items-center">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-primary text-white"><Building2 className="h-6 w-6" /></span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-slate-500">Lucrezi prin instituția</p>
+            <h2 className="text-lg font-bold text-slate-950">{institution.name}</h2>
+            <p className="mt-1 text-sm text-slate-600">Primești <strong>{institution.doctor_share_percent}%</strong> din suma rămasă după comisionul platformei. Plățile le cere și le primește de la instituție.</p>
+          </div>
+          <dl className="grid shrink-0 grid-cols-2 gap-3 text-sm sm:w-72">
+            <div className="rounded-xl bg-white px-3 py-2 shadow-sm"><dt className="text-xs text-slate-500">De primit</dt><dd className="tabular text-lg font-bold text-slate-950">{money(institution.balance)}</dd></div>
+            <div className="rounded-xl bg-white px-3 py-2 shadow-sm"><dt className="text-xs text-slate-500">Câștigat total</dt><dd className="tabular text-lg font-bold text-slate-950">{money(institution.earned_total)}</dd></div>
+            {institution.pending > 0 && <p className="col-span-2 text-xs text-amber-700">{money(institution.pending)} MDL cerut, în așteptarea instituției.</p>}
+          </dl>
+        </section>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
@@ -129,7 +164,7 @@ export function StatsPage() {
         <SummaryCard
           label="Balanță disponibilă"
           value={`${availableBalance.toFixed(2)} MDL`}
-          detail="După extrageri procesate"
+          detail={institution ? 'La platformă, din consultațiile de dinainte de instituție' : 'După extrageri procesate'}
           icon={Wallet}
           tone="bg-slate-100 text-slate-700"
         />
@@ -189,19 +224,21 @@ export function StatsPage() {
               <TableRow className="hover:bg-transparent">
                 <TableHead>Data</TableHead>
                 <TableHead>Suma cerută</TableHead>
+                <TableHead>De la</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {(data?.withdrawals ?? []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={3} className="py-8 text-center text-slate-500">Nu există extrageri anterioare.</TableCell>
+                  <TableCell colSpan={4} className="py-8 text-center text-slate-500">Nu există extrageri anterioare.</TableCell>
                 </TableRow>
               )}
               {(data?.withdrawals ?? []).map((withdrawal) => (
                 <TableRow key={withdrawal.id}>
                   <TableCell className="text-slate-500">{dateTime(withdrawal.date)}</TableCell>
                   <TableCell className="font-semibold text-slate-950">{money(withdrawal.amount)} MDL</TableCell>
+                  <TableCell className="text-slate-600">{withdrawal.payer === 'institution' ? withdrawal.institution ?? 'Instituție' : 'Platformă'}</TableCell>
                   <TableCell>
                     <span className={`inline-flex items-center text-sm font-medium ${withdrawal.status === 'approved' ? 'text-green-600' : withdrawal.status === 'rejected' ? 'text-red-600' : 'text-amber-600'}`}>
                       {withdrawal.status === 'approved' ? <CheckCircle2 className="mr-1 h-4 w-4" /> : <Clock3 className="mr-1 h-4 w-4" />}
@@ -219,13 +256,19 @@ export function StatsPage() {
         <DialogContent className="sm:max-w-[420px] rounded-2xl border-0 bg-white shadow-xl">
           <form onSubmit={handleWithdrawRequest}>
             <DialogHeader>
-              <DialogTitle className="text-2xl">Solicită extragere</DialogTitle>
-              <DialogDescription>Introduceți suma dorită. Adminul procesează manual solicitarea.</DialogDescription>
+              <DialogTitle>{withdrawSource === 'institution' ? 'Cere plata de la instituție' : 'Solicită extragere'}</DialogTitle>
+              <DialogDescription>{withdrawSource === 'institution' ? `${institution?.name} primește cererea și îți transferă banii.` : 'Administratorul platformei procesează cererea (zilele 1–10 ale lunii, minimum 500 MDL).'}</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-6">
+              {institution && availableBalance > 0 && (
+                <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1 text-sm font-semibold">
+                  <button type="button" onClick={() => setWithdrawSource('institution')} className={`rounded-lg px-3 py-2 ${withdrawSource === 'institution' ? 'bg-white shadow-sm' : 'text-slate-600'}`}>De la instituție</button>
+                  <button type="button" onClick={() => setWithdrawSource('platform')} className={`rounded-lg px-3 py-2 ${withdrawSource === 'platform' ? 'bg-white shadow-sm' : 'text-slate-600'}`}>De la platformă</button>
+                </div>
+              )}
               <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <span className="text-sm font-medium text-slate-500">Balanță disponibilă</span>
-                <span className="text-xl font-bold text-slate-950">{availableBalance.toFixed(2)} MDL</span>
+                <span className="text-sm font-medium text-slate-500">Disponibil</span>
+                <span className="text-xl font-bold text-slate-950">{money(sourceAvailable)} MDL</span>
               </div>
               {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
               <div className="space-y-2">
@@ -233,11 +276,11 @@ export function StatsPage() {
                 <Input
                   type="number"
                   required
-                  min="500"
-                  max={Math.max(500, availableBalance)}
+                  min={withdrawSource === 'institution' ? 1 : 500}
+                  max={withdrawSource === 'institution' ? Math.max(1, sourceAvailable) : Math.max(500, sourceAvailable)}
                   value={withdrawAmount}
                   onChange={(event) => setWithdrawAmount(event.target.value)}
-                  placeholder="Minim 500 MDL"
+                  placeholder={withdrawSource === 'institution' ? 'Suma în MDL' : 'Minim 500 MDL'}
                   className="h-11 rounded-xl"
                 />
               </div>

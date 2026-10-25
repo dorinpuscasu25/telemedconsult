@@ -53,6 +53,17 @@ class User extends Authenticatable
         return $this->hasOne(DoctorProfile::class);
     }
 
+    public function medicalInstitutions(): BelongsToMany
+    {
+        return $this->belongsToMany(MedicalInstitution::class)->withTimestamps();
+    }
+
+    /** Instituția pe care o administrează acest cont (un manager are una singură). */
+    public function managedInstitution(): ?MedicalInstitution
+    {
+        return $this->medicalInstitutions()->first();
+    }
+
     public function doctorVacations(): HasMany
     {
         return $this->hasMany(DoctorVacation::class, 'doctor_id');

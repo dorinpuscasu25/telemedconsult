@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\AdminClinicalParameterController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AdminFeatureFlagController;
 use App\Http\Controllers\Api\AdminHigoController;
+use App\Http\Controllers\Api\AdminInstitutionController;
 use App\Http\Controllers\Api\AdminInvestigationTypeController;
 use App\Http\Controllers\Api\AdminOperationsController;
 use App\Http\Controllers\Api\AdminPartnerController;
@@ -19,6 +20,8 @@ use App\Http\Controllers\Api\CoordinatorController;
 use App\Http\Controllers\Api\DoctorOperationsController;
 use App\Http\Controllers\Api\ExamMediaController;
 use App\Http\Controllers\Api\HigoExamController;
+use App\Http\Controllers\Api\InstitutionController;
+use App\Http\Controllers\Api\InstitutionInvitationController;
 use App\Http\Controllers\Api\IntegrationController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PatientEngagementController;
@@ -37,6 +40,8 @@ Broadcast::routes(['middleware' => ['auth:sanctum']]);
 Route::prefix('v1')->group(function () {
     Route::get('/patient-investigations/{investigation}/file', [PatientMedicalRecordController::class, 'file'])->middleware('signed')->name('patient-investigation.file');
     Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:10,1');
+    Route::get('/institution-invitations/{token}', [InstitutionInvitationController::class, 'show'])->middleware('throttle:30,1');
+    Route::post('/institution-invitations/{token}/accept', [InstitutionInvitationController::class, 'accept'])->middleware('throttle:10,1');
     Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
     Route::post('/auth/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
     Route::post('/auth/verify-email-otp', [AuthController::class, 'verifyEmailOtp'])->middleware('throttle:10,1');
@@ -238,6 +243,24 @@ Route::prefix('v1')->group(function () {
         Route::delete('/doctor/vacations/{doctorVacation}', [DoctorOperationsController::class, 'destroyVacation']);
         Route::get('/doctor/dashboard', [DoctorOperationsController::class, 'dashboard']);
         Route::get('/doctor/stats', [DoctorOperationsController::class, 'stats']);
+
+        Route::get('/admin/institutions', [AdminInstitutionController::class, 'index']);
+        Route::post('/admin/institutions', [AdminInstitutionController::class, 'store']);
+        Route::put('/admin/institutions/{institution}', [AdminInstitutionController::class, 'update']);
+        Route::post('/admin/institutions/{institution}/managers', [AdminInstitutionController::class, 'storeManager']);
+
+        Route::get('/institution/dashboard', [InstitutionController::class, 'dashboard']);
+        Route::get('/institution/doctors', [InstitutionController::class, 'doctors']);
+        Route::post('/institution/doctors', [InstitutionController::class, 'storeDoctor']);
+        Route::put('/institution/doctors/{doctor}', [InstitutionController::class, 'updateDoctor']);
+        Route::delete('/institution/doctors/{doctor}', [InstitutionController::class, 'removeDoctor']);
+        Route::post('/institution/invitations', [InstitutionController::class, 'storeInvitation'])->middleware('throttle:30,1');
+        Route::post('/institution/invitations/{invitation}/resend', [InstitutionController::class, 'resendInvitation'])->middleware('throttle:10,1');
+        Route::delete('/institution/invitations/{invitation}', [InstitutionController::class, 'revokeInvitation']);
+        Route::get('/institution/withdrawals', [InstitutionController::class, 'withdrawals']);
+        Route::put('/institution/withdrawals/{withdrawalRequest}', [InstitutionController::class, 'updateWithdrawal']);
+        Route::post('/institution/payouts', [InstitutionController::class, 'requestPayout']);
+        Route::put('/institution/settings', [InstitutionController::class, 'updateSettings']);
         Route::post('/doctor/withdrawals', [DoctorOperationsController::class, 'storeWithdrawal']);
 
         Route::get('/admin/higo/sync', [AdminHigoController::class, 'index']);

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { PageHeader } from '../../components/app/PageHeader';
 import { AlertTriangle, MessageSquareWarning, Star } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -118,10 +119,7 @@ export function ComplaintsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Reclamații și recenzii</h1>
-        <p className="mt-1 text-sm text-slate-500">Trimite reclamații către echipă și evaluează consultațiile finalizate.</p>
-      </div>
+      <PageHeader title="Recenzii și reclamații" description="Evaluează consultațiile finalizate sau scrie-ne dacă ceva nu a fost în regulă." />
 
       {(message || error) && (
         <div className={`rounded-xl border px-4 py-3 text-sm ${error ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>

@@ -8,7 +8,7 @@ import {
 import { UNAUTHORIZED_EVENT, apiRequest, getToken, setToken } from '../lib/api';
 import { disconnectEcho } from '../lib/realtime';
 
-export type RoleName = 'patient' | 'doctor' | 'operator' | 'coordinator' | 'admin';
+export type RoleName = 'patient' | 'doctor' | 'operator' | 'coordinator' | 'admin' | 'institution';
 export type Role = RoleName | null;
 export interface User {
   id: string;
@@ -19,7 +19,9 @@ export interface User {
   roles: RoleName[];
   active_role: RoleName;
   role: RoleName;
-  profiles?: Record<string, unknown>;
+  profiles?: Record<string, unknown> & { institution?: { id: number; name: string; status: string } | null };
+  /** Instituția medicală prin care lucrează medicul (null pentru medicii independenți). */
+  doctor_institution?: { id: number; name: string } | null;
   avatar?: string;
 }
 export interface OtpRequiredError extends Error {

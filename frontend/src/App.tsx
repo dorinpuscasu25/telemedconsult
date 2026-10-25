@@ -1,5 +1,7 @@
 import { IncomingVideoCall } from './components/IncomingVideoCall';
 import { ValidationFeedback } from './components/ValidationFeedback';
+import { DialogProvider } from './components/app/DialogProvider';
+import { Toaster } from './components/ui/toast';
 import React from 'react';
 import {
   BrowserRouter as Router,
@@ -35,6 +37,7 @@ import { WalletPage } from './pages/patient/WalletPage';
 import { ChatPage } from './pages/patient/ChatPage';
 import { ProfilePage } from './pages/patient/ProfilePage';
 import { ComplaintsPage as PatientComplaintsPage } from './pages/patient/ComplaintsPage';
+import { PatientConsultationsPage } from './pages/patient/PatientConsultationsPage';
 // New Doctor Pages
 import { ConsultationsPage } from './pages/doctor/ConsultationsPage';
 import { DoctorChatPage } from './pages/doctor/DoctorChatPage';
@@ -43,6 +46,13 @@ import { DoctorProfilePage } from './pages/doctor/DoctorProfilePage';
 // New Operator Pages
 import { RequestsPage } from './pages/operator/RequestsPage';
 import { OperatorChatPage } from './pages/operator/OperatorChatPage';
+import { OperatorProfilePage } from './pages/operator/OperatorProfilePage';
+import { InstitutionHome } from './pages/institution/InstitutionHome';
+import { InstitutionDoctorsPage } from './pages/institution/InstitutionDoctorsPage';
+import { InstitutionPayoutsPage } from './pages/institution/InstitutionPayoutsPage';
+import { InstitutionSettingsPage } from './pages/institution/InstitutionSettingsPage';
+import { InvitationAcceptPage } from './pages/InvitationAcceptPage';
+import { AdminInstitutionsPage } from './pages/admin/InstitutionsPage';
 // New Admin Pages
 import { UsersPage } from './pages/admin/UsersPage';
 import { DoctorsPage } from './pages/admin/DoctorsPage';
@@ -136,6 +146,8 @@ function AppRoutes() {
         path="/login"
         element={isAuthenticated ? <Navigate to={homePath} replace /> : <LoginPage />} />
 
+      <Route path="/invitatie/:token" element={<InvitationAcceptPage />} />
+
       <Route
         path="/register"
         element={isAuthenticated ? <Navigate to={homePath} replace /> : <RegisterPage />} />
@@ -183,6 +195,7 @@ function AppRoutes() {
         <Route path="blog/new" element={<AdminBlogEditorPage />} />
         <Route path="blog/:id/edit" element={<AdminBlogEditorPage />} />
         <Route path="partners" element={<AdminPartnersPage />} />
+        <Route path="institutions" element={<AdminInstitutionsPage />} />
         <Route path="content" element={<SiteContentPage />} />
         <Route path="noutati" element={<AppNewsListPage />} />
         <Route path="noutati/:slug" element={<AppNewsPostPage />} />
@@ -203,6 +216,7 @@ function AppRoutes() {
         <Route path="doctors" element={<FeatureRoute feature="doctors"><DoctorsList /></FeatureRoute>} />
         <Route path="operators" element={<FeatureRoute feature="operators"><OperatorsList /></FeatureRoute>} />
         <Route path="wallet" element={<FeatureRoute feature="payments"><WalletPage /></FeatureRoute>} />
+        <Route path="consultations" element={<PatientConsultationsPage />} />
         <Route path="chat" element={<ChatPage />} />
         <Route path="complaints" element={<PatientComplaintsPage />} />
         <Route path="profile" element={<ProfilePage />} />
@@ -242,7 +256,24 @@ function AppRoutes() {
         <Route index element={<OperatorHome />} />
         <Route path="patients" element={<RequestsPage />} />
         <Route path="chat" element={<OperatorChatPage />} />
-        <Route path="profile" element={<div>Profile</div>} />
+        <Route path="profile" element={<OperatorProfilePage />} />
+        <Route path="noutati" element={<AppNewsListPage />} />
+        <Route path="noutati/:slug" element={<AppNewsPostPage />} />
+        <Route path="telegram" element={<TelegramPage />} />
+      </Route>
+
+      {/* Instituții medicale */}
+      <Route
+        path="/institution"
+        element={
+        <ProtectedRoute allowedRoles={['institution']}>
+            <AppLayout />
+          </ProtectedRoute>
+        }>
+        <Route index element={<InstitutionHome />} />
+        <Route path="doctors" element={<InstitutionDoctorsPage />} />
+        <Route path="payouts" element={<InstitutionPayoutsPage />} />
+        <Route path="settings" element={<InstitutionSettingsPage />} />
         <Route path="noutati" element={<AppNewsListPage />} />
         <Route path="noutati/:slug" element={<AppNewsPostPage />} />
         <Route path="telegram" element={<TelegramPage />} />
@@ -277,9 +308,12 @@ export function App() {
       <AuthProvider>
         <FeatureFlagsProvider>
           <SiteContentProvider>
-            <IncomingVideoCall />
-            <ValidationFeedback />
-            <AppRoutes />
+            <DialogProvider>
+              <IncomingVideoCall />
+              <ValidationFeedback />
+              <Toaster position="top-center" richColors closeButton />
+              <AppRoutes />
+            </DialogProvider>
           </SiteContentProvider>
         </FeatureFlagsProvider>
       </AuthProvider>

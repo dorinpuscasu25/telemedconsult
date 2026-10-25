@@ -42,22 +42,31 @@ export function ConsultationChatNavigation({ requestId, onRefresh, showVideoLink
   };
   const active = context?.status === 'accepted';
   const finished = context?.status === 'completed';
-  return <div className="shrink-0 border-b border-slate-200/60 bg-slate-50/70 px-4 py-3 sm:px-5">
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-3">
-        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${active ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-slate-400'}`}>{finished ? <CircleCheck size={18} /> : <CalendarDays size={18} />}</span>
-        <div className="min-w-0 text-sm"><div className="flex flex-wrap items-center gap-x-2"><strong className="font-semibold text-slate-800">Consultație #{requestId}</strong><span className={active ? 'text-emerald-700' : 'text-slate-500'}>{context ? labels[context.status] || context.status : 'Se încarcă…'}</span></div>
-          {context?.scheduled_at && <p className="mt-0.5 text-xs text-slate-500">{dateTime(context.scheduled_at)}</p>}
+  const canCall = Boolean(active && context?.ready_for_doctor);
+  const callReason = !context ? 'Se verifică disponibilitatea apelului.'
+    : finished ? 'Consultația este finalizată. Pentru un apel nou este necesară o consultație nouă.'
+    : ['cancelled', 'rejected', 'expired', 'no_operator_available'].includes(context.status) ? 'Această solicitare este închisă.'
+    : !active ? 'Apelul devine disponibil după confirmarea consultației.'
+    : !context.ready_for_doctor ? 'Apelul va fi disponibil după completarea examinării.' : '';
+
+  return <div className="shrink-0 border-b border-slate-100 bg-white px-3 py-2.5 sm:px-5">
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{finished ? <CircleCheck size={16} /> : <CalendarDays size={16} />}</span>
+        <div className="min-w-0 text-sm leading-tight">
+          <p className="truncate"><span className="font-semibold text-slate-900">Consultația #{requestId}</span> <span className={active ? 'text-emerald-700' : 'text-slate-500'}>· {context ? labels[context.status] || context.status : 'Se încarcă…'}</span></p>
+          {context?.scheduled_at && <p className="mt-0.5 truncate text-xs text-slate-500">{dateTime(context.scheduled_at)}</p>}
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        {context?.can_accept && <Button size="sm" className="gap-2 rounded-xl" disabled={busy} onClick={() => act('accept')}><Check size={16} />Confirmă consultația</Button>}
-        {context?.can_start_early && <Button size="sm" variant="outline" className="gap-2 rounded-xl" disabled={busy} onClick={() => act('start', true)}><Play size={16} />Începe acum, mai devreme</Button>}
-        {context?.can_start && <Button size="sm" variant="outline" className="gap-2 rounded-xl" disabled={busy} onClick={() => act('start')}><Play size={16} />Deschide consultația</Button>}
-        {role === 'patient' && context?.status === 'rescheduled' && context.proposed_scheduled_at && <Button size="sm" className="gap-2 rounded-xl" disabled={busy} onClick={() => act('accept-proposed-time')}><Clock3 size={16} />Acceptă ora: {dateTime(context.proposed_scheduled_at)}</Button>}
-        {active && context.ready_for_doctor && <Button size="sm" className="gap-2 rounded-xl bg-primary px-4 shadow-sm shadow-primary/20 hover:bg-primary/90" disabled={busy} onClick={() => act('video/invite')}><Video size={18} />{busy ? 'Se conectează…' : 'Apel video'}</Button>}
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+        {context?.can_accept && <Button size="sm" disabled={busy} onClick={() => act('accept')}><Check size={16} />Confirmă</Button>}
+        {context?.can_start_early && <Button size="sm" variant="outline" disabled={busy} onClick={() => act('start', true)}><Play size={16} />Începe mai devreme</Button>}
+        {context?.can_start && <Button size="sm" variant="outline" disabled={busy} onClick={() => act('start')}><Play size={16} />Începe</Button>}
+        {role === 'patient' && context?.status === 'rescheduled' && context.proposed_scheduled_at && <Button size="sm" disabled={busy} onClick={() => act('accept-proposed-time')}><Clock3 size={16} />Acceptă {dateTime(context.proposed_scheduled_at)}</Button>}
+        <Button size="sm" variant={canCall ? 'default' : 'outline'} disabled={busy || !canCall} title={callReason || 'Sună participantul consultației'} aria-describedby={!canCall ? `call-reason-${requestId}` : undefined} onClick={() => act('video/invite')}><Video size={16} /><span className="hidden sm:inline">{busy ? 'Se conectează…' : 'Apel video'}</span><span className="sm:hidden">{busy ? '…' : 'Apel'}</span></Button>
       </div>
     </div>
+    {!canCall && context && <p id={`call-reason-${requestId}`} className="sr-only mt-1.5 pl-[42px] text-xs text-slate-500 sm:not-sr-only sm:block">{callReason}</p>}
     {showCallStatus && <OutgoingVideoCall requestId={requestId} />}
     {notice && <p role="status" className="mt-2 text-xs text-blue-700">{notice}</p>}
     {error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}

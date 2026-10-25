@@ -10,6 +10,7 @@ use App\Models\DoctorInvestigationRequirement;
 use App\Models\DoctorProfile;
 use App\Models\DoctorProfileView;
 use App\Models\DoctorVacation;
+use App\Models\InstitutionEarning;
 use App\Models\InvestigationType;
 use App\Models\PlatformSetting;
 use App\Models\Specialty;
@@ -18,6 +19,7 @@ use App\Models\WithdrawalRequest;
 use App\Notifications\AppEventNotification;
 use App\Rules\ValidPhoneNumber;
 use App\Services\DoctorPerformance;
+use App\Services\InstitutionLedger;
 use App\Services\PlatformConfig;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -322,7 +324,7 @@ class DoctorOperationsController extends Controller
 
     public function stats(Request $request): JsonResponse
     {
-        $doctor = $request->user()->loadMissing(['roles', 'doctorProfile']);
+        $doctor = $request->user()->loadMissing(['roles', 'doctorProfile.medicalInstitution']);
         abort_unless($doctor->hasRole('doctor') || $doctor->hasRole('admin'), 403, 'Ai nevoie de rol medic.');
 
         $now = CarbonImmutable::now();
@@ -340,14 +342,11 @@ class DoctorOperationsController extends Controller
             ->sum('price');
 
         $withdrawals = WithdrawalRequest::query()
+            ->with('institution')
             ->where('user_id', $doctor->id)
             ->latest()
             ->get();
 
-        $withdrawnMinor = $withdrawals
-            ->where('status', 'approved')
-            ->sum(fn (WithdrawalRequest $withdrawal) => $withdrawal->approved_amount_minor ?? $withdrawal->amount_minor);
-        $totalRevenueMinor = $consultations->sum('price') * 100;
         $profileViews = DoctorProfileView::where('doctor_id', $doctor->id)->count();
 
         $monthlyRevenue = collect(range(5, 0))
@@ -388,8 +387,9 @@ class DoctorOperationsController extends Controller
                 'rating' => (float) ($doctor->doctorProfile?->rating ?? 0),
                 'reviews_count' => (int) ($doctor->doctorProfile?->reviews_count ?? 0),
                 'profile_views' => $profileViews,
-                'available_balance' => max(0, ($totalRevenueMinor - $withdrawnMinor) / 100),
+                'available_balance' => $this->availableBalanceMinor($doctor->id) / 100,
             ],
+            'institution' => $this->institutionSummary($doctor),
             'revenue' => $monthlyRevenue,
             'consultations' => $weeklyConsultations,
             'withdrawals' => $withdrawals->map(fn (WithdrawalRequest $withdrawal) => [
@@ -402,14 +402,57 @@ class DoctorOperationsController extends Controller
                 'payout_sent_at' => $withdrawal->payout_sent_at,
                 'payout_method' => $withdrawal->payout_method,
                 'payout_reference' => $withdrawal->payout_reference,
+                'payer' => $withdrawal->payer,
+                'institution' => $withdrawal->institution?->name,
             ])->values(),
         ]);
     }
 
     public function storeWithdrawal(Request $request): JsonResponse
     {
-        $doctor = $request->user()->loadMissing('roles');
+        $doctor = $request->user()->loadMissing(['roles', 'doctorProfile.medicalInstitution']);
         abort_unless($doctor->hasRole('doctor') || $doctor->hasRole('admin'), 403, 'Ai nevoie de rol medic.');
+        $institution = $doctor->doctorProfile?->medicalInstitution;
+
+        $validated = $request->validate([
+            'amount' => ['required', 'numeric', 'min:1', 'max:1000000'],
+            'source' => ['nullable', Rule::in([InstitutionLedger::PAYER_PLATFORM, InstitutionLedger::PAYER_INSTITUTION])],
+        ]);
+        $source = $validated['source'] ?? ($institution ? InstitutionLedger::PAYER_INSTITUTION : InstitutionLedger::PAYER_PLATFORM);
+        $amountMinor = (int) round(((float) $validated['amount']) * 100);
+
+        // Medicul afiliat cere partea lui de la instituție, care decide singură
+        // când și cum plătește; regulile de calendar ale platformei nu se aplică.
+        if ($source === InstitutionLedger::PAYER_INSTITUTION) {
+            abort_unless($institution, 422, 'Nu faci parte dintr-o instituție medicală.');
+            $ledger = app(InstitutionLedger::class);
+            $availableMinor = $ledger->doctorBalanceMinor($institution->id, $doctor->id) - $ledger->doctorPendingMinor($institution->id, $doctor->id);
+            abort_if($amountMinor > $availableMinor, 422, 'Suma solicitată depășește suma disponibilă la instituție.');
+
+            $withdrawal = WithdrawalRequest::create([
+                'user_id' => $doctor->id,
+                'medical_institution_id' => $institution->id,
+                'payer' => InstitutionLedger::PAYER_INSTITUTION,
+                'amount_minor' => $amountMinor,
+                'currency' => 'MDL',
+                'iban' => '',
+                'payout_period' => now()->format('Y-m'),
+                'status' => 'pending',
+            ]);
+
+            Notification::send($institution->managers()->get(), new AppEventNotification(
+                'Cerere de plată de la medic',
+                $doctor->name.' a solicitat '.number_format($amountMinor / 100, 2).' MDL.',
+                '/institution/payouts',
+                'warning',
+            ));
+
+            return response()->json([
+                'message' => 'Cererea a fost trimisă către '.$institution->name.'.',
+                'withdrawal' => $withdrawal,
+            ], 201);
+        }
+
         $config = app(PlatformConfig::class);
         $day = (int) now()->format('j');
         abort_if(
@@ -417,11 +460,7 @@ class DoctorOperationsController extends Controller
             422,
             'Cererile de retragere pot fi depuse doar între zilele 1 și 10 ale lunii.'
         );
-
-        $validated = $request->validate([
-            'amount' => ['required', 'numeric', 'min:500', 'max:1000000'],
-        ]);
-        $amountMinor = (int) round(((float) $validated['amount']) * 100);
+        abort_if($amountMinor < 50000, 422, 'Suma minimă pentru extragere este 500 MDL.');
         $availableMinor = $this->availableBalanceMinor($doctor->id);
 
         abort_if($amountMinor > $availableMinor, 422, 'Suma solicitată depășește balanța disponibilă.');
@@ -447,6 +486,27 @@ class DoctorOperationsController extends Controller
             'message' => 'Cererea de extragere a fost trimisă.',
             'withdrawal' => $withdrawal,
         ], 201);
+    }
+
+    /**
+     * @return array{id: int, name: string, doctor_share_percent: float, balance: float, pending: float, earned_total: float}|null
+     */
+    private function institutionSummary(User $doctor): ?array
+    {
+        $institution = $doctor->doctorProfile?->medicalInstitution;
+        if (! $institution) {
+            return null;
+        }
+        $ledger = app(InstitutionLedger::class);
+
+        return [
+            'id' => $institution->id,
+            'name' => $institution->name,
+            'doctor_share_percent' => (float) $doctor->doctorProfile->effectiveInstitutionSharePercent(),
+            'balance' => $ledger->doctorBalanceMinor($institution->id, $doctor->id) / 100,
+            'pending' => $ledger->doctorPendingMinor($institution->id, $doctor->id) / 100,
+            'earned_total' => (int) InstitutionEarning::where('medical_institution_id', $institution->id)->where('doctor_id', $doctor->id)->sum('doctor_amount_minor') / 100,
+        ];
     }
 
     public function storeVacation(Request $request): JsonResponse
@@ -530,18 +590,7 @@ class DoctorOperationsController extends Controller
 
     private function availableBalanceMinor(int $doctorId): int
     {
-        $consultationRevenueMinor = (int) (Consultation::query()
-            ->where('doctor_id', $doctorId)
-            ->where('status', 'completed')
-            ->sum('price') * 100);
-
-        $processedWithdrawalsMinor = (int) WithdrawalRequest::query()
-            ->where('user_id', $doctorId)
-            ->where('status', 'approved')
-            ->selectRaw('COALESCE(SUM(COALESCE(approved_amount_minor, amount_minor)), 0) as total')
-            ->value('total');
-
-        return max(0, $consultationRevenueMinor - $processedWithdrawalsMinor);
+        return app(InstitutionLedger::class)->platformDoctorBalanceMinor($doctorId);
     }
 
     private function notifyAdmins(string $title, string $body, string $url, bool $sendEmail, string $level = 'info'): void

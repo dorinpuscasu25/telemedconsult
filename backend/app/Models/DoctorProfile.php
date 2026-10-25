@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['clinic_logo_path', 'clinic_logo_mime', 'signature_path', 'signature_mime', 'clinic_name', 'clinic_details', 'user_id', 'higo_doctor_id', 'specialty_id', 'license_number', 'bio', 'experience_years', 'consultation_price', 'video_price', 'video_duration_minutes', 'google_meet_account', 'platforms', 'service_catalog', 'required_investigations', 'affiliate_code', 'rating', 'reviews_count', 'is_available', 'is_approved', 'accepts_points'])]
+#[Fillable(['clinic_logo_path', 'clinic_logo_mime', 'signature_path', 'signature_mime', 'clinic_name', 'clinic_details', 'user_id', 'higo_doctor_id', 'specialty_id', 'license_number', 'bio', 'experience_years', 'consultation_price', 'video_price', 'video_duration_minutes', 'google_meet_account', 'platforms', 'service_catalog', 'required_investigations', 'affiliate_code', 'rating', 'reviews_count', 'is_available', 'is_approved', 'accepts_points', 'medical_institution_id', 'institution_share_percent', 'institution_joined_at'])]
 class DoctorProfile extends Model
 {
     protected static function booted(): void
@@ -45,6 +45,21 @@ class DoctorProfile extends Model
         return $this->hasMany(DoctorInvestigationRequirement::class, 'doctor_id', 'user_id');
     }
 
+    public function medicalInstitution(): BelongsTo
+    {
+        return $this->belongsTo(MedicalInstitution::class);
+    }
+
+    /** Procentul medicului din suma rămasă după comisionul platformei. */
+    public function effectiveInstitutionSharePercent(): ?float
+    {
+        if (! $this->medical_institution_id) {
+            return null;
+        }
+
+        return (float) ($this->institution_share_percent ?? $this->medicalInstitution?->doctor_share_percent ?? 0);
+    }
+
     protected function casts(): array
     {
         return [
@@ -55,6 +70,8 @@ class DoctorProfile extends Model
             'is_available' => 'boolean',
             'is_approved' => 'boolean',
             'accepts_points' => 'boolean',
+            'institution_share_percent' => 'float',
+            'institution_joined_at' => 'datetime',
             'rating' => 'decimal:1',
         ];
     }

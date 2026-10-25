@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { CheckCircle2, Copy, CreditCard, Download, Gift, LockKeyhole, Plus, Trash2, User, UsersRound, WalletCards } from 'lucide-react';
+import { CheckCircle2, Copy, CreditCard, Download, Gift, LockKeyhole, Plus, Stethoscope, Trash2, User, UsersRound, WalletCards } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import {
@@ -25,6 +26,9 @@ import { dateOnly, money } from '../../lib/format';
 import { PatientMedicalRecord } from '../../components/PatientMedicalRecord';
 import { patientAge } from '../../lib/medical-record';
 import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
+import { useDialogs } from '../../components/app/DialogProvider';
+import { PageHeader } from '../../components/app/PageHeader';
+import { ToneBadge } from '../../components/app/StatusBadge';
 
 type PatientProfile = {
   id: number;
@@ -132,6 +136,7 @@ const emptyPatient = {
 };
 
 export function ProfilePage() {
+  const dialogs = useDialogs();
   const navigate = useNavigate();
   const { isEnabled } = useFeatureFlags();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -312,7 +317,7 @@ export function ProfilePage() {
   };
 
   const deleteProfile = async (profile: PatientProfile) => {
-    if (!window.confirm('Ștergi profilul de pacient?')) return;
+    if (!(await dialogs.confirm({ title: `Ștergi profilul ${displayName(profile)}?`, description: 'Profilul dispare din listă. Consultațiile deja făcute rămân în istoric.', confirmLabel: 'Șterge profilul', tone: 'danger' }))) return;
     try {
       await apiRequest(`/patient/profiles/${profile.id}`, { method: 'DELETE' });
       notify('Profil șters.');
@@ -394,11 +399,8 @@ export function ProfilePage() {
   }[activeTab];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-950">{pageHeading.title}</h1>
-        <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">{pageHeading.description}</p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader title={pageHeading.title} description={pageHeading.description} />
 
       {(message || error) && (
         <div className={`rounded-xl border px-4 py-3 text-sm ${error ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
@@ -462,10 +464,17 @@ export function ProfilePage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {profiles.length === 0 && (
+              {profiles.length === 0 && availableSlots > 0 && (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm text-slate-600">
+                  <p className="font-semibold text-slate-950">Niciun pacient adăugat</p>
+                  <p className="mt-1">Adaugă persoana pentru care soliciți consultații: tu, un copil sau un părinte.</p>
+                  <Button className="mt-3" onClick={() => setIsPatientOpen(true)}><Plus className="h-4 w-4" />Adaugă pacient</Button>
+                </div>
+              )}
+              {profiles.length === 0 && availableSlots <= 0 && (
                 <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-5 text-sm text-amber-900">
-                  <p className="font-semibold text-slate-950">Nu poți adăuga pacient fără pachet activ.</p>
-                  <p className="mt-1">Cumpără mai întâi un pachet. Fiecare pachet îți permite să adaugi unul sau mai mulți pacienți.</p>
+                  <p className="font-semibold text-slate-950">Ai nevoie de un pachet</p>
+                  <p className="mt-1">Pachetul îți dă locuri pentru profilurile de pacient. Alege unul, apoi adaugă pacientul.</p>
                   <Button variant="outline" className="mt-3 rounded-xl border-amber-300 bg-white" onClick={() => changeTab('cards')}>
                     Vezi pachetele
                   </Button>
@@ -483,16 +492,16 @@ export function ProfilePage() {
               {profiles.map((profile) => (
                 <button
                   key={profile.id}
-                  onClick={() => { if (selectedProfile?.id === profile.id) return; if (!medicalDirty || window.confirm('Ai modificări nesalvate în fișa curentă. Renunți la ele?')) { setMedicalDirty(false); setSelectedProfile(profile); } }}
+                  onClick={async () => { if (selectedProfile?.id === profile.id) return; if (!medicalDirty || await dialogs.confirm({ title: 'Renunți la modificări?', description: 'Ai modificări nesalvate în fișa curentă.', confirmLabel: 'Renunță la modificări', cancelLabel: 'Rămân aici', tone: 'danger' })) { setMedicalDirty(false); setSelectedProfile(profile); } }}
                   className={`w-full rounded-xl border p-4 text-left transition ${selectedProfile?.id === profile.id ? 'border-primary bg-primary/5' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
                   <div className="flex items-start gap-3">
                     <div className="grid h-10 w-10 place-items-center rounded-lg bg-slate-100 text-slate-700">
                       <User className="h-5 w-5" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-slate-950">{displayName(profile)}</p>
+                      <p className="flex flex-wrap items-center gap-2 font-semibold text-slate-950">{displayName(profile)}{profile.can_request_consultation ? <ToneBadge tone="success">Activ</ToneBadge> : <ToneBadge tone="warning">Necesită date</ToneBadge>}</p>
                       <p className="text-sm text-slate-500">{profile.region || 'Regiune neselectată'} • {profile.locality || 'Localitate neselectată'}</p>
-                      <p className="mt-1 text-xs text-slate-400">Valabil până: {profile.active_until ? new Date(profile.active_until).toLocaleDateString() : 'nelimitat'}</p>
+                      <p className="mt-1 text-xs text-slate-400">Activ până la {profile.active_until ? new Date(profile.active_until).toLocaleDateString('ro-RO') : 'nelimitat'}</p>
                       {profile.request_unavailable_reason && (
                         <p className="mt-1 text-xs font-medium text-amber-700">{profile.request_unavailable_reason}</p>
                       )}
@@ -514,11 +523,14 @@ export function ProfilePage() {
                   <CardDescription>Fișă medicală, analize și istoricul consultațiilor.</CardDescription>
                 </div>
                 {selectedProfile && (
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="icon" className="rounded-xl" onClick={() => exportProfile(selectedProfile)}>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedProfile.can_request_consultation && isEnabled('doctors') && (
+                      <Button asChild size="sm"><Link to={`/patient/doctors?patient_profile=${selectedProfile.id}`}><Stethoscope className="h-4 w-4" />Programează</Link></Button>
+                    )}
+                    <Button variant="outline" size="icon-sm" aria-label="Exportă datele pacientului" title="Exportă datele pacientului" onClick={() => exportProfile(selectedProfile)}>
                       <Download className="h-4 w-4" />
                     </Button>
-                    <Button variant="outline" size="icon" className="rounded-xl text-red-600" onClick={() => deleteProfile(selectedProfile)}>
+                    <Button variant="outline" size="icon-sm" className="text-red-600" aria-label="Șterge profilul" title="Șterge profilul" onClick={() => deleteProfile(selectedProfile)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>

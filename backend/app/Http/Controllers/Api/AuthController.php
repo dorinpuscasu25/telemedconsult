@@ -507,9 +507,13 @@ class AuthController extends Controller
             'activeRole',
             'patientProfile',
             'doctorProfile.specialty',
+            'doctorProfile.medicalInstitution',
             'operatorProfile',
             'coordinatorProfile',
+            'medicalInstitutions',
         ]);
+        $managedInstitution = $user->medicalInstitutions->first();
+        $doctorInstitution = $user->doctorProfile?->medicalInstitution;
 
         return [
             'id' => (string) $user->id,
@@ -526,7 +530,16 @@ class AuthController extends Controller
                 'doctor' => $user->doctorProfile,
                 'operator' => $user->operatorProfile,
                 'coordinator' => $user->coordinatorProfile,
+                'institution' => $managedInstitution ? [
+                    'id' => $managedInstitution->id,
+                    'name' => $managedInstitution->name,
+                    'status' => $managedInstitution->status,
+                ] : null,
             ],
+            'doctor_institution' => $doctorInstitution ? [
+                'id' => $doctorInstitution->id,
+                'name' => $doctorInstitution->name,
+            ] : null,
         ];
     }
 }

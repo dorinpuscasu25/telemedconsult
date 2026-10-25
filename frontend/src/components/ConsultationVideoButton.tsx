@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Video } from 'lucide-react';
 import { apiRequest } from '../lib/api';
-import { Button } from './ui/button';
+import { Button, type ButtonProps } from './ui/button';
 
 type VideoStatus = { available: boolean; configured: boolean; status: string };
 
-export function ConsultationVideoButton({ requestId }: { requestId: string | number }) {
+export function ConsultationVideoButton({ requestId, size = 'sm', variant = 'default', className, label = 'Intră în apelul video' }: { requestId: string | number; size?: ButtonProps['size']; variant?: ButtonProps['variant']; className?: string; label?: string }) {
   const [status, setStatus] = useState<VideoStatus | null>(null);
   const location = useLocation();
   useEffect(() => {
@@ -21,8 +21,8 @@ export function ConsultationVideoButton({ requestId }: { requestId: string | num
     const interval = window.setInterval(refresh, 5000);
     return () => { cancelled = true; window.clearInterval(interval); };
   }, [requestId]);
-  if (!status?.available) return null;
-  return <Button asChild size="lg" className="rounded-xl bg-gradient-to-r from-primary to-purple-600 text-white shadow-md shadow-primary/20 hover:brightness-110">
-    <Link to={`/consultations/${requestId}/video`} state={{ returnTo: location.pathname + location.search }}><Video className="mr-2 h-5 w-5" /> Intră în consultația video</Link>
+  if (!status || status.status !== 'accepted') return null;
+  return <Button asChild size={size} variant={variant} className={className}>
+    <Link to={`/consultations/${requestId}/video`} state={{ returnTo: location.pathname + location.search }}><Video className="h-4 w-4" />{label}</Link>
   </Button>;
 }

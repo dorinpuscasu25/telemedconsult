@@ -107,10 +107,10 @@ export function VideoConsultationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state?.answerCallId, status?.available, status?.configured]);
 
-  return <div className="mx-auto w-full min-w-0 max-w-[1600px] space-y-5">
+  return <div className="w-full min-w-0 space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-4">
       <div><Link to={returnTo} className="mb-3 inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-primary"><ArrowLeft size={16} /> Înapoi la consultație</Link>
-        <h1 className="flex items-center gap-3 text-2xl font-bold text-slate-900 sm:text-3xl"><span className="rounded-2xl bg-gradient-to-br from-primary to-purple-600 p-3 text-white"><Video size={24} /></span> Consultație video</h1>
+        <h1 className="flex items-center gap-3 text-2xl font-bold tracking-tight text-slate-950"><span className="grid h-10 w-10 place-items-center rounded-xl bg-primary text-white"><Video size={20} /></span>Consultație video</h1>
         <p className="mt-2 text-sm text-slate-500">{connection ? 'Controlează camera și microfonul din bara de jos.' : 'Verifică dispozitivele, apoi intră în consultație.'}</p>
       </div>
       <span className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 px-4 py-2 text-sm text-primary"><ShieldCheck size={16} /> Acces doar pentru participanți</span>

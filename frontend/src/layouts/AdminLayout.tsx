@@ -21,6 +21,7 @@ import {
   Activity,
   Menu } from
 'lucide-react';
+import { Building2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Button } from '../components/ui/button';
 import { Sheet, SheetContent } from '../components/ui/sheet';
@@ -33,7 +34,8 @@ const ROLE_LABELS: Record<RoleName, string> = {
   patient: 'Utilizator',
   doctor: 'Medic',
   operator: 'Operator',
-  coordinator: 'Coordonator'
+  coordinator: 'Coordonator',
+  institution: 'Instituție medicală'
 };
 
 const roleHome = (role: RoleName) => role === 'admin' ? '/admin' : `/${role}`;
@@ -88,6 +90,11 @@ export function AdminLayout() {
     icon: Stethoscope,
     label: 'Specialități',
     path: '/admin/specialties'
+  },
+  {
+    icon: Building2,
+    label: 'Instituții medicale',
+    path: '/admin/institutions'
   },
   {
     icon: Receipt,

@@ -1,364 +1,246 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Activity, ArrowRight, CalendarClock, Gift, MessageSquare, MessageSquareWarning, Stethoscope, User, Users, Wallet } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
+import { Activity, ArrowRight, CalendarClock, ChevronRight, Clock, Gift, Home, MessageSquare, Plus, Stethoscope, UserPlus, Users, Video, Wallet } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import { Card, CardContent } from '../../components/ui/card';
-import { Badge } from '../../components/ui/badge';
+import { ListSkeleton, Skeleton } from '../../components/ui/skeleton';
+import { cn } from '../../components/ui/utils';
+import { PageHeader, SectionHeader } from '../../components/app/PageHeader';
+import { StatusBadge } from '../../components/app/StatusBadge';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 import { apiRequest } from '../../lib/api';
-import { dateTime } from '../../lib/format';
+import { dateTime, money } from '../../lib/format';
+import { consultationTitle, type PatientConsultation } from '../../lib/patient-consultations';
 
 interface WalletData {
   points_wallet?: { balance: number; currency: string };
-  wallet: {
-    balance: number;
-    currency: string;
-  };
-}
-
-interface ConsultationRequest {
-  id: string;
-  type: 'doctor' | 'operator';
-  status: string;
-  symptoms: string;
-  scheduled_at?: string | null;
-  proposed_scheduled_at?: string | null;
-  doctor_started_at?: string | null;
-  created_at: string;
-  doctor?: { name: string } | null;
-  operator?: { name: string } | null;
-  specialty?: string | null;
+  wallet: { balance: number; currency: string };
 }
 
 interface PatientProfile {
   id: number;
+  first_name?: string | null;
   can_request_consultation?: boolean;
 }
 
-interface PatientProfileResponse {
-  patient_profiles: PatientProfile[];
-}
+const ACTIVE = ['new', 'accepted', 'rescheduled'];
+const time = (value?: string | null) => (value ? new Date(value).getTime() : 0);
 
-interface CatalogResponse<T> {
-  data: T[];
-}
-
-const statusLabels: Record<string, string> = {
-  new: 'În așteptarea confirmării',
-  accepted: 'Confirmată',
-  rescheduled: 'Reprogramare propusă',
-  completed: 'Finalizată',
-  cancelled: 'Anulată'
+type Hero = {
+  tone: 'blue' | 'amber' | 'orange' | 'green' | 'slate';
+  icon: React.ElementType;
+  eyebrow: string;
+  title: string;
+  description: string;
+  request?: PatientConsultation;
 };
 
-const activeStatuses = ['new', 'accepted', 'rescheduled'];
-
+/**
+ * Prima pagină a pacientului spune un singur lucru clar: ce urmează. Cardul de
+ * sus se schimbă după situație (fără pacient activ, cerere în așteptare, oră
+ * nouă propusă, consultație azi), iar dedesubt stau cele două tipuri de servicii.
+ */
 export function PatientHome() {
   const { user } = useAuth();
   const { isEnabled } = useFeatureFlags();
-  const navigate = useNavigate();
-  const [bonusBalance, setBonusBalance] = useState(0);
-  const [wallet, setWallet] = useState<WalletData['wallet'] | null>(null);
-  const [requests, setRequests] = useState<ConsultationRequest[]>([]);
-  const [patientProfiles, setPatientProfiles] = useState<PatientProfile[]>([]);
-  const [doctorsCount, setDoctorsCount] = useState(0);
-  const [operatorsCount, setOperatorsCount] = useState(0);
+  const [wallet, setWallet] = useState<WalletData | null>(null);
+  const [requests, setRequests] = useState<PatientConsultation[]>([]);
+  const [profiles, setProfiles] = useState<PatientProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [accepting, setAccepting] = useState(false);
 
-  useEffect(() => {
-    Promise.all([
-      apiRequest<WalletData>('/wallet'),
-      apiRequest<PatientProfileResponse>('/patient/profile'),
-      apiRequest<CatalogResponse<ConsultationRequest>>('/requests'),
-      apiRequest<CatalogResponse<unknown>>('/catalog/doctors', { auth: false }),
-      apiRequest<CatalogResponse<unknown>>('/catalog/operators', { auth: false })
-    ])
-      .then(([walletResponse, profileResponse, requestsResponse, doctorsResponse, operatorsResponse]) => {
-        setWallet(walletResponse.wallet);
-        setBonusBalance(walletResponse.points_wallet?.balance || 0);
-        setPatientProfiles(profileResponse.patient_profiles ?? []);
-        setRequests(requestsResponse.data);
-        setDoctorsCount(doctorsResponse.data.length);
-        setOperatorsCount(operatorsResponse.data.length);
-      })
-      .finally(() => setIsLoading(false));
-  }, []);
-
-  const activeRequests = useMemo(
-    () => requests.filter((request) => activeStatuses.includes(request.status)),
-    [requests]
-  );
-  const latestRequests = requests.slice(0, 4);
-  const nextRequest = activeRequests[0];
-  const balance = wallet?.balance ?? 0;
-  const currency = wallet?.currency ?? 'MDL';
-  const hasRequestablePatient = patientProfiles.some((profile) => profile.can_request_consultation);
   const doctorsEnabled = isEnabled('doctors');
   const operatorsEnabled = isEnabled('operators');
   const paymentsEnabled = isEnabled('payments');
   const affiliateEnabled = isEnabled('affiliate_program');
-  const medicalStartPath = hasRequestablePatient ? '/patient/doctors' : '/patient/profile';
-  const operatorStartPath = hasRequestablePatient ? '/patient/operators' : '/patient/profile';
-  const assistanceStartPath = doctorsEnabled ? medicalStartPath : operatorsEnabled ? operatorStartPath : '/patient/profile';
 
-  const acceptProposal = async (requestId: string) => {
-    await apiRequest(`/requests/${requestId}/accept-proposed-time`, { method: 'POST' });
-    const response = await apiRequest<CatalogResponse<ConsultationRequest>>('/requests');
-    setRequests(response.data);
+  const load = useCallback(async () => {
+    const [walletResponse, profileResponse, requestsResponse] = await Promise.allSettled([
+      apiRequest<WalletData>('/wallet'),
+      apiRequest<{ patient_profiles: PatientProfile[] }>('/patient/profile'),
+      apiRequest<{ data: PatientConsultation[] }>('/requests')
+    ]);
+    if (walletResponse.status === 'fulfilled') setWallet(walletResponse.value);
+    if (profileResponse.status === 'fulfilled') setProfiles(profileResponse.value.patient_profiles ?? []);
+    if (requestsResponse.status === 'fulfilled') setRequests(requestsResponse.value.data ?? []);
+    setIsLoading(false);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const active = useMemo(() => requests.filter((request) => ACTIVE.includes(request.status)), [requests]);
+  const hasRequestablePatient = profiles.some((profile) => profile.can_request_consultation);
+
+  const hero: Hero = useMemo(() => {
+    const rescheduled = active.find((request) => request.status === 'rescheduled');
+    const live = active.find((request) => request.status === 'accepted' && request.doctor_started_at);
+    const upcoming = active
+      .filter((request) => request.status === 'accepted' && !request.doctor_started_at)
+      .sort((a, b) => (time(a.scheduled_at) || Number.MAX_SAFE_INTEGER) - (time(b.scheduled_at) || Number.MAX_SAFE_INTEGER))[0];
+    const waiting = active.find((request) => request.status === 'new');
+
+    if (live) return { tone: 'green', icon: Video, eyebrow: 'Acum', title: 'Consultația a început', description: `${consultationTitle(live)}${live.doctor?.name ? ` cu ${live.doctor.name}` : ''}. Intră în apel sau scrie-i medicului.`, request: live };
+    if (rescheduled) return { tone: 'orange', icon: CalendarClock, eyebrow: 'Ai de răspuns', title: 'Ți s-a propus o oră nouă', description: `${rescheduled.doctor?.name ?? 'Medicul'} propune ${dateTime(rescheduled.proposed_scheduled_at)} pentru ${rescheduled.patient_profile?.name ?? 'consultație'}.`, request: rescheduled };
+    if (upcoming) return { tone: 'blue', icon: CalendarClock, eyebrow: 'Următoarea consultație', title: upcoming.scheduled_at ? dateTime(upcoming.scheduled_at) : 'Confirmată', description: `${consultationTitle(upcoming)}${upcoming.doctor?.name ? ` cu ${upcoming.doctor.name}` : ''}${upcoming.patient_profile?.name ? `, pentru ${upcoming.patient_profile.name}` : ''}. Medicul deschide consultația la ora stabilită.`, request: upcoming };
+    if (waiting) return { tone: 'amber', icon: Clock, eyebrow: 'În așteptare', title: 'Așteptăm confirmarea', description: `${waiting.type === 'operator' ? 'Un operator' : waiting.doctor?.name ?? 'Medicul'} trebuie să confirme cererea${waiting.scheduled_at ? ` pentru ${dateTime(waiting.scheduled_at)}` : ''}. Te anunțăm imediat.`, request: waiting };
+    if (!hasRequestablePatient) return { tone: 'slate', icon: UserPlus, eyebrow: 'Primul pas', title: 'Adaugă pacientul', description: 'Consultațiile se fac pentru un profil de pacient: tu sau un membru al familiei. Adaugă-l o singură dată și îl folosești la fiecare cerere.' };
+    return { tone: 'slate', icon: Stethoscope, eyebrow: 'Totul e în regulă', title: 'Nicio consultație programată', description: 'Când ai nevoie, alege un medic pentru o consultație online sau cere o examinare la domiciliu.' };
+  }, [active, hasRequestablePatient]);
+
+  const acceptProposal = async (request: PatientConsultation) => {
+    setAccepting(true);
+    try {
+      await apiRequest(`/requests/${request.id}/accept-proposed-time`, { method: 'POST' });
+      toast.success('Ora propusă a fost acceptată.');
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Nu am putut accepta ora propusă.');
+    } finally {
+      setAccepting(false);
+    }
+  };
+
+  const firstName = user?.name?.split(' ')[0] ?? '';
+  const heroTones: Record<Hero['tone'], string> = {
+    blue: 'border-blue-200 bg-gradient-to-br from-blue-50 to-white',
+    amber: 'border-amber-200 bg-gradient-to-br from-amber-50 to-white',
+    orange: 'border-orange-200 bg-gradient-to-br from-orange-50 to-white',
+    green: 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-white',
+    slate: 'border-slate-200 bg-white'
+  };
+  const heroIconTones: Record<Hero['tone'], string> = {
+    blue: 'bg-blue-600 text-white',
+    amber: 'bg-amber-500 text-white',
+    orange: 'bg-orange-500 text-white',
+    green: 'bg-emerald-600 text-white',
+    slate: 'bg-primary/10 text-primary'
   };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <section className="grid gap-4 lg:grid-cols-[1.4fr_0.8fr]">
-        <div className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-primary">Panou pacient</p>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
-                Salut, {user?.name || 'pacient'}.
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                Alege rapid consultația potrivită, verifică solicitările active și gestionează portofelul din același loc.
-              </p>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row md:flex-col lg:flex-row">
-              {doctorsEnabled && <Button size="lg" className="h-11 rounded-xl px-4" onClick={() => navigate(medicalStartPath)}>
-                <Stethoscope className="mr-2 h-4 w-4" />
-                Medic
-              </Button>}
-              {operatorsEnabled && <Button size="lg" variant="outline" className="h-11 rounded-xl px-4 bg-white" onClick={() => navigate(operatorStartPath)}>
-                <Users className="mr-2 h-4 w-4" />
-                Operator
-              </Button>}
-            </div>
-          </div>
+    <div className="space-y-6">
+      <PageHeader title={`Bună, ${firstName}`} documentTitle="Acasă" description="Consultațiile, mesajele și pacienții tăi — într-un singur loc." />
 
-          <div className={`mt-6 grid gap-3 ${paymentsEnabled ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
-            {paymentsEnabled && <MetricCard
-              label="Portofel de bază"
-              value={isLoading ? '...' : `${balance.toFixed(2)} ${currency}`}
-              detail={`Bonusuri separate: ${bonusBalance.toFixed(2)} MDL`}
-              icon={Wallet}
-              tone="bg-blue-50 text-blue-700"
-            />}
-            <MetricCard
-              label="Solicitări active"
-              value={isLoading ? '...' : String(activeRequests.length)}
-              detail={activeRequests.length === 1 ? 'Caz în desfășurare' : 'Cazuri în desfășurare'}
-              icon={Activity}
-              tone="bg-emerald-50 text-emerald-700"
-            />
-            <MetricCard
-              label="Specialiști disponibili"
-              value={isLoading ? '...' : String(doctorsCount + operatorsCount)}
-              detail={`${doctorsCount} medici, ${operatorsCount} operatori`}
-              icon={Users}
-              tone="bg-amber-50 text-amber-700"
-            />
-          </div>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="space-y-6">
+          {/* Ce urmează */}
+          {isLoading ? <Skeleton className="h-48 w-full rounded-2xl" /> : (
+            <section className={cn('rounded-2xl border p-5 shadow-sm sm:p-6', heroTones[hero.tone])}>
+              <div className="flex items-start gap-4">
+                <span className={cn('grid h-12 w-12 shrink-0 place-items-center rounded-2xl', heroIconTones[hero.tone])}><hero.icon className="h-6 w-6" /></span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-slate-500">{hero.eyebrow}</p>
+                  <h2 className="mt-0.5 text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{hero.title}</h2>
+                  <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">{hero.description}</p>
+                </div>
+              </div>
+              <div className="mt-5 flex flex-wrap gap-2 sm:pl-16">
+                {hero.request?.status === 'rescheduled' && <Button onClick={() => { if (hero.request) void acceptProposal(hero.request); }} disabled={accepting}>{accepting ? 'Se confirmă…' : 'Acceptă ora propusă'}</Button>}
+                {hero.request?.status === 'accepted' && hero.request.doctor_started_at && <Button asChild><Link to={`/consultations/${hero.request.id}/video`}><Video className="h-4 w-4" />Intră în apel</Link></Button>}
+                {hero.request && <Button asChild variant="outline" className="bg-white"><Link to={`/patient/chat?request=${hero.request.id}`}><MessageSquare className="h-4 w-4" />Mesaje</Link></Button>}
+                {hero.request && <Button asChild variant="ghost"><Link to="/patient/consultations">Detalii<ArrowRight className="h-4 w-4" /></Link></Button>}
+                {!hero.request && !hasRequestablePatient && <Button asChild><Link to="/patient/profile"><UserPlus className="h-4 w-4" />Adaugă pacientul</Link></Button>}
+                {!hero.request && hasRequestablePatient && doctorsEnabled && <Button asChild><Link to="/patient/doctors"><Plus className="h-4 w-4" />Programează o consultație</Link></Button>}
+              </div>
+            </section>
+          )}
+
+          {/* Servicii */}
+          {(doctorsEnabled || operatorsEnabled) && (
+            <section className="grid gap-3 sm:grid-cols-2">
+              {doctorsEnabled && (
+                <ServiceCard
+                  to={hasRequestablePatient ? '/patient/doctors' : '/patient/profile'}
+                  icon={Stethoscope}
+                  title="Consultație cu un medic"
+                  description="Alege specialistul, descrie simptomele și programează ora. Video sau cu examinare acasă."
+                />
+              )}
+              {operatorsEnabled && (
+                <ServiceCard
+                  to={hasRequestablePatient ? '/patient/operators' : '/patient/profile'}
+                  icon={Home}
+                  title="Examinare la domiciliu"
+                  description="Un operator vine la pacient, face măsurătorile, iar rezultatele ajung la medic."
+                />
+              )}
+            </section>
+          )}
+
+          {/* În curs */}
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <SectionHeader title="Consultații în curs" actions={<Link to="/patient/consultations" className="text-sm font-semibold text-primary hover:underline">Toate</Link>} />
+            <div className="mt-4">
+              {isLoading ? <ListSkeleton rows={2} /> : active.length === 0 ? (
+                <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">Nu ai consultații în curs. Istoricul complet este în „Consultații”.</p>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {active.slice(0, 4).map((request) => (
+                    <li key={request.id}>
+                      <Link to={`/patient/chat?request=${request.id}`} className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-3 transition hover:bg-slate-50">
+                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">{request.type === 'operator' ? <Activity className="h-5 w-5" /> : <Stethoscope className="h-5 w-5" />}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex flex-wrap items-center gap-2">
+                            <span className="truncate font-semibold text-slate-900">{consultationTitle(request)}</span>
+                            <StatusBadge request={request} perspective="patient" />
+                          </span>
+                          <span className="block truncate text-sm text-slate-500">{[request.patient_profile?.name, request.doctor?.name, request.scheduled_at && dateTime(request.scheduled_at)].filter(Boolean).join(' · ')}</span>
+                        </span>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
         </div>
 
-        <Card className="border-slate-200/70 bg-slate-950 text-white shadow-sm">
-          <CardContent className="flex h-full flex-col justify-between p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-slate-300">Următorul pas</p>
-                <h2 className="mt-2 text-2xl font-bold tracking-tight">
-                  {nextRequest ? statusLabels[nextRequest.status] || nextRequest.status : hasRequestablePatient ? 'Solicită asistență' : 'Activează accesul'}
-                </h2>
+        <aside className="space-y-4">
+          {paymentsEnabled && (
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between">
+                <p className="flex items-center gap-2 text-sm font-medium text-slate-500"><Wallet className="h-4 w-4" />Portofel</p>
+                <Link to="/patient/wallet" className="text-sm font-semibold text-primary hover:underline">Detalii</Link>
               </div>
-              <CalendarClock className="h-6 w-6 text-slate-300" />
-            </div>
-            <p className="mt-4 text-sm leading-6 text-slate-300">
-              {nextRequest
-                ? `${nextRequest.type === 'operator' ? 'Examinare la domiciliu' : 'Consultație medicală'}: ${nextRequest.symptoms}`
-                : hasRequestablePatient
-                  ? doctorsEnabled && operatorsEnabled
-                    ? 'Nu ai nicio consultație activă. Poți porni direct cu un medic sau poți cere o examinare la domiciliu.'
-                    : doctorsEnabled
-                      ? 'Nu ai nicio consultație activă. Poți alege un medic disponibil.'
-                      : operatorsEnabled
-                        ? 'Nu ai nicio solicitare activă. Poți cere o examinare la domiciliu.'
-                        : 'Serviciile medicale noi sunt momentan indisponibile.'
-                  : 'Nu poți solicita medic sau operator încă. Cumpără un pachet în Pacienții mei, apoi adaugă primul profil de pacient.'}
-            </p>
-            <Button
-              className="mt-6 h-11 rounded-xl bg-white text-slate-950 hover:bg-slate-100"
-              onClick={() => navigate(nextRequest ? '/patient/chat' : assistanceStartPath)}
-            >
-              {nextRequest ? <MessageSquare className="mr-2 h-4 w-4" /> : <Stethoscope className="mr-2 h-4 w-4" />}
-              {nextRequest ? 'Deschide chat' : hasRequestablePatient ? doctorsEnabled ? 'Alege medic' : operatorsEnabled ? 'Alege operator' : 'Vezi pacienții' : 'Deschide Pacienții mei'}
-            </Button>
-          </CardContent>
-        </Card>
-      </section>
+              {isLoading ? <Skeleton className="mt-3 h-8 w-32" /> : <p className="tabular mt-2 text-3xl font-bold tracking-tight text-slate-950">{money(wallet?.wallet.balance)} <span className="text-base font-medium text-slate-500">{wallet?.wallet.currency ?? 'MDL'}</span></p>}
+              {(wallet?.points_wallet?.balance ?? 0) > 0 && <p className="mt-1 text-sm text-amber-700">+ {money(wallet?.points_wallet?.balance)} MDL bonusuri</p>}
+              <Button asChild variant="outline" className="mt-4 w-full"><Link to="/patient/wallet?topup=1"><Plus className="h-4 w-4" />Alimentează</Link></Button>
+            </section>
+          )}
 
-      <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-        <Card className="border-slate-200/70 bg-white shadow-sm">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-bold text-slate-950">Acțiuni rapide</h2>
-                <p className="text-sm text-slate-500">Cele mai folosite fluxuri pentru pacient.</p>
-              </div>
-              {paymentsEnabled && <Button variant="ghost" size="sm" className="rounded-lg" onClick={() => navigate('/patient/wallet')}>
-                Portofel
-                <ArrowRight className="ml-1 h-4 w-4" />
-              </Button>}
-            </div>
+          <Link to="/patient/profile" className="group flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-primary/30">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-600"><Users className="h-5 w-5" /></span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold text-slate-900">Pacienții mei</span>
+              <span className="block text-sm text-slate-500">{isLoading ? '…' : profiles.length === 0 ? 'Niciun pacient adăugat' : `${profiles.length} ${profiles.length === 1 ? 'profil' : 'profiluri'}${profiles[0]?.first_name ? `: ${profiles.slice(0, 3).map((profile) => profile.first_name).filter(Boolean).join(', ')}` : ''}`}</span>
+            </span>
+            <ChevronRight className="h-4 w-4 text-slate-400 transition group-hover:translate-x-0.5" />
+          </Link>
 
-            <div className="mt-5 grid gap-3">
-              <ActionRow
-                title="Pacienții mei"
-                description="Cumpără o cartelă și adaugă profilurile pentru care vei solicita servicii."
-                icon={User}
-                onClick={() => navigate('/patient/profile')}
-              />
-              {affiliateEnabled && <ActionRow
-                title="Program de afiliere"
-                description="Copiază linkul personal, invită pacienți și urmărește bonusurile din portofel."
-                icon={Gift}
-                onClick={() => navigate('/patient/profile?tab=referrals')}
-              />}
-              {doctorsEnabled && <ActionRow
-                title="Consultație online"
-                description="Alege medicul, specializarea și descrie simptomele."
-                icon={Stethoscope}
-                onClick={() => navigate(medicalStartPath)}
-              />}
-              {operatorsEnabled && <ActionRow
-                title="Examinare la domiciliu"
-                description="Trimite o cerere către operatorii disponibili."
-                icon={Users}
-                onClick={() => navigate(operatorStartPath)}
-              />}
-              <ActionRow
-                title="Chat medical"
-                description="Continuă conversațiile deschise cu medicul sau operatorul."
-                icon={MessageSquare}
-                onClick={() => navigate('/patient/chat')}
-              />
-              <ActionRow
-                title="Reclamații și recenzii"
-                description="Trimite feedback pentru consultațiile finalizate."
-                icon={MessageSquareWarning}
-                onClick={() => navigate('/patient/complaints')}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-slate-200/70 bg-white shadow-sm">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-bold text-slate-950">Ultimele solicitări</h2>
-                <p className="text-sm text-slate-500">Date citite direct din backend.</p>
-              </div>
-              <Button variant="outline" size="sm" className="rounded-lg bg-white" onClick={() => navigate('/patient/chat')}>
-                Vezi chat
-              </Button>
-            </div>
-
-            <div className="mt-5 divide-y divide-slate-100 rounded-xl border border-slate-100">
-              {latestRequests.length === 0 && (
-                <div className="p-5 text-sm text-slate-500">
-                  Nu există solicitări încă.
-                </div>
-              )}
-              {latestRequests.map((request) => (
-                <div key={request.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold text-slate-950">
-                        {request.type === 'operator' ? 'Examinare operator' : request.specialty || 'Consultație medic'}
-                      </p>
-                      <Badge variant="secondary" className="rounded-full">
-                        {statusLabels[request.status] || request.status}
-                      </Badge>
-                    </div>
-                    <p className="mt-1 line-clamp-1 text-sm text-slate-500">{request.symptoms}</p>
-                    {request.scheduled_at && <p className="mt-1 text-xs font-medium text-slate-600">{request.status === 'new' ? 'Ora solicitată' : 'Ora confirmată'}: {dateTime(request.scheduled_at)}</p>}
-                    {request.status === 'accepted' && request.type !== 'operator' && !request.doctor_started_at && <p className="mt-1 text-xs text-slate-500">Aștepți ca medicul să deschidă consultația la ora stabilită.</p>}
-                    {request.proposed_scheduled_at && (
-                      <p className="mt-1 text-xs font-medium text-amber-700">
-                        Propus: {dateTime(request.proposed_scheduled_at)}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
-                    <p className="text-xs text-slate-400">
-                      {new Date(request.created_at).toLocaleDateString()}
-                    </p>
-                    {request.status === 'rescheduled' && (
-                      <Button size="sm" className="h-8 rounded-lg" onClick={() => acceptProposal(request.id)}>
-                        Acceptă ora
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-    </div>
-  );
-}
-
-function MetricCard({
-  label,
-  value,
-  detail,
-  icon: Icon,
-  tone
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  icon: React.ElementType;
-  tone: string;
-}) {
-  return (
-    <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium text-slate-500">{label}</p>
-        <span className={`grid h-9 w-9 place-items-center rounded-lg ${tone}`}>
-          <Icon className="h-4 w-4" />
-        </span>
+          {affiliateEnabled && (
+            <Link to="/patient/profile?tab=referrals" className="group flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-primary/30">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-amber-50 text-amber-600"><Gift className="h-5 w-5" /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold text-slate-900">Invită și câștigă</span>
+                <span className="block text-sm text-slate-500">Primești bonus când persoanele invitate alimentează contul.</span>
+              </span>
+              <ChevronRight className="h-4 w-4 text-slate-400 transition group-hover:translate-x-0.5" />
+            </Link>
+          )}
+        </aside>
       </div>
-      <p className="mt-4 text-2xl font-bold tracking-tight text-slate-950">{value}</p>
-      <p className="mt-1 text-xs font-medium text-slate-500">{detail}</p>
     </div>
   );
 }
 
-function ActionRow({
-  title,
-  description,
-  icon: Icon,
-  onClick
-}: {
-  title: string;
-  description: string;
-  icon: React.ElementType;
-  onClick: () => void;
-}) {
+function ServiceCard({ to, icon: Icon, title, description }: { to: string; icon: React.ElementType; title: string; description: string }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-xl border border-slate-200/70 bg-white p-4 text-left transition hover:border-primary/30 hover:bg-slate-50"
-    >
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-700">
-        <Icon className="h-5 w-5" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block font-semibold text-slate-950">{title}</span>
-        <span className="mt-0.5 block text-sm text-slate-500">{description}</span>
-      </span>
-      <ArrowRight className="h-4 w-4 shrink-0 text-slate-400" />
-    </button>
+    <Link to={to} className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-primary/30 hover:shadow-md">
+      <span className="grid h-11 w-11 place-items-center rounded-xl bg-primary/10 text-primary"><Icon className="h-5 w-5" /></span>
+      <span className="mt-4 text-base font-semibold text-slate-950">{title}</span>
+      <span className="mt-1 text-sm leading-6 text-slate-500">{description}</span>
+      <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-primary">Începe<ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" /></span>
+    </Link>
   );
 }

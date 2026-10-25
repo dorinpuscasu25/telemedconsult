@@ -1,3 +1,13 @@
+/**
+ * Culorile temei sunt variabile CSS în oklch. Tailwind 3 nu poate aplica singur
+ * opacitatea pe `var(--x)`, așa că `bg-primary/10` nu genera nimic. Funcția
+ * folosește `color-mix` când clasa cere o opacitate.
+ */
+const withAlpha = (variable) => ({ opacityValue }) =>
+  opacityValue === undefined || opacityValue === '1'
+    ? `var(${variable})`
+    : `color-mix(in oklch, var(${variable}) calc(${opacityValue} * 100%), transparent)`;
+
 export default {content: [
   './index.html',
   './src/**/*.{js,ts,jsx,tsx}'
@@ -13,38 +23,38 @@ export default {content: [
     },
     extend: {
       colors: {
-        background: 'var(--background)',
-        foreground: 'var(--foreground)',
-        card: 'var(--card)',
-        'card-foreground': 'var(--card-foreground)',
-        popover: 'var(--popover)',
-        'popover-foreground': 'var(--popover-foreground)',
-        primary: 'var(--primary)',
-        'primary-foreground': 'var(--primary-foreground)',
-        secondary: 'var(--secondary)',
-        'secondary-foreground': 'var(--secondary-foreground)',
-        muted: 'var(--muted)',
-        'muted-foreground': 'var(--muted-foreground)',
-        accent: 'var(--accent)',
-        'accent-foreground': 'var(--accent-foreground)',
-        destructive: 'var(--destructive)',
-        border: 'var(--border)',
-        input: 'var(--input)',
-        ring: 'var(--ring)',
-        'chart-1': 'var(--chart-1)',
-        'chart-2': 'var(--chart-2)',
-        'chart-3': 'var(--chart-3)',
-        'chart-4': 'var(--chart-4)',
-        'chart-5': 'var(--chart-5)',
-        sidebar: 'var(--sidebar)',
-        'sidebar-foreground': 'var(--sidebar-foreground)',
-        'sidebar-primary': 'var(--sidebar-primary)',
-        'sidebar-primary-foreground': 'var(--sidebar-primary-foreground)',
-        'sidebar-accent': 'var(--sidebar-accent)',
-        'sidebar-accent-foreground': 'var(--sidebar-accent-foreground)',
-        'sidebar-border': 'var(--sidebar-border)',
-        'sidebar-ring': 'var(--sidebar-ring)',
-        'destructive-foreground': 'var(--destructive-foreground)'
+        background: withAlpha('--background'),
+        foreground: withAlpha('--foreground'),
+        card: withAlpha('--card'),
+        'card-foreground': withAlpha('--card-foreground'),
+        popover: withAlpha('--popover'),
+        'popover-foreground': withAlpha('--popover-foreground'),
+        primary: withAlpha('--primary'),
+        'primary-foreground': withAlpha('--primary-foreground'),
+        secondary: withAlpha('--secondary'),
+        'secondary-foreground': withAlpha('--secondary-foreground'),
+        muted: withAlpha('--muted'),
+        'muted-foreground': withAlpha('--muted-foreground'),
+        accent: withAlpha('--accent'),
+        'accent-foreground': withAlpha('--accent-foreground'),
+        destructive: withAlpha('--destructive'),
+        border: withAlpha('--border'),
+        input: withAlpha('--input'),
+        ring: withAlpha('--ring'),
+        'chart-1': withAlpha('--chart-1'),
+        'chart-2': withAlpha('--chart-2'),
+        'chart-3': withAlpha('--chart-3'),
+        'chart-4': withAlpha('--chart-4'),
+        'chart-5': withAlpha('--chart-5'),
+        sidebar: withAlpha('--sidebar'),
+        'sidebar-foreground': withAlpha('--sidebar-foreground'),
+        'sidebar-primary': withAlpha('--sidebar-primary'),
+        'sidebar-primary-foreground': withAlpha('--sidebar-primary-foreground'),
+        'sidebar-accent': withAlpha('--sidebar-accent'),
+        'sidebar-accent-foreground': withAlpha('--sidebar-accent-foreground'),
+        'sidebar-border': withAlpha('--sidebar-border'),
+        'sidebar-ring': withAlpha('--sidebar-ring'),
+        'destructive-foreground': withAlpha('--destructive-foreground')
       },
       fontFamily: {
         heading: ['Geist'],

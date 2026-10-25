@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { PageHeader } from '../../components/app/PageHeader';
+import { useDialogs } from '../../components/app/DialogProvider';
 import { useSearchParams } from 'react-router-dom';
 import { CalendarDays, Plus, Trash2, Video } from 'lucide-react';
 import { Button } from '../../components/ui/button';
@@ -95,6 +97,7 @@ const defaultAvailability: AvailabilitySlot[] = [1, 2, 3, 4, 5].map((weekday) =>
 }));
 
 export function DoctorProfilePage() {
+  const dialogs = useDialogs();
   const [searchParams] = useSearchParams();
   const vacationsCardRef = useRef<HTMLDivElement | null>(null);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
@@ -269,7 +272,7 @@ export function DoctorProfilePage() {
   };
 
   const deleteVacation = async (vacation: Vacation) => {
-    if (!window.confirm('Ștergi acest interval de concediu?')) return;
+    if (!(await dialogs.confirm({ title: 'Ștergi acest concediu?', description: 'Pacienții te vor putea programa din nou în acest interval.', confirmLabel: 'Șterge concediul', tone: 'danger' }))) return;
 
     setError('');
     setMessage('');
@@ -309,12 +312,9 @@ export function DoctorProfilePage() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-950">Profil medic</h1>
-          <p className="mt-1 text-sm text-slate-500">Actualizează informațiile afișate pacienților și preferințele pentru consultații.</p>
-        </div>
+        <PageHeader title="Profilul meu" description="Ce văd pacienții despre tine, prețurile, disponibilitatea și documentele PDF." />
         <div className="flex items-center gap-3 rounded-xl border border-slate-200/70 bg-white px-4 py-3 shadow-sm">
           <Label htmlFor="available-mode" className="cursor-pointer font-medium">
             Disponibil pentru consultații
