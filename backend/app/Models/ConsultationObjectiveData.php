@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\StoresDatesInAppTimezone;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,6 +10,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['consultation_request_id', 'patient_profile_id', 'operator_id', 'source', 'payload', 'completed_at'])]
 class ConsultationObjectiveData extends Model
 {
+    use StoresDatesInAppTimezone;
+
     protected $table = 'consultation_objective_data';
 
     public function consultationRequest(): BelongsTo

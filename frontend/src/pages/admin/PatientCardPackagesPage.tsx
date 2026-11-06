@@ -14,6 +14,7 @@ type CardPackage = {
   description: string;
   profile_slots: number;
   price: number;
+  bonus_points: number;
   validity_days: number;
   is_active: boolean;
 };
@@ -23,6 +24,7 @@ const emptyPackage: CardPackage = {
   description: '',
   profile_slots: 1,
   price: 0,
+  bonus_points: 0,
   validity_days: 365,
   is_active: true
 };
@@ -163,9 +165,10 @@ function PackageForm({ pack, onChange, onSave, isSaving }: {
 }) {
   return (
     <div className="grid gap-4">
-      <div className="grid gap-4 md:grid-cols-[1.2fr_repeat(3,160px)]">
+      <div className="grid gap-4 md:grid-cols-[1.2fr_repeat(4,150px)]">
         <TextField label="Nume" value={pack.name} onChange={(value) => onChange({ ...pack, name: value })} />
         <NumberField label="Preț (MDL)" value={pack.price} onChange={(value) => onChange({ ...pack, price: value })} />
+        <NumberField label="Bonus (puncte)" value={pack.bonus_points ?? 0} onChange={(value) => onChange({ ...pack, bonus_points: Math.max(0, value) })} />
         <NumberField label="Profiluri" value={pack.profile_slots} onChange={(value) => onChange({ ...pack, profile_slots: value })} />
         <NumberField label="Valabilitate (zile)" value={pack.validity_days} onChange={(value) => onChange({ ...pack, validity_days: value })} />
       </div>

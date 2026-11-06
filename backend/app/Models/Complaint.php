@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\StoresDatesInAppTimezone;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,6 +10,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['patient_id', 'reported_user_id', 'consultation_request_id', 'status', 'subject', 'description', 'resolution_note', 'coupon_code', 'coupon_amount_minor', 'resolved_at'])]
 class Complaint extends Model
 {
+    use StoresDatesInAppTimezone;
+
     public function patient(): BelongsTo
     {
         return $this->belongsTo(User::class, 'patient_id');

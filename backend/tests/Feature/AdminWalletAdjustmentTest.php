@@ -30,7 +30,7 @@ class AdminWalletAdjustmentTest extends TestCase
             'amount' => 150.50,
             'direction' => 'credit',
             'reason' => 'compensare consultație anulată',
-        ])->assertOk()->assertJsonPath('data.balance', 150.5);
+        ])->assertOk()->assertJsonPath('data.points_balance', 150.5);
 
         $this->assertSame(15050, (int) Wallet::where('user_id', $user->id)->value('balance_minor'));
 
@@ -96,7 +96,7 @@ class AdminWalletAdjustmentTest extends TestCase
 
         $this->postJson("/api/v1/admin/users/{$user->id}/wallet", [
             'amount' => 40, 'direction' => 'debit', 'reason' => 'stornare parțială',
-        ])->assertOk()->assertJsonPath('data.balance', 60);
+        ])->assertOk()->assertJsonPath('data.points_balance', 60);
 
         $this->assertSame(
             WalletAdjustment::TYPE_DEBIT,
@@ -140,9 +140,25 @@ class AdminWalletAdjustmentTest extends TestCase
 
         $this->getJson("/api/v1/admin/users/{$user->id}/wallet")
             ->assertOk()
-            ->assertJsonPath('data.balance', 75)
+            ->assertJsonPath('data.points_balance', 75)->assertJsonPath('data.balance', 0)
             ->assertJsonPath('data.transactions.0.amount', 75)
             ->assertJsonPath('data.user.email', $user->email);
+    }
+
+    public function test_adjustments_only_touch_the_bonus_wallet_never_the_lei_balance(): void
+    {
+        Notification::fake();
+        $user = $this->userWithRole('patient');
+        Wallet::create(['user_id' => $user->id, 'type' => 'real', 'balance_minor' => 20000, 'currency' => 'MDL']);
+        $this->actingAsAdmin();
+
+        $this->postJson("/api/v1/admin/users/{$user->id}/wallet", [
+            'amount' => 500, 'direction' => 'credit', 'reason' => 'compensare',
+        ])->assertOk();
+
+        $this->assertSame(20000, (int) Wallet::where('user_id', $user->id)->where('type', 'real')->value('balance_minor'));
+        $this->assertSame(50000, (int) Wallet::where('user_id', $user->id)->where('type', 'points')->value('balance_minor'));
+        $this->assertSame('points', WalletTransaction::where('user_id', $user->id)->value('wallet_type'));
     }
 
     private function actingAsAdmin(): User

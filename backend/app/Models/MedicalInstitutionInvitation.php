@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\StoresDatesInAppTimezone;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
@@ -11,6 +12,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Hidden(['token_hash'])]
 class MedicalInstitutionInvitation extends Model
 {
+    use StoresDatesInAppTimezone;
+
     public function institution(): BelongsTo
     {
         return $this->belongsTo(MedicalInstitution::class, 'medical_institution_id');

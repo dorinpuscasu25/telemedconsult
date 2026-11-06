@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\StoresDatesInAppTimezone;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,6 +11,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable(['is_direct', 'consultation_request_id', 'patient_id', 'patient_profile_id', 'doctor_id', 'operator_id', 'status', 'starts_at', 'free_until', 'reactivated_until', 'hard_closes_at'])]
 class Conversation extends Model
 {
+    use StoresDatesInAppTimezone;
+
     protected $attributes = ['is_direct' => false];
 
     public function patient(): BelongsTo

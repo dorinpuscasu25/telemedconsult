@@ -105,7 +105,7 @@ class PatientMedicalRecordTest extends TestCase
         foreach ([
             'vaccinations' => ['refusal' => 'temporary', 'items' => [['name' => 'Vaccin', 'date' => '2020-01-01', 'dose' => '1', 'reaction' => 'Fără reacții']]],
             'surgeries' => [['name' => 'Intervenție stomatologică', 'complications' => 'Fără complicații']],
-            'food_allergies' => [['name' => 'Aliment', 'period' => 'La 4 ani']],
+            'drug_allergies' => [['allergy_type' => 'food', 'name' => 'Aliment', 'period' => 'La 4 ani'], ['allergy_type' => 'respiratory', 'name' => 'Polen']],
             'chronic_conditions' => [['name' => 'Diagnostic', 'date' => '2022-01-01', 'specialist' => 'Medic']],
             'family_history' => [['relationship' => 'Bunica după tata', 'name' => 'Afecțiune']],
             'lifestyle' => ['activity' => 'active', 'workplace' => 'Birou'],
@@ -114,6 +114,14 @@ class PatientMedicalRecordTest extends TestCase
             $this->patchJson($this->url($profile), ['section' => $section, 'data' => $data])->assertOk();
             $this->assertSame($data, $profile->fresh()->medical_record[$section]);
         }
+    }
+
+    public function test_allergy_type_must_be_drug_food_or_respiratory(): void
+    {
+        [$patient, $profile] = $this->patient();
+        Sanctum::actingAs($patient);
+        $this->patchJson($this->url($profile), ['section' => 'drug_allergies', 'data' => [['allergy_type' => 'other', 'name' => 'X']]])->assertUnprocessable();
+        $this->patchJson($this->url($profile), ['section' => 'food_allergies', 'data' => []])->assertUnprocessable();
     }
 
     public function test_other_patient_cannot_read_or_edit_record(): void

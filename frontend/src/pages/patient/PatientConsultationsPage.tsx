@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Activity, CalendarClock, ChevronDown, ClipboardList, FileText, MessageSquare, Plus, Star, Stethoscope } from 'lucide-react';
+import { Activity, CalendarClock, ChevronDown, ClipboardList, FileText, MessageSquare, Plus, Star, Stethoscope, XCircle } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { ListSkeleton } from '../../components/ui/skeleton';
@@ -11,6 +11,7 @@ import { StatusBadge } from '../../components/app/StatusBadge';
 import { ConsultationDocuments } from '../../components/ConsultationDocuments';
 import { ConsultationVideoButton } from '../../components/ConsultationVideoButton';
 import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
+import { useDialogs } from '../../components/app/DialogProvider';
 import { apiRequest } from '../../lib/api';
 import { dateTime } from '../../lib/format';
 import { CLOSED_STATUSES } from '../../lib/status';
@@ -25,6 +26,8 @@ export function PatientConsultationsPage() {
   const [error, setError] = useState('');
   const [tab, setTab] = useState<'active' | 'history'>('active');
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const dialogs = useDialogs();
 
   const load = useCallback(async () => {
     try {
@@ -54,6 +57,26 @@ export function PatientConsultationsPage() {
       toast.error(err instanceof Error ? err.message : 'Nu am putut accepta ora propusă.');
     } finally {
       setAcceptingId(null);
+    }
+  };
+
+  const cancelRequest = async (request: PatientConsultation) => {
+    const confirmed = await dialogs.confirm({
+      title: 'Anulezi solicitarea?',
+      description: 'Consultația nu a început încă. Banii rezervați (lei și bonusuri) se întorc automat în portofel și poți face o solicitare nouă, inclusiv la același medic.',
+      confirmLabel: 'Anulează solicitarea',
+      tone: 'danger'
+    });
+    if (!confirmed) return;
+    setCancellingId(request.id);
+    try {
+      const result = await apiRequest<{ message: string }>(`/requests/${request.id}/cancel`, { method: 'POST', body: JSON.stringify({ reason: 'Anulată de pacient înainte de începerea consultației.' }) });
+      toast.success(result.message);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Nu am putut anula solicitarea.');
+    } finally {
+      setCancellingId(null);
     }
   };
 
@@ -97,6 +120,8 @@ export function PatientConsultationsPage() {
               request={request}
               accepting={acceptingId === request.id}
               onAcceptProposal={() => void acceptProposal(request)}
+              cancelling={cancellingId === request.id}
+              onCancel={() => void cancelRequest(request)}
             />
           ))}
         </div>
@@ -109,7 +134,7 @@ function Count({ value, muted = false }: { value: number; muted?: boolean }) {
   return <span className={`tabular rounded-full px-1.5 text-xs ${muted ? 'bg-slate-200 text-slate-600' : 'bg-primary text-white'}`}>{value}</span>;
 }
 
-function ConsultationCard({ request, accepting, onAcceptProposal }: { request: PatientConsultation; accepting: boolean; onAcceptProposal: () => void }) {
+function ConsultationCard({ request, accepting, onAcceptProposal, cancelling, onCancel }: { request: PatientConsultation; accepting: boolean; onAcceptProposal: () => void; cancelling: boolean; onCancel: () => void }) {
   const [showDocuments, setShowDocuments] = useState(false);
   const isOperator = request.type === 'operator';
   const Icon = isOperator ? Activity : Stethoscope;
@@ -152,6 +177,11 @@ function ConsultationCard({ request, accepting, onAcceptProposal }: { request: P
         {!closed && (
           <Button asChild size="sm" variant="outline">
             <Link to={`/patient/chat?request=${request.id}`}><MessageSquare className="h-4 w-4" />Mesaje</Link>
+          </Button>
+        )}
+        {ACTIVE.includes(request.status) && !request.doctor_started_at && (
+          <Button size="sm" variant="ghost" className="text-red-600 hover:bg-red-50 hover:text-red-700" onClick={onCancel} disabled={cancelling}>
+            <XCircle className="h-4 w-4" />{cancelling ? 'Se anulează…' : 'Anulează solicitarea'}
           </Button>
         )}
         {request.status === 'completed' && (

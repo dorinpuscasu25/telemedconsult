@@ -6,13 +6,15 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Notifications\AppEventNotification;
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Adăugarea sau scăderea manuală de fonduri din portofelul unui utilizator.
+ * Adăugarea sau scăderea manuală de PUNCTE BONUS din portofelul unui utilizator.
+ *
+ * Soldul în lei e legat numai de bancă (alimentări, plăți, retrageri) și nu se
+ * modifică de mână; compensațiile se fac exclusiv în puncte bonus.
  *
  * Sunt bani de platformă mișcați de mână, deci fiecare operație lasă urmă:
  * cine a făcut-o, când și de ce. Motivul e obligatoriu — peste o lună, o
@@ -44,7 +46,7 @@ class WalletAdjustment
             // îi datorează utilizatorului bani pe care nu i-a primit niciodată.
             if ($amountMinor < 0 && (int) $wallet->balance_minor + $amountMinor < 0) {
                 throw ValidationException::withMessages([
-                    'amount' => ['Soldul disponibil este de doar '.number_format($wallet->balance_minor / 100, 2, ',', '.').' MDL.'],
+                    'amount' => ['Soldul de bonusuri este de doar '.number_format($wallet->balance_minor / 100, 2, ',', '.').' puncte.'],
                 ]);
             }
 
@@ -52,12 +54,13 @@ class WalletAdjustment
 
             $transaction = WalletTransaction::create([
                 'wallet_id' => $wallet->id,
+                'wallet_type' => WalletLedger::POINTS,
                 'user_id' => $user->id,
                 'amount_minor' => $amountMinor,
                 'currency' => $wallet->currency ?: 'MDL',
                 'type' => $amountMinor > 0 ? self::TYPE_CREDIT : self::TYPE_DEBIT,
                 'status' => 'completed',
-                'description' => ($amountMinor > 0 ? 'Fonduri adăugate de administrator' : 'Corecție de sold (administrator)').' — '.$reason,
+                'description' => ($amountMinor > 0 ? 'Puncte bonus adăugate de administrator' : 'Corecție puncte bonus (administrator)').' — '.$reason,
                 'metadata' => [
                     'source' => 'admin_adjustment',
                     'reason' => $reason,
@@ -89,31 +92,16 @@ class WalletAdjustment
         $amount = number_format(abs($amountMinor) / 100, 2, ',', '.');
 
         $user->notify(new AppEventNotification(
-            $amountMinor > 0 ? 'Ai primit '.$amount.' MDL în portofel' : 'Sold corectat cu '.$amount.' MDL',
+            $amountMinor > 0 ? 'Ai primit '.$amount.' puncte bonus' : 'Puncte bonus corectate cu '.$amount,
             $amountMinor > 0
-                ? 'Administratorul a adăugat '.$amount.' MDL în portofelul tău. Motiv: '.$reason
-                : 'Administratorul a scăzut '.$amount.' MDL din portofelul tău. Motiv: '.$reason,
+                ? 'Administratorul a adăugat '.$amount.' puncte în portofelul de bonusuri. Motiv: '.$reason
+                : 'Administratorul a scăzut '.$amount.' puncte din portofelul de bonusuri. Motiv: '.$reason,
             '/wallet',
         ));
     }
 
     private function lockedWallet(User $user): Wallet
     {
-        $wallet = Wallet::where('user_id', $user->id)->where('type', 'real')->lockForUpdate()->first();
-
-        if ($wallet) {
-            return $wallet;
-        }
-
-        try {
-            Wallet::create(['user_id' => $user->id, 'type' => 'real', 'balance_minor' => 0, 'currency' => 'MDL']);
-        } catch (QueryException $exception) {
-            // `user_id` e unique: dacă portofelul a apărut între timp, îl luăm.
-            if (! in_array((string) $exception->getCode(), ['19', '23000', '23505'], true)) {
-                throw $exception;
-            }
-        }
-
-        return Wallet::where('user_id', $user->id)->where('type', 'real')->lockForUpdate()->firstOrFail();
+        return app(WalletLedger::class)->locked($user, WalletLedger::POINTS);
     }
 }

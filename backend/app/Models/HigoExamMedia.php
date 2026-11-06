@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\StoresDatesInAppTimezone;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -16,6 +17,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class HigoExamMedia extends Model
 {
+    use StoresDatesInAppTimezone;
+
     public const KIND_IMAGE = 'image';
 
     public const KIND_AUDIO = 'audio';

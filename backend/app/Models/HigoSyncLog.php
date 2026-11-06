@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\StoresDatesInAppTimezone;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
 #[Fillable(['direction', 'operation', 'resource_type', 'resource_id', 'local_model_type', 'local_model_id', 'higo_id', 'status', 'method', 'endpoint', 'http_status', 'request_payload', 'response_payload', 'error_message', 'attempts', 'started_at', 'finished_at'])]
 class HigoSyncLog extends Model
 {
+    use StoresDatesInAppTimezone;
+
     public static function redactPayload(mixed $payload): mixed
     {
         if ($payload === null) {

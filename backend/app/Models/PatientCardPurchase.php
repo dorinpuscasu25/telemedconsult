@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\StoresDatesInAppTimezone;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,6 +10,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['user_id', 'patient_card_package_id', 'profile_slots', 'amount_minor', 'validity_days', 'used_slots', 'expires_at', 'settings_snapshot'])]
 class PatientCardPurchase extends Model
 {
+    use StoresDatesInAppTimezone;
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

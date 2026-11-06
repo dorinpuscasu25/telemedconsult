@@ -176,7 +176,7 @@ export function RequestsPage() {
     if (!values?.scheduled_at) return;
     await runAction(request, () => apiRequest(`/requests/${request.id}/propose-time`, {
       method: 'POST',
-      body: JSON.stringify({ scheduled_at: values.scheduled_at })
+      body: JSON.stringify({ scheduled_at: new Date(values.scheduled_at).toISOString() })
     }), 'Oră nouă propusă pacientului.');
   };
 

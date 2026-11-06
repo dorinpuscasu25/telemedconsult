@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\StoresDatesInAppTimezone;
 use Database\Factories\ReferralFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -14,6 +15,8 @@ class Referral extends Model
 {
     /** @use HasFactory<ReferralFactory> */
     use HasFactory;
+
+    use StoresDatesInAppTimezone;
 
     public const STATUS_PENDING = 'pending';
 

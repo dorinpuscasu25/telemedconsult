@@ -88,6 +88,7 @@ function primaryNav(role: RoleName | null): NavItem[] {
         { label: 'Acasă', path: '/operator', icon: Home },
         { label: 'Vizite', path: '/operator/patients', icon: ClipboardList },
         { label: 'Mesaje', path: '/operator/chat', icon: MessageSquare },
+        { label: 'Afiliere', path: '/operator/referrals', icon: Gift },
         { label: 'Profil', path: '/operator/profile', icon: UserRound }
       ];
     default:

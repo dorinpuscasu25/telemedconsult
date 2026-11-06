@@ -136,7 +136,7 @@ export function WalletPage() {
           <div className="min-w-0 flex-1">
             <h2 className="font-semibold text-blue-950">+{money(promotion.bonus_amount)} MDL bonus la prima alimentare</h2>
             <p className="mt-0.5 text-sm text-blue-900">Depune minimum {money(promotion.minimum_deposit)} MDL. <button type="button" className="font-semibold underline" onClick={() => setShowPromoDetails((value) => !value)}>{showPromoDetails ? 'Ascunde detaliile' : 'Detalii'}</button></p>
-            {showPromoDetails && <p className="mt-2 text-sm text-blue-900">Bonusul se acordă o singură dată și se folosește automat pentru maximum 50% din fiecare consultație cu {promoDoctors || 'medicul eligibil'}. Examinările și deplasarea operatorului se achită separat.</p>}
+            {showPromoDetails && <p className="mt-2 text-sm text-blue-900">Bonusul se acordă o singură dată și se folosește automat pentru maximum 50% din fiecare consultație {promoDoctors ? `cu ${promoDoctors}` : 'la orice medic'}. Examinările și deplasarea operatorului se achită separat.</p>}
           </div>
           <Button onClick={() => { setAmount(String(promotion.minimum_deposit)); setIsTopUpOpen(true); }}>Alimentează {money(promotion.minimum_deposit)} MDL</Button>
         </section>

@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Complaint;
+use App\Models\ConsultationRequest;
 use App\Models\ContractTemplate;
 use App\Models\DoctorProfile;
 use App\Models\DoctorProfileView;
+use App\Models\FirstTopupPromotionGrant;
 use App\Models\Payment;
 use App\Models\PlatformSetting;
 use App\Models\User;
@@ -15,9 +17,11 @@ use App\Models\WalletTransaction;
 use App\Models\WithdrawalRequest;
 use App\Notifications\AppEventNotification;
 use App\Services\DoctorPerformance;
+use App\Services\FirstTopupPromotion;
 use App\Services\InstitutionLedger;
 use App\Services\PlatformConfig;
 use App\Services\WalletAdjustment;
+use App\Services\WalletLedger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -83,45 +87,129 @@ class AdminOperationsController extends Controller
                 'platform_fees' => $transactions->sum('fee'),
                 'pending_withdrawals' => WithdrawalRequest::where('payer', InstitutionLedger::PAYER_PLATFORM)->where('status', 'pending')->sum('amount_minor') / 100,
             ],
+            'bonus_report' => $this->bonusReport(),
             'transactions' => $transactions,
             'withdrawals' => $withdrawals,
         ]);
     }
 
+    /** Sursele de bonusuri, cu denumirea afișată în raport. */
+    private const BONUS_SOURCES = [
+        'first_topup_promotion' => 'Promoția 500 puncte',
+        'registration_bonus' => 'Bonus de înregistrare',
+        'topup_bonus' => 'Bonus la alimentare',
+        'patient_card_bonus' => 'Bonus la pachetul de cartele',
+        'referral_topup_commission' => 'Referral 3% (link personal)',
+        'affiliate_bonus' => 'Referral 3% (cod medic / operator)',
+        WalletAdjustment::TYPE_CREDIT => 'Compensări admin',
+    ];
+
     /**
-     * Portofelul unui utilizator, așa cum îl vede adminul înainte să-l ajusteze:
-     * soldul curent plus ultimele mișcări, ca să nu adauge bani „pe orb”.
+     * Evidența lei reali vs bonusuri: cât s-a încasat în lei, cât s-a achitat
+     * din bonusuri, cât s-a plătit medicilor/operatorilor și ce rămâne platformei.
+     *
+     * @return array<string, mixed>
+     */
+    private function bonusReport(): array
+    {
+        $captured = ConsultationRequest::where('payment_status', 'captured');
+        $sum = fn (string $column) => (int) (clone $captured)->sum($column);
+        $realMinor = $sum('real_amount_minor');
+        $pointsMinor = $sum('points_amount_minor');
+        $promoMinor = $sum('promo_amount_minor');
+        $providerMinor = $sum('provider_amount_minor');
+
+        $issued = WalletTransaction::whereIn('wallet_type', [WalletLedger::POINTS, WalletLedger::PROMO])
+            ->where('amount_minor', '>', 0)
+            ->whereIn('type', array_keys(self::BONUS_SOURCES))
+            ->selectRaw('type, sum(amount_minor) as total, count(*) as count')
+            ->groupBy('type')
+            ->get()
+            ->keyBy('type');
+        $adminDebitMinor = (int) WalletTransaction::where('wallet_type', WalletLedger::POINTS)->where('type', WalletAdjustment::TYPE_DEBIT)->sum('amount_minor');
+
+        return [
+            'consultations' => [
+                'count' => (clone $captured)->count(),
+                'total' => ($realMinor + $pointsMinor + $promoMinor) / 100,
+                'paid_real' => $realMinor / 100,
+                'paid_points' => $pointsMinor / 100,
+                'paid_promo' => $promoMinor / 100,
+                'provider_payouts' => $providerMinor / 100,
+                'platform_net_real' => ($realMinor - $providerMinor) / 100,
+            ],
+            'issued' => collect(self::BONUS_SOURCES)->map(fn (string $label, string $type) => [
+                'type' => $type,
+                'label' => $label,
+                'amount' => (int) ($issued[$type]->total ?? 0) / 100,
+                'count' => (int) ($issued[$type]->count ?? 0),
+            ])->values(),
+            'issued_total' => (int) $issued->sum('total') / 100,
+            'admin_debits' => abs($adminDebitMinor) / 100,
+            'in_circulation' => [
+                'points' => (int) Wallet::where('type', WalletLedger::POINTS)->sum('balance_minor') / 100,
+                'promo' => (int) Wallet::where('type', WalletLedger::PROMO)->sum('balance_minor') / 100,
+            ],
+            'promotion' => [
+                'automatic_grants' => FirstTopupPromotionGrant::whereNull('granted_by_admin_id')->count(),
+                'manual_grants' => FirstTopupPromotionGrant::whereNotNull('granted_by_admin_id')->count(),
+                'max_grants' => app(FirstTopupPromotion::class)->maxGrants(),
+            ],
+            'recent' => (clone $captured)->with(['patient:id,name', 'doctor:id,name', 'operator:id,name'])->latest('id')->limit(100)->get()->map(fn (ConsultationRequest $item) => [
+                'id' => $item->id,
+                'date' => $item->updated_at,
+                'patient' => $item->patient?->name,
+                'provider' => $item->doctor?->name ?? $item->operator?->name,
+                'total' => ($item->real_amount_minor + $item->points_amount_minor + $item->promo_amount_minor) / 100,
+                'paid_real' => $item->real_amount_minor / 100,
+                'paid_bonus' => ($item->points_amount_minor + $item->promo_amount_minor) / 100,
+                'provider_amount' => $item->provider_amount_minor / 100,
+                'platform_net_real' => ($item->real_amount_minor - $item->provider_amount_minor) / 100,
+            ])->values(),
+        ];
+    }
+
+    /**
+     * Portofelele unui utilizator, așa cum le vede adminul: soldul în lei (doar
+     * citire — e legat de bancă), bonusurile, promoția și ultimele mișcări.
      */
     public function userWallet(Request $request, User $user): JsonResponse
     {
         $this->authorizeAdmin($request);
 
-        $wallet = Wallet::where('user_id', $user->id)->where('type', 'real')->first();
+        $wallets = Wallet::where('user_id', $user->id)->get()->keyBy('type');
+        $balance = fn (string $type) => ($wallets[$type]->balance_minor ?? 0) / 100;
+        $grant = FirstTopupPromotionGrant::where('user_id', $user->id)->first();
 
         return response()->json([
             'data' => [
                 'user' => ['id' => (string) $user->id, 'name' => $user->name, 'email' => $user->email],
-                'balance' => ($wallet?->balance_minor ?? 0) / 100,
-                'currency' => $wallet?->currency ?? 'MDL',
-                'transactions' => $wallet
-                    ? $wallet->transactions()->latest()->limit(20)->get()->map(fn (WalletTransaction $transaction) => [
-                        'id' => (string) $transaction->id,
-                        'date' => $transaction->created_at,
-                        'amount' => $transaction->amount_minor / 100,
-                        'type' => $transaction->type,
-                        'description' => $transaction->description,
-                        'admin' => $transaction->metadata['admin_name'] ?? null,
-                    ])->values()
-                    : [],
+                'balance' => $balance(WalletLedger::REAL),
+                'points_balance' => $balance(WalletLedger::POINTS),
+                'promo_balance' => $balance(WalletLedger::PROMO),
+                'currency' => $wallets[WalletLedger::REAL]->currency ?? 'MDL',
+                'promotion' => [
+                    'granted' => (bool) $grant,
+                    'granted_at' => $grant?->created_at,
+                    'manual' => (bool) $grant?->granted_by_admin_id,
+                    'amount' => FirstTopupPromotion::AMOUNT_MINOR / 100,
+                ],
+                'transactions' => WalletTransaction::where('user_id', $user->id)->latest('id')->limit(30)->get()->map(fn (WalletTransaction $transaction) => [
+                    'id' => (string) $transaction->id,
+                    'date' => $transaction->created_at,
+                    'amount' => $transaction->amount_minor / 100,
+                    'wallet_type' => $transaction->wallet_type ?? WalletLedger::REAL,
+                    'type' => $transaction->type,
+                    'description' => $transaction->description,
+                    'admin' => $transaction->metadata['admin_name'] ?? null,
+                ])->values(),
             ],
         ]);
     }
 
     /**
-     * Adaugă (sau scade) manual fonduri din portofelul unui utilizator.
-     *
-     * Motivul e obligatoriu: peste o lună, o mișcare de bani fără explicație nu
-     * se mai poate reconstitui. Rămâne în tranzacție, vizibil și în Tranzacții.
+     * Adaugă (sau scade) manual PUNCTE BONUS. Soldul în lei nu se ajustează din
+     * admin — compensațiile se fac numai în bonusuri.
      */
     public function adjustUserWallet(Request $request, User $user): JsonResponse
     {
@@ -133,7 +221,7 @@ class AdminOperationsController extends Controller
             'reason' => ['required', 'string', 'min:3', 'max:255'],
         ], [
             'reason.required' => 'Scrie motivul ajustării — rămâne în istoricul tranzacției.',
-            'amount.min' => 'Suma trebuie să fie cel puțin 0,01 MDL.',
+            'amount.min' => 'Suma trebuie să fie cel puțin 0,01 puncte.',
         ]);
 
         $amountMinor = (int) round(((float) $validated['amount']) * 100);
@@ -149,16 +237,30 @@ class AdminOperationsController extends Controller
             $request->user(),
         );
 
-        $balance = (int) Wallet::where('user_id', $user->id)->where('type', 'real')->value('balance_minor');
+        $balance = (int) Wallet::where('user_id', $user->id)->where('type', WalletLedger::POINTS)->value('balance_minor');
 
         return response()->json([
             'message' => ($amountMinor > 0 ? 'Am adăugat ' : 'Am scăzut ')
-                .number_format(abs($amountMinor) / 100, 2, ',', '.').' MDL. Sold nou: '
-                .number_format($balance / 100, 2, ',', '.').' MDL.',
+                .number_format(abs($amountMinor) / 100, 2, ',', '.').' puncte bonus. Sold bonusuri: '
+                .number_format($balance / 100, 2, ',', '.').' puncte.',
             'data' => [
-                'balance' => $balance / 100,
+                'points_balance' => $balance / 100,
                 'transaction_id' => (string) $transaction->id,
             ],
+        ]);
+    }
+
+    /** Acordă manual promoția de 500 de puncte unui utilizator deja înregistrat. */
+    public function grantUserPromotion(Request $request, User $user): JsonResponse
+    {
+        $this->authorizeAdmin($request);
+        abort_unless($user->hasRole('patient'), 422, 'Promoția se acordă doar conturilor de pacient.');
+
+        app(FirstTopupPromotion::class)->grantManually($user, $request->user());
+
+        return response()->json([
+            'message' => 'Am acordat '.(FirstTopupPromotion::AMOUNT_MINOR / 100).' puncte promoționale.',
+            'data' => ['promo_balance' => (int) Wallet::where('user_id', $user->id)->where('type', WalletLedger::PROMO)->value('balance_minor') / 100],
         ]);
     }
 
@@ -435,11 +537,6 @@ class AdminOperationsController extends Controller
                     throw ValidationException::withMessages(['settings' => ['Promoția poate fi oferită doar de medici aprobați.']]);
                 }
             }
-        }
-        $promotionConfig = app(PlatformConfig::class);
-        if (($promotionChanges['wallet.first_topup_promo_enabled'] ?? $promotionConfig->bool('wallet.first_topup_promo_enabled'))
-            && empty($promotionChanges['wallet.first_topup_promo_doctor_ids'] ?? $promotionConfig->get('wallet.first_topup_promo_doctor_ids', []))) {
-            throw ValidationException::withMessages(['settings' => ['Selectează cel puțin un medic înainte de activarea promoției.']]);
         }
 
         DB::transaction(function () use ($request, $validated) {

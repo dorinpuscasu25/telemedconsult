@@ -6,6 +6,9 @@ use App\Models\FirstTopupPromotionGrant;
 use App\Models\Payment;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Notifications\AppEventNotification;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class FirstTopupPromotion
 {
@@ -14,6 +17,9 @@ class FirstTopupPromotion
     public const MINIMUM_DEPOSIT_MINOR = 50000;
 
     public const MAX_PAYMENT_PERCENT = 50;
+
+    /** Câte acordări automate are campania (0 = nelimitat). Acordările manuale nu se numără. */
+    public const MAX_GRANTS_SETTING = 'wallet.first_topup_promo_max_grants';
 
     public function __construct(private PlatformConfig $config, private WalletLedger $ledger) {}
 
@@ -24,13 +30,31 @@ class FirstTopupPromotion
         return User::whereIn('id', is_array($ids) ? $ids : [])->whereHas('doctorProfile', fn ($query) => $query->where('is_approved', true))->whereHas('roles', fn ($query) => $query->where('name', 'doctor'))->pluck('id')->map(fn ($id) => (int) $id)->all();
     }
 
+    public function enabled(): bool
+    {
+        return $this->config->bool('wallet.first_topup_promo_enabled');
+    }
+
+    public function maxGrants(): int
+    {
+        return max(0, (int) $this->config->number(self::MAX_GRANTS_SETTING, 0));
+    }
+
+    /** Locurile rămase în campanie; null când campania nu are limită. */
+    public function remainingGrants(): ?int
+    {
+        $max = $this->maxGrants();
+
+        return $max > 0 ? max(0, $max - FirstTopupPromotionGrant::whereNull('granted_by_admin_id')->count()) : null;
+    }
+
     public function credit(Payment $payment): ?FirstTopupPromotionGrant
     {
-        if ($payment->status !== 'paid' || $payment->purpose !== 'wallet_top_up' || $payment->currency !== 'MDL' || $payment->amount_minor < self::MINIMUM_DEPOSIT_MINOR || ! $this->config->bool('wallet.first_topup_promo_enabled') || ! User::find($payment->user_id)?->hasRole('patient')) {
+        if ($payment->status !== 'paid' || $payment->purpose !== 'wallet_top_up' || $payment->currency !== 'MDL' || $payment->amount_minor < self::MINIMUM_DEPOSIT_MINOR || ! $this->enabled() || ! User::find($payment->user_id)?->hasRole('patient')) {
             return null;
         }
         $doctorIds = $this->configuredDoctorIds();
-        if (! $doctorIds || FirstTopupPromotionGrant::where('user_id', $payment->user_id)->exists()
+        if ($this->remainingGrants() === 0 || FirstTopupPromotionGrant::where('user_id', $payment->user_id)->exists()
             || Payment::where('user_id', $payment->user_id)->where('purpose', 'wallet_top_up')->where('status', 'paid')->whereKeyNot($payment->id)->exists()) {
             return null;
         }
@@ -44,24 +68,51 @@ class FirstTopupPromotion
         return $grant;
     }
 
+    /**
+     * Acordare manuală de către admin, pentru utilizatorii înregistrați înainte
+     * de lansarea ofertei. Aceleași reguli de consum ca la acordarea automată.
+     *
+     * @throws ValidationException dacă utilizatorul a primit deja promoția
+     */
+    public function grantManually(User $user, User $admin): FirstTopupPromotionGrant
+    {
+        return DB::transaction(function () use ($user, $admin) {
+            $wallet = $this->ledger->locked($user, WalletLedger::PROMO);
+            if (FirstTopupPromotionGrant::where('user_id', $user->id)->lockForUpdate()->exists()) {
+                throw ValidationException::withMessages(['promotion' => ['Utilizatorul a primit deja promoția de '.(self::AMOUNT_MINOR / 100).' puncte.']]);
+            }
+            $doctorIds = $this->configuredDoctorIds();
+            $grant = FirstTopupPromotionGrant::create([
+                'user_id' => $user->id, 'payment_id' => null, 'granted_by_admin_id' => $admin->id, 'amount_minor' => self::AMOUNT_MINOR,
+                'minimum_deposit_minor' => self::MINIMUM_DEPOSIT_MINOR, 'max_payment_percent' => self::MAX_PAYMENT_PERCENT, 'doctor_ids' => $doctorIds,
+            ]);
+            $this->ledger->move($wallet, self::AMOUNT_MINOR, 'first_topup_promotion', 'Bonus promoțional acordat de administrator', ['promo_grant_id' => $grant->id, 'doctor_ids' => $doctorIds, 'max_payment_percent' => self::MAX_PAYMENT_PERCENT, 'source' => 'admin_manual', 'admin_id' => $admin->id, 'admin_name' => $admin->name]);
+            $user->notify(new AppEventNotification('Ai primit '.(self::AMOUNT_MINOR / 100).' puncte bonus', 'Punctele se folosesc automat pentru până la '.self::MAX_PAYMENT_PERCENT.'% din costul consultației medicului.', '/wallet'));
+
+            return $grant;
+        });
+    }
+
     public function grantForDoctor(int $userId, ?int $doctorId, bool $lock = false): ?FirstTopupPromotionGrant
     {
         $grant = FirstTopupPromotionGrant::where('user_id', $userId)->when($lock, fn ($query) => $query->lockForUpdate())->first();
 
-        return $grant && $doctorId && in_array($doctorId, $grant->doctor_ids, true) ? $grant : null;
+        // O listă goală de medici = promoția se folosește la orice medic.
+        return $grant && $doctorId && ($grant->doctor_ids === [] || in_array($doctorId, $grant->doctor_ids, true)) ? $grant : null;
     }
 
     public function describe(int $userId): array
     {
         $grant = FirstTopupPromotionGrant::where('user_id', $userId)->first();
         $doctorIds = $grant?->doctor_ids ?? $this->configuredDoctorIds();
-        $enabled = $this->config->bool('wallet.first_topup_promo_enabled') && count($doctorIds) > 0;
+        $enabled = $this->enabled() && $this->remainingGrants() !== 0;
 
         return [
             'enabled' => $enabled, 'minimum_deposit' => self::MINIMUM_DEPOSIT_MINOR / 100, 'bonus_amount' => self::AMOUNT_MINOR / 100,
             'max_payment_percent' => $grant?->max_payment_percent ?? self::MAX_PAYMENT_PERCENT,
             'doctor_ids' => $doctorIds, 'doctors' => User::whereIn('id', $doctorIds)->get(['id', 'name'])->toArray(),
             'eligible_for_grant' => $enabled && ! $grant && (bool) User::find($userId)?->hasRole('patient') && ! Payment::where('user_id', $userId)->where('purpose', 'wallet_top_up')->where('status', 'paid')->exists(),
+            'all_doctors' => $doctorIds === [], 'remaining_grants' => $this->remainingGrants(),
             'grant' => $grant ? ['id' => $grant->id, 'doctor_ids' => $grant->doctor_ids, 'max_payment_percent' => $grant->max_payment_percent] : null,
         ];
     }
@@ -76,7 +127,7 @@ class FirstTopupPromotion
         $grant = $this->grantForDoctor($userId, $doctor?->id, $lock);
         $cap = $grant ? (int) floor($doctorBaseMinor * $grant->max_payment_percent / 100) : 0;
         $promoMinor = $grant ? min($this->availableBalance($userId), $cap, $totalMinor) : 0;
-        $maxPointsPercent = (int) min(100, max(0, $this->config->number('wallet.max_points_payment_percent', 30)));
+        $maxPointsPercent = (int) min(100, max(0, $this->config->number('wallet.max_points_payment_percent', 40)));
         $pointsPercent = $doctor?->doctorProfile?->accepts_points ? min($requestedPointsPercent, $maxPointsPercent) : 0;
         $pointsMinor = (int) floor($totalMinor * $pointsPercent / 100);
         if ($grant) {

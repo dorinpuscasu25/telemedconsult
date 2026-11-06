@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Referral;
 use App\Models\ReferralCommission;
+use App\Models\User;
 use App\Services\ReferralProgram;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,10 +13,48 @@ use Illuminate\Support\Str;
 
 class ReferralController extends Controller
 {
+    /** Rolurile care pot invita pacienți prin link personal. */
+    public const REFERRER_ROLES = ['patient', 'operator', 'doctor', 'admin'];
+
+    /**
+     * Statistica de afiliere per invitator, pentru admin: câți a adus fiecare,
+     * câți au alimentat, cât au alimentat și câte bonusuri a primit invitatorul.
+     */
+    public function adminStats(Request $request): JsonResponse
+    {
+        abort_unless($request->user()?->loadMissing('roles')->hasRole('admin'), 403);
+        $role = $request->query('role');
+
+        $referrers = User::query()
+            ->whereIn('id', Referral::select('referrer_id'))
+            ->when($role, fn ($query, string $role) => $query->whereHas('roles', fn ($roles) => $roles->where('name', $role)))
+            ->with('roles:id,name')
+            ->get(['id', 'name', 'email', 'referral_code']);
+        $ids = $referrers->pluck('id');
+        $invited = Referral::whereIn('referrer_id', $ids)->selectRaw('referrer_id, count(*) as total')->groupBy('referrer_id')->pluck('total', 'referrer_id');
+        $commissions = ReferralCommission::whereIn('referrer_id', $ids)
+            ->selectRaw('referrer_id, count(distinct referred_user_id) as active, sum(deposit_amount_minor) as deposits, sum(commission_amount_minor) as earned')
+            ->groupBy('referrer_id')->get()->keyBy('referrer_id');
+
+        $rows = $referrers->map(fn (User $user) => [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'roles' => $user->roles->pluck('name')->values(),
+            'code' => $user->referral_code,
+            'invited_count' => (int) ($invited[$user->id] ?? 0),
+            'active_count' => (int) ($commissions[$user->id]->active ?? 0),
+            'topups_total' => (int) ($commissions[$user->id]->deposits ?? 0) / 100,
+            'earned_total' => (int) ($commissions[$user->id]->earned ?? 0) / 100,
+        ])->sortByDesc('invited_count')->values();
+
+        return response()->json(['data' => $rows]);
+    }
+
     public function show(Request $request, ReferralProgram $program): JsonResponse
     {
         $user = $request->user()->loadMissing('roles');
-        abort_unless($user->hasRole('patient') || $user->hasRole('admin'), 403, 'Ai nevoie de rol pacient.');
+        abort_unless(collect(self::REFERRER_ROLES)->contains(fn (string $role) => $user->hasRole($role)), 403, 'Programul de afiliere nu este disponibil pentru rolul tău.');
 
         $code = $program->ensureCode($user);
         $referrals = Referral::where('referrer_id', $user->id)

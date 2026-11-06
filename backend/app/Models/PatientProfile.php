@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\StoresDatesInAppTimezone;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,6 +11,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable(['pseudonymized', 'residential_environment', 'address_details', 'medical_record', 'user_id', 'higo_patient_id', 'first_name', 'last_name', 'birth_date', 'gender', 'country', 'region', 'region_id', 'locality', 'locality_id', 'address', 'emergency_contact', 'medical_summary', 'life_history', 'status', 'active_until'])]
 class PatientProfile extends Model
 {
+    use StoresDatesInAppTimezone;
+
     /**
      * Codul se generează la creare și nu e mass-assignable: e identificatorul pe
      * care îl trimitem în HIGO și după care operatorul găsește pacientul în

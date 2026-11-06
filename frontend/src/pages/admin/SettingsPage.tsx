@@ -23,12 +23,12 @@ type TopDoctor = {
 const defaultSettings: SettingsMap = {
   platform_name: 'telemedconsult.md',
   support_email: 'suport@telemedconsult.md',
-  'rate.platform_commission': 30,
-  'rate.admin_accounting': 1.5,
-  'rate.bank_guarantee': 5.5,
-  'rate.bank_transaction': 3.2,
-  'rate.affiliate_doctor_topup': 5,
-  'rate.affiliate_operator': 6,
+  'rate.platform_commission': 33,
+  'rate.admin_accounting': 0,
+  'rate.bank_guarantee': 0,
+  'rate.bank_transaction': 0,
+  'rate.affiliate_doctor_topup': 3,
+  'rate.affiliate_operator': 3,
   'rate.affiliate_patient_topup': 3,
   'affiliate.patient_topup_min_amount': 0,
   'affiliate.patient_topup_first_only': false,
@@ -36,10 +36,11 @@ const defaultSettings: SettingsMap = {
   'wallet.topup_bonus_percent': 0,
   'wallet.first_topup_promo_enabled': false,
   'wallet.first_topup_promo_doctor_ids': [],
+  'wallet.first_topup_promo_max_grants': 0,
   'consultations.addendum_days': 14,
   'wallet.registration_bonus_enabled': false,
   'wallet.registration_bonus': 0,
-  'wallet.max_points_payment_percent': 30,
+  'wallet.max_points_payment_percent': 40,
   minimum_consultation_price: 500,
   operator_exam_price: 250,
   'chat.free_days': 3,
@@ -63,7 +64,7 @@ const settingLabels: Record<string, string> = {
   'rate.bank_transaction': 'Comision tranzacție bancară (%)',
   'rate.affiliate_doctor_topup': 'Afiliere medic la alimentare (%)',
   'rate.affiliate_operator': 'Afiliere operator (%)',
-  'rate.affiliate_patient_topup': 'Comision afiliere pacient la alimentare (%)',
+  'rate.affiliate_patient_topup': 'Comision afiliere (%) — la toate încărcările invitaților, în bonusuri',
   'wallet.registration_bonus': 'Bonus de bun-venit (MDL)',
   'wallet.registration_bonus_enabled': 'Acordă bonus la înregistrare',
   'wallet.max_points_payment_percent': 'Procent maxim achitabil din bonusuri (%)',
@@ -225,12 +226,14 @@ export function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <label className="flex items-center justify-between gap-4 rounded-xl border bg-white/50 p-4"><span className="text-sm font-medium">Activează promoția pentru alimentările viitoare</span><Switch checked={Boolean(settings['wallet.first_topup_promo_enabled'])} onCheckedChange={(value) => update('wallet.first_topup_promo_enabled', value)} /></label>
-            <div className="space-y-2"><p className="text-sm font-medium">Medic eligibil</p><p className="text-xs text-slate-500">Selectează medicul care oferă promoția. Modificările se aplică bonusurilor acordate ulterior; bonusurile deja primite își păstrează condițiile.</p>
+            <NumberField label="Număr maxim de acordări automate (ex. primii 120) — 0 = nelimitat" value={Number(settings['wallet.first_topup_promo_max_grants'])} onChange={(value) => update('wallet.first_topup_promo_max_grants', Math.max(0, Math.floor(value)))} />
+            <p className="text-xs text-slate-500">Utilizatorilor înregistrați deja promoția li se acordă manual din Utilizatori → Portofel → „Acordă promoția”. Acordările manuale nu se scad din limita de mai sus.</p>
+            <div className="space-y-2"><p className="text-sm font-medium">Medici eligibili</p><p className="text-xs text-slate-500">Dacă nu selectezi niciun medic, promoția se folosește la toți medicii. Modificările se aplică bonusurilor acordate ulterior; bonusurile deja primite își păstrează condițiile.</p>
               {promoDoctors.map((doctor) => <label key={doctor.id} className="flex items-center gap-2 rounded-xl border p-3 text-sm"><input type="checkbox" checked={(Array.isArray(settings['wallet.first_topup_promo_doctor_ids']) ? settings['wallet.first_topup_promo_doctor_ids'] : []).map(Number).includes(Number(doctor.id))} onChange={(event) => { const ids = (Array.isArray(settings['wallet.first_topup_promo_doctor_ids']) ? settings['wallet.first_topup_promo_doctor_ids'] : []).map(Number); update('wallet.first_topup_promo_doctor_ids', event.target.checked ? [...ids, Number(doctor.id)] : ids.filter((id) => id !== Number(doctor.id))); }} />{doctor.name}</label>)}
               {!promoDoctors.length && <p className="text-sm text-amber-700">Nu sunt medici aprobați disponibili pentru selectare.</p>}
             </div>
             <div className="rounded-xl bg-blue-50 p-4 text-sm text-blue-900">Exemplu: depui 500 MDL și primești separat 500 MDL bonus promoțional. La o consultație eligibilă de 500 MDL se folosesc automat 250 MDL din banii depuși și 250 MDL din bonus. După două asemenea consultații, ai consumat 500 MDL din fiecare sold.</div>
-            <p className="text-xs text-slate-500">Bonusul promoțional nu achită deplasarea operatorului sau examinările suplimentare. Nu se acordă retroactiv conturilor care au avut deja o alimentare confirmată.</p>
+            <p className="text-xs text-slate-500">Bonusul promoțional nu achită deplasarea operatorului sau examinările suplimentare. Automat nu se acordă conturilor care au avut deja o alimentare confirmată; pentru acestea folosește acordarea manuală.</p>
           </CardContent>
         </Card>
 

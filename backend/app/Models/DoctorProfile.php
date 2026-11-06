@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\StoresDatesInAppTimezone;
 use App\Services\PlatformConfig;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -12,6 +13,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable(['clinic_logo_path', 'clinic_logo_mime', 'signature_path', 'signature_mime', 'clinic_name', 'clinic_details', 'user_id', 'higo_doctor_id', 'specialty_id', 'license_number', 'bio', 'experience_years', 'consultation_price', 'video_price', 'video_duration_minutes', 'google_meet_account', 'platforms', 'service_catalog', 'required_investigations', 'affiliate_code', 'rating', 'reviews_count', 'is_available', 'is_approved', 'accepts_points', 'medical_institution_id', 'institution_share_percent', 'institution_joined_at'])]
 class DoctorProfile extends Model
 {
+    use StoresDatesInAppTimezone;
+
     protected static function booted(): void
     {
         static::creating(function (DoctorProfile $profile) {

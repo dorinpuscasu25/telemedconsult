@@ -255,6 +255,37 @@ class PatientReferralProgramTest extends TestCase
         $this->assertSame(7.5, app(ReferralProgram::class)->ratePercent());
     }
 
+    public function test_operator_gets_a_referral_link_and_admin_sees_what_each_operator_brought(): void
+    {
+        $this->setRate(3);
+        $operator = User::factory()->create(['status' => 'active', 'active_role_id' => Role::where('name', 'operator')->value('id')]);
+        $operator->roles()->sync([Role::where('name', 'operator')->value('id')]);
+
+        Sanctum::actingAs($operator);
+        $summary = $this->getJson('/api/v1/referrals')->assertOk()->assertJsonPath('commission_rate', 3)->json();
+        $this->assertStringContainsString('/register?ref='.$summary['code'], $summary['referral_link']);
+
+        $invited = $this->registerAndVerifyPatient('adus-de-operator@example.test', $summary['code']);
+        $this->registerPatient('fara-alimentare@example.test', $summary['code'])->assertCreated();
+        $this->completeTopUp($invited, 1000.00);
+        $this->assertSame(3000, (int) Wallet::where('user_id', $operator->id)->where('type', 'points')->value('balance_minor'));
+
+        Sanctum::actingAs($operator);
+        $this->getJson('/api/v1/referrals')->assertOk()->assertJsonPath('stats.invited_count', 2)->assertJsonPath('stats.active_count', 1);
+
+        $this->getJson('/api/v1/admin/referral-stats')->assertForbidden();
+        $admin = $this->patient('admin@example.test');
+        $admin->roles()->sync([Role::where('name', 'admin')->value('id')]);
+        Sanctum::actingAs($admin->fresh());
+        $row = $this->getJson('/api/v1/admin/referral-stats?role=operator')->assertOk()->assertJsonCount(1, 'data')->json('data.0');
+        $this->assertSame($operator->id, $row['id']);
+        $this->assertSame(2, $row['invited_count']);
+        $this->assertSame(1, $row['active_count']);
+        $this->assertEquals(1000, $row['topups_total']);
+        $this->assertEquals(30, $row['earned_total']);
+        $this->getJson('/api/v1/admin/referral-stats?role=doctor')->assertOk()->assertJsonCount(0, 'data');
+    }
+
     // --- helpers ---------------------------------------------------------
 
     private function patient(string $email): User

@@ -61,14 +61,65 @@ class FirstTopupPromotionTest extends TestCase
         $this->assertSame(0, $this->balance($patient, 'promo'));
     }
 
-    public function test_disabled_or_unconfigured_promotion_does_not_award_bonus(): void
+    public function test_disabled_promotion_does_not_award_bonus(): void
     {
         [$patient] = $this->scenario();
-        app(PlatformConfig::class)->upsert('wallet.first_topup_promo_doctor_ids', []);
+        app(PlatformConfig::class)->upsert('wallet.first_topup_promo_enabled', false);
         $this->confirm($this->payment($patient, 50000));
         $this->assertSame(0, FirstTopupPromotionGrant::count());
         Sanctum::actingAs($patient);
         $this->getJson('/api/v1/wallet')->assertOk()->assertJsonPath('first_topup_promotion.enabled', false)->assertJsonPath('first_topup_promotion.eligible_for_grant', false);
+    }
+
+    public function test_promotion_without_selected_doctors_applies_to_every_doctor(): void
+    {
+        [$patient, $doctor, $profile] = $this->scenario();
+        app(PlatformConfig::class)->upsert('wallet.first_topup_promo_doctor_ids', []);
+        $other = $this->doctor();
+        $this->confirm($this->payment($patient, 50000));
+        $this->assertSame(50000, $this->balance($patient, 'promo'));
+        $this->assertSame(250, app(FirstTopupPromotion::class)->split($patient->id, $doctor, 50000, 50000)['promo_amount']);
+        $this->assertSame(250, app(FirstTopupPromotion::class)->split($patient->id, $other, 50000, 50000)['promo_amount']);
+        Sanctum::actingAs($patient);
+        $this->postJson('/api/v1/requests', $this->requestPayload($profile, $other))->assertCreated()->assertJsonPath('request.promo_amount', 250)->assertJsonPath('request.real_amount', 250);
+    }
+
+    public function test_campaign_stops_after_the_configured_number_of_grants(): void
+    {
+        [$patient] = $this->scenario();
+        app(PlatformConfig::class)->upsert(FirstTopupPromotion::MAX_GRANTS_SETTING, 1);
+        $second = $this->user('patient');
+        $this->confirm($this->payment($patient, 50000));
+        $this->confirm($this->payment($second, 50000));
+        $this->assertSame(50000, $this->balance($patient, 'promo'));
+        $this->assertSame(0, $this->balance($second, 'promo'));
+        Sanctum::actingAs($second);
+        $this->getJson('/api/v1/wallet')->assertOk()->assertJsonPath('first_topup_promotion.enabled', false)->assertJsonPath('first_topup_promotion.remaining_grants', 0);
+    }
+
+    public function test_admin_grants_promotion_manually_once_to_an_existing_patient(): void
+    {
+        [$patient, $doctor] = $this->scenario();
+        $this->confirm($this->payment($patient, 30000));
+        Sanctum::actingAs($this->user('admin'));
+        $this->postJson("/api/v1/admin/users/{$patient->id}/wallet/promotion")->assertOk()->assertJsonPath('data.promo_balance', 500);
+        $this->postJson("/api/v1/admin/users/{$patient->id}/wallet/promotion")->assertUnprocessable();
+        $this->assertSame(50000, $this->balance($patient, 'promo'));
+        $this->assertSame(30000, $this->balance($patient, 'real'));
+        $this->assertNotNull(FirstTopupPromotionGrant::firstOrFail()->granted_by_admin_id);
+        $this->assertSame(250, app(FirstTopupPromotion::class)->split($patient->id, $doctor, 50000, 50000)['promo_amount']);
+        $this->getJson("/api/v1/admin/users/{$patient->id}/wallet")->assertOk()->assertJsonPath('data.promotion.granted', true)->assertJsonPath('data.promotion.manual', true)->assertJsonPath('data.promo_balance', 500);
+    }
+
+    public function test_manual_promotion_is_only_for_patients_and_admins(): void
+    {
+        $doctor = $this->doctor();
+        $patient = $this->user('patient');
+        Sanctum::actingAs($doctor);
+        $this->postJson("/api/v1/admin/users/{$patient->id}/wallet/promotion")->assertForbidden();
+        Sanctum::actingAs($this->user('admin'));
+        $this->postJson("/api/v1/admin/users/{$doctor->id}/wallet/promotion")->assertUnprocessable();
+        $this->assertSame(0, FirstTopupPromotionGrant::count());
     }
 
     public function test_provider_only_account_is_not_eligible_for_patient_promotion(): void
@@ -208,11 +259,60 @@ class FirstTopupPromotionTest extends TestCase
         $this->assertSame(25000, $this->balance($patient, 'promo'));
     }
 
-    public function test_admin_rejects_promotion_without_doctor_or_with_unapproved_doctor(): void
+    public function test_financial_report_separates_real_money_from_bonuses_with_the_67_33_split(): void
+    {
+        [$patient, $doctor, $profile] = $this->scenario();
+        $this->confirm($this->payment($patient, 50000));
+        Sanctum::actingAs($patient);
+        $id = $this->postJson('/api/v1/requests', $this->requestPayload($profile, $doctor))->assertCreated()->json('request.id');
+        Sanctum::actingAs($doctor);
+        $this->postJson('/api/v1/requests/'.$id.'/complete', ['diagnosis' => 'Test'])->assertOk();
+        $this->assertSame(33500, $this->balance($doctor, 'real'));
+
+        Sanctum::actingAs($this->user('admin'));
+        $report = $this->getJson('/api/v1/admin/financial')->assertOk()->json('bonus_report');
+        $this->assertEquals(1, $report['consultations']['count']);
+        $this->assertEquals(250, $report['consultations']['paid_real']);
+        $this->assertEquals(250, $report['consultations']['paid_promo']);
+        $this->assertEquals(335, $report['consultations']['provider_payouts']);
+        $this->assertEquals(-85, $report['consultations']['platform_net_real']);
+        $this->assertEquals(500, collect($report['issued'])->firstWhere('type', 'first_topup_promotion')['amount']);
+        $this->assertEquals(250, $report['in_circulation']['promo']);
+        $this->assertEquals(1, $report['promotion']['automatic_grants']);
+    }
+
+    public function test_patient_cancels_unstarted_or_rescheduled_request_and_gets_lei_and_bonus_back(): void
+    {
+        [$patient, $doctor, $profile] = $this->scenario();
+        $this->confirm($this->payment($patient, 50000));
+        Sanctum::actingAs($patient);
+        $id = $this->postJson('/api/v1/requests', $this->requestPayload($profile, $doctor))->assertCreated()->json('request.id');
+        $this->assertSame(25000, $this->balance($patient, 'real'));
+        ConsultationRequest::whereKey($id)->update(['status' => 'rescheduled', 'proposed_scheduled_at' => now()->addDay()]);
+
+        $this->postJson('/api/v1/requests/'.$id.'/cancel')->assertOk();
+        $this->assertSame('cancelled', ConsultationRequest::findOrFail($id)->status);
+        $this->assertSame(50000, $this->balance($patient, 'real'));
+        $this->assertSame(50000, $this->balance($patient, 'promo'));
+    }
+
+    public function test_patient_cannot_cancel_after_the_doctor_started_the_consultation(): void
+    {
+        [$patient, $doctor, $profile] = $this->scenario();
+        $this->confirm($this->payment($patient, 50000));
+        Sanctum::actingAs($patient);
+        $id = $this->postJson('/api/v1/requests', $this->requestPayload($profile, $doctor))->assertCreated()->json('request.id');
+        ConsultationRequest::whereKey($id)->update(['status' => 'accepted', 'doctor_started_at' => now()]);
+
+        $this->postJson('/api/v1/requests/'.$id.'/cancel')->assertUnprocessable()->assertJsonPath('message', 'Consultația a început deja și nu mai poate fi anulată.');
+        $this->assertSame(25000, $this->balance($patient, 'real'));
+    }
+
+    public function test_admin_can_enable_promotion_for_all_doctors_but_not_pick_unapproved_doctor(): void
     {
         $admin = $this->user('admin');
         Sanctum::actingAs($admin);
-        $this->putJson('/api/v1/admin/settings', ['settings' => [['key' => 'wallet.first_topup_promo_enabled', 'value' => true]]])->assertUnprocessable();
+        $this->putJson('/api/v1/admin/settings', ['settings' => [['key' => 'wallet.first_topup_promo_enabled', 'value' => true]]])->assertOk();
         $doctor = $this->doctor();
         $doctor->doctorProfile->update(['is_approved' => false]);
         $this->putJson('/api/v1/admin/settings', ['settings' => [['key' => 'wallet.first_topup_promo_doctor_ids', 'value' => [$doctor->id]]]])->assertUnprocessable();

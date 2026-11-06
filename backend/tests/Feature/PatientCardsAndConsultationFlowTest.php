@@ -162,6 +162,23 @@ class PatientCardsAndConsultationFlowTest extends TestCase
             ->assertJsonPath('message', 'Nu ai cartele disponibile pentru un profil nou.');
     }
 
+    public function test_package_with_bonus_points_credits_the_bonus_wallet_and_others_do_not(): void
+    {
+        $patient = $this->userWithRole('patient');
+        $withBonus = PatientCardPackage::create(['name' => '6 profiluri / an', 'profile_slots' => 6, 'price_minor' => 60000, 'bonus_points_minor' => 60000, 'validity_days' => 365, 'is_active' => true]);
+        $withoutBonus = PatientCardPackage::create(['name' => '1 profil / an', 'profile_slots' => 1, 'price_minor' => 24000, 'validity_days' => 365, 'is_active' => true]);
+        Wallet::create(['user_id' => $patient->id, 'type' => 'real', 'balance_minor' => 100000, 'currency' => 'MDL']);
+        Sanctum::actingAs($patient);
+
+        $this->postJson('/api/v1/patient/card-purchases', ['package_id' => $withoutBonus->id])->assertCreated();
+        $this->assertSame(0, (int) Wallet::where('user_id', $patient->id)->where('type', 'points')->value('balance_minor'));
+
+        $this->postJson('/api/v1/patient/card-purchases', ['package_id' => $withBonus->id])->assertCreated();
+        $this->assertSame(16000, (int) Wallet::where('user_id', $patient->id)->where('type', 'real')->value('balance_minor'));
+        $this->assertSame(60000, (int) Wallet::where('user_id', $patient->id)->where('type', 'points')->value('balance_minor'));
+        $this->assertDatabaseHas('wallet_transactions', ['user_id' => $patient->id, 'type' => 'patient_card_bonus', 'amount_minor' => 60000, 'wallet_type' => 'points']);
+    }
+
     public function test_card_purchase_returns_structured_wallet_error_when_balance_is_insufficient(): void
     {
         $patient = $this->userWithRole('patient');
@@ -221,11 +238,13 @@ class PatientCardsAndConsultationFlowTest extends TestCase
             'description' => 'Pachet pentru familie.',
             'profile_slots' => 4,
             'price' => 550,
+            'bonus_points' => 600,
             'validity_days' => 365,
             'is_active' => true,
         ])
             ->assertCreated()
             ->assertJsonPath('package.description', 'Pachet pentru familie.')
+            ->assertJsonPath('package.bonus_points', 600)
             ->json('package');
 
         $this->putJson('/api/v1/admin/patient-card-packages/'.$created['id'], [

@@ -46,6 +46,9 @@ use Symfony\Component\HttpFoundation\Response;
 
 class WorkflowController extends Controller
 {
+    /** Solicitări pe care pacientul le poate anula, cu banii returnați, cât timp medicul nu a început. */
+    private const CANCELLABLE_STATUSES = ['new', 'accepted', 'rescheduled'];
+
     private const ACCEPTANCE_WINDOW_MINUTES = 15;
 
     private function acceptanceWindowMinutes(): int
@@ -1810,7 +1813,8 @@ class WorkflowController extends Controller
             $user->hasRole('admin') || (int) $user->id === (int) $consultationRequest->patient_id,
             403
         );
-        abort_unless(in_array($consultationRequest->status, ['new', 'accepted'], true), 422, 'Solicitarea nu mai poate fi anulată.');
+        abort_unless(in_array($consultationRequest->status, self::CANCELLABLE_STATUSES, true), 422, 'Solicitarea nu mai poate fi anulată.');
+        abort_if($consultationRequest->doctor_started_at && ! $user->hasRole('admin'), 422, 'Consultația a început deja și nu mai poate fi anulată.');
 
         $validated = $request->validate([
             'reason' => ['nullable', 'string', 'max:1000'],
@@ -1818,7 +1822,7 @@ class WorkflowController extends Controller
 
         $retainedTravelFee = DB::transaction(function () use ($consultationRequest, $validated) {
             $consultationRequest = ConsultationRequest::lockForUpdate()->findOrFail($consultationRequest->id);
-            abort_unless(in_array($consultationRequest->status, ['new', 'accepted'], true), 422, 'Solicitarea nu mai poate fi anulată.');
+            abort_unless(in_array($consultationRequest->status, self::CANCELLABLE_STATUSES, true), 422, 'Solicitarea nu mai poate fi anulată.');
             $retained = $this->refundForCancellation($consultationRequest, $validated['reason'] ?? 'Solicitare anulată.');
             $consultationRequest->forceFill([
                 'status' => 'cancelled',

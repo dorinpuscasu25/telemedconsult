@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\StoresDatesInAppTimezone;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
 #[Fillable(['payment_id', 'provider_event_id', 'event_type', 'payload', 'received_at'])]
 class PaymentEvent extends Model
 {
+    use StoresDatesInAppTimezone;
+
     protected function casts(): array
     {
         return [

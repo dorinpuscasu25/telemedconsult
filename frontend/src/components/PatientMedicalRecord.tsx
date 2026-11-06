@@ -184,13 +184,10 @@ export function PatientMedicalRecord({ profile, regions, onSaved, onDirtyChange,
 
   return <div data-validation-scope className="space-y-5">
     <div className="rounded-xl bg-blue-50 p-4 text-sm leading-6 text-blue-900">Completează treptat informațiile cunoscute. Salvează fiecare secțiune separat. Datele vor fi vizibile medicului care se ocupă de consultație.</div>
-    <label className="block space-y-2"><span className="text-sm font-medium">Compartimentul fișei</span>
-      <select aria-label="Compartimentul fișei" className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3" value={active} disabled={saving || loading} onChange={(event) => void changeTab(event.target.value)}>
-        {nav.map(([key, title], index) => <option key={key} value={key}>{index + 1}. {title}</option>)}
-      </select>
-    </label>
-    <div className="flex flex-wrap gap-2">{[['personal', 'Date personale'], ['drug_allergies', 'Alergii'], ['analysis', 'Analize'], ['consultations', 'Consultații']].map(([key, label]) =>
-      <button key={key} type="button" disabled={loading || saving} onClick={() => void changeTab(key)} className={`rounded-full border px-3 py-1.5 text-xs font-medium ${active === key ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-600'}`}>{label}</button>)}</div>
+    <nav aria-label="Compartimentele fișei" className="space-y-2"><p className="text-sm font-medium">Compartimentele fișei</p>
+      <div className="flex flex-wrap gap-2">{nav.map(([key, title]) =>
+        <button key={key} type="button" aria-pressed={active === key} disabled={loading || saving} onClick={() => void changeTab(key)} className={`rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${active === key ? 'border-blue-600 bg-blue-600 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50'}`}>{title}</button>)}</div>
+    </nav>
     {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     {message && <p role="status" className="flex gap-2 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700"><Check className="h-4 w-4 shrink-0" />{message}</p>}
     {loading ? <p className="py-8 text-slate-500">Se încarcă fișa medicală...</p> : !loaded ? <Button variant="outline" onClick={() => { setLoading(true); load().then(() => setError('')).catch((err) => setError(errorText(err))).finally(() => setLoading(false)); }}>Reîncearcă încărcarea fișei</Button> : <>

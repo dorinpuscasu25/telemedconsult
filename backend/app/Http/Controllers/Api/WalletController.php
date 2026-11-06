@@ -34,7 +34,7 @@ class WalletController extends Controller
 
         return response()->json([
             'topup_bonus_percent' => min(100, max(0, app(PlatformConfig::class)->number('wallet.topup_bonus_percent', 0))),
-            'max_bonus_payment_percent' => app(PlatformConfig::class)->number('wallet.max_points_payment_percent', 30),
+            'max_bonus_payment_percent' => app(PlatformConfig::class)->number('wallet.max_points_payment_percent', 40),
             'promo_wallet' => $this->serializeWallet($promo),
             'first_topup_promotion' => app(FirstTopupPromotion::class)->describe($request->user()->id),
             'promo_transactions' => $promo->transactions()->latest()->limit(50)->get()->map(fn (WalletTransaction $transaction) => ['id' => $transaction->id, 'date' => $transaction->created_at, 'type' => $transaction->description, 'amount' => $transaction->amount_minor / 100, 'status' => $transaction->status]),

@@ -33,7 +33,109 @@ import { Textarea } from '../../components/ui/textarea';
 import { apiRequest } from '../../lib/api';
 import { dateTime, money, num } from '../../lib/format';
 
+interface BonusReport {
+  consultations: { count: number; total: number; paid_real: number; paid_points: number; paid_promo: number; provider_payouts: number; platform_net_real: number };
+  issued: Array<{ type: string; label: string; amount: number; count: number }>;
+  issued_total: number;
+  admin_debits: number;
+  in_circulation: { points: number; promo: number };
+  promotion: { automatic_grants: number; manual_grants: number; max_grants: number };
+  recent: Array<{ id: number; date: string; patient: string | null; provider: string | null; total: number; paid_real: number; paid_bonus: number; provider_amount: number; platform_net_real: number }>;
+}
+
+function BonusReportView({ report }: { report?: BonusReport }) {
+  if (!report) return <p className="text-sm text-slate-500">Se încarcă raportul...</p>;
+  const c = report.consultations;
+  const stats: Array<[string, number, string]> = [
+    ['Achitat în lei reali', c.paid_real, 'text-slate-900'],
+    ['Achitat din puncte bonus', c.paid_points, 'text-emerald-700'],
+    ['Achitat din promoție', c.paid_promo, 'text-blue-700'],
+    ['Plătit medicilor / operatorilor', c.provider_payouts, 'text-slate-900'],
+    ['Rămas platformei (lei reali)', c.platform_net_real, c.platform_net_real < 0 ? 'text-red-600' : 'text-emerald-700']
+  ];
+  return (
+    <div className="space-y-6">
+      <Card className="glass-card border-0">
+        <CardHeader className="pb-2">
+          <p className="font-semibold text-slate-900">Consultații finalizate ({num(c.count)}) — total {money(c.total)} MDL</p>
+          <p className="text-xs text-slate-500">Medicul primește partea lui integral în lei, indiferent dacă pacientul a plătit cu lei sau cu bonusuri. Diferența o acoperă platforma.</p>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {stats.map(([label, value, tone]) => (
+            <div key={label} className="rounded-xl border border-slate-200/60 bg-white/60 p-3">
+              <p className="text-xs text-slate-500">{label}</p>
+              <p className={`text-lg font-semibold ${tone}`}>{money(value)} MDL</p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="glass-card border-0">
+          <CardHeader className="pb-2"><p className="font-semibold text-slate-900">Bonusuri emise — {money(report.issued_total)} puncte</p></CardHeader>
+          <CardContent className="space-y-1">
+            {report.issued.map((row) => (
+              <div key={row.type} className="flex justify-between border-b border-slate-100 py-1.5 text-sm last:border-0">
+                <span className="text-slate-600">{row.label} <span className="text-xs text-slate-400">({num(row.count)})</span></span>
+                <span className="font-medium">{money(row.amount)}</span>
+              </div>
+            ))}
+            {report.admin_debits > 0 && <div className="flex justify-between py-1.5 text-sm"><span className="text-slate-600">Corecții admin (scăderi)</span><span className="font-medium text-red-600">−{money(report.admin_debits)}</span></div>}
+          </CardContent>
+        </Card>
+        <Card className="glass-card border-0">
+          <CardHeader className="pb-2"><p className="font-semibold text-slate-900">Bonusuri în circulație</p></CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div className="flex justify-between py-1.5"><span className="text-slate-600">Puncte bonus nefolosite</span><span className="font-medium">{money(report.in_circulation.points)}</span></div>
+            <div className="flex justify-between py-1.5"><span className="text-slate-600">Puncte promoție nefolosite</span><span className="font-medium">{money(report.in_circulation.promo)}</span></div>
+            <div className="flex justify-between border-t border-slate-100 py-1.5"><span className="text-slate-600">Promoția 500: acordări automate</span><span className="font-medium">{num(report.promotion.automatic_grants)}{report.promotion.max_grants > 0 ? ` / ${num(report.promotion.max_grants)}` : ''}</span></div>
+            <div className="flex justify-between py-1.5"><span className="text-slate-600">Promoția 500: acordări manuale</span><span className="font-medium">{num(report.promotion.manual_grants)}</span></div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="glass-card border-0">
+        <CardHeader className="pb-2"><p className="font-semibold text-slate-900">Ultimele consultații finalizate</p></CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto rounded-xl border border-slate-200/50 bg-white/50">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent border-slate-200/50">
+                  <TableHead>Data</TableHead>
+                  <TableHead>Pacient</TableHead>
+                  <TableHead>Medic / operator</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">Lei</TableHead>
+                  <TableHead className="text-right">Bonus</TableHead>
+                  <TableHead className="text-right">Medic</TableHead>
+                  <TableHead className="text-right">Platformă</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {report.recent.map((row) => (
+                  <TableRow key={row.id} className="border-slate-200/50">
+                    <TableCell className="text-slate-500">{dateTime(row.date)}</TableCell>
+                    <TableCell>{row.patient ?? '—'}</TableCell>
+                    <TableCell>{row.provider ?? '—'}</TableCell>
+                    <TableCell className="text-right">{money(row.total)}</TableCell>
+                    <TableCell className="text-right">{money(row.paid_real)}</TableCell>
+                    <TableCell className="text-right text-emerald-700">{money(row.paid_bonus)}</TableCell>
+                    <TableCell className="text-right">{money(row.provider_amount)}</TableCell>
+                    <TableCell className={`text-right font-medium ${row.platform_net_real < 0 ? 'text-red-600' : ''}`}>{money(row.platform_net_real)}</TableCell>
+                  </TableRow>
+                ))}
+                {report.recent.length === 0 && <TableRow><TableCell colSpan={8} className="py-6 text-center text-slate-500">Nu sunt consultații finalizate.</TableCell></TableRow>}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 interface FinancialData {
+  bonus_report?: BonusReport;
   summary: {
     wallets_balance: number;
     top_ups: number;
@@ -105,7 +207,7 @@ export function TransactionsPage() {
     setSelectedRequest(request);
     setActualAmount(String(request.amount));
     setAdminNote('');
-    setPayoutSentAt(new Date().toISOString().slice(0, 16));
+    setPayoutSentAt(new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16));
     setPayoutMethod('transfer_bancar');
     setPayoutReference('');
     setIsApproveModalOpen(true);
@@ -161,7 +263,7 @@ export function TransactionsPage() {
       </div>
 
       <Tabs defaultValue="transactions" className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2 bg-white/50 backdrop-blur-sm p-1 rounded-xl mb-6">
+        <TabsList className="grid w-full max-w-xl grid-cols-3 bg-white/50 backdrop-blur-sm p-1 rounded-xl mb-6">
           <TabsTrigger value="transactions" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
             Istoric Tranzacții
           </TabsTrigger>
@@ -169,7 +271,14 @@ export function TransactionsPage() {
             Cereri Extragere
             {pendingWithdrawals.length > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />}
           </TabsTrigger>
+          <TabsTrigger value="bonuses" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            Lei vs Bonusuri
+          </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="bonuses">
+          <BonusReportView report={data?.bonus_report} />
+        </TabsContent>
 
         <TabsContent value="transactions">
           <Card className="glass-card border-0">

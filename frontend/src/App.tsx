@@ -47,6 +47,7 @@ import { DoctorProfilePage } from './pages/doctor/DoctorProfilePage';
 import { RequestsPage } from './pages/operator/RequestsPage';
 import { OperatorChatPage } from './pages/operator/OperatorChatPage';
 import { OperatorProfilePage } from './pages/operator/OperatorProfilePage';
+import { OperatorReferralsPage } from './pages/operator/OperatorReferralsPage';
 import { InstitutionHome } from './pages/institution/InstitutionHome';
 import { InstitutionDoctorsPage } from './pages/institution/InstitutionDoctorsPage';
 import { InstitutionPayoutsPage } from './pages/institution/InstitutionPayoutsPage';
@@ -58,6 +59,7 @@ import { UsersPage } from './pages/admin/UsersPage';
 import { DoctorsPage } from './pages/admin/DoctorsPage';
 import { SpecialtiesPage } from './pages/admin/SpecialtiesPage';
 import { TransactionsPage } from './pages/admin/TransactionsPage';
+import { ReferralStatsPage } from './pages/admin/ReferralStatsPage';
 import { ComplaintsPage } from './pages/admin/ComplaintsPage';
 import { ContractsPage } from './pages/admin/ContractsPage';
 import { SettingsPage } from './pages/admin/SettingsPage';
@@ -184,6 +186,7 @@ function AppRoutes() {
         <Route path="doctors" element={<DoctorsPage />} />
         <Route path="operators" element={<UsersPage />} />
         <Route path="transactions" element={<TransactionsPage />} />
+        <Route path="referrals" element={<ReferralStatsPage />} />
         <Route path="complaints" element={<ComplaintsPage />} />
         <Route path="contracts" element={<ContractsPage />} />
         <Route path="card-packages" element={<PatientCardPackagesPage />} />
@@ -257,6 +260,7 @@ function AppRoutes() {
         <Route path="patients" element={<RequestsPage />} />
         <Route path="chat" element={<OperatorChatPage />} />
         <Route path="profile" element={<OperatorProfilePage />} />
+        <Route path="referrals" element={<FeatureRoute feature="affiliate_program"><OperatorReferralsPage /></FeatureRoute>} />
         <Route path="noutati" element={<AppNewsListPage />} />
         <Route path="noutati/:slug" element={<AppNewsPostPage />} />
         <Route path="telegram" element={<TelegramPage />} />

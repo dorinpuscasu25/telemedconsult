@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\StoresDatesInAppTimezone;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,6 +11,8 @@ use Illuminate\Support\Facades\URL;
 #[Fillable(['conversation_id', 'sender_id', 'body', 'type', 'read_at', 'metadata'])]
 class Message extends Model
 {
+    use StoresDatesInAppTimezone;
+
     public function sender(): BelongsTo
     {
         return $this->belongsTo(User::class, 'sender_id');

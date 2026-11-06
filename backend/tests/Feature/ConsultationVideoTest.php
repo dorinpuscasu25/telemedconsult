@@ -274,6 +274,8 @@ class ConsultationVideoTest extends TestCase
     public function test_cancellation_queues_closure(): void
     {
         [$patient, , $consultation] = $this->scenario();
+        // Pacientul poate anula doar cât timp medicul nu a început consultația.
+        $consultation->forceFill(['doctor_started_at' => null])->save();
         Sanctum::actingAs($patient);
         $this->postJson('/api/v1/requests/'.$consultation->id.'/cancel')->assertSuccessful();
         Queue::assertPushed(CloseConsultationVideo::class);

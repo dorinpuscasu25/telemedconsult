@@ -18,6 +18,7 @@ use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Rules\ValidPhoneNumber;
 use App\Services\FeatureFlags;
+use App\Services\WalletLedger;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -53,6 +54,7 @@ class PatientProfileController extends Controller
                 'description' => $package->description,
                 'profile_slots' => $package->profile_slots,
                 'price' => $package->price_minor / 100,
+                'bonus_points' => $package->bonus_points_minor / 100,
                 'validity_days' => $package->validity_days,
             ]),
             'card_purchases' => PatientCardPurchase::where('user_id', $user->id)->latest()->get()->map(fn (PatientCardPurchase $purchase) => [
@@ -204,6 +206,11 @@ class PatientProfileController extends Controller
                 'description' => 'Cumpărare cartelă pacient: '.$package->name,
                 'metadata' => ['patient_card_package_id' => $package->id, 'patient_card_purchase_id' => $purchase->id],
             ]);
+
+            if ($package->bonus_points_minor > 0) {
+                $ledger = app(WalletLedger::class);
+                $ledger->move($ledger->locked($user, WalletLedger::POINTS), (int) $package->bonus_points_minor, 'patient_card_bonus', 'Bonus la cumpărarea pachetului: '.$package->name, ['patient_card_package_id' => $package->id, 'patient_card_purchase_id' => $purchase->id]);
+            }
 
             return $purchase;
         });

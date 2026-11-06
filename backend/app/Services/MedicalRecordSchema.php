@@ -6,7 +6,10 @@ use Illuminate\Validation\Rule;
 
 class MedicalRecordSchema
 {
-    public const SECTIONS = ['birth', 'vaccinations', 'surgeries', 'drug_allergies', 'food_allergies', 'chronic_conditions', 'family_history', 'lifestyle', 'disease_history'];
+    public const SECTIONS = ['birth', 'vaccinations', 'surgeries', 'drug_allergies', 'chronic_conditions', 'family_history', 'lifestyle', 'disease_history'];
+
+    /** Medicament / aliment / alergen respirator. */
+    public const ALLERGY_TYPES = ['drug', 'food', 'respiratory'];
 
     public static function rules(string $section): array
     {
@@ -31,7 +34,7 @@ class MedicalRecordSchema
         ];
         $rows = match ($section) {
             'surgeries' => ['name' => ['required', 'string', 'max:255'], 'date' => $date, 'period' => $text, 'complications' => $text],
-            'drug_allergies', 'food_allergies' => ['name' => ['required', 'string', 'max:255'], 'period' => $text, 'manifestation' => $text, 'resolution' => $text],
+            'drug_allergies' => ['allergy_type' => ['nullable', Rule::in(self::ALLERGY_TYPES)], 'name' => ['required', 'string', 'max:255'], 'period' => $text, 'manifestation' => $text, 'resolution' => $text],
             'chronic_conditions' => ['name' => ['required', 'string', 'max:255'], 'date' => $date, 'specialist' => $text, 'notes' => $text],
             'family_history' => ['relationship' => ['required', 'string', 'max:255'], 'name' => ['required', 'string', 'max:255'], 'notes' => $text],
             'disease_history' => ['name' => ['required', 'string', 'max:255'], 'date' => $date, 'period' => $text, 'notes' => $text],

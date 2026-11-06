@@ -134,7 +134,9 @@ Route::prefix('v1')->group(function () {
         Route::post('/admin/users/{user}/reject', [AdminController::class, 'rejectUser']);
         Route::get('/admin/users/{user}/wallet', [AdminOperationsController::class, 'userWallet']);
         Route::post('/admin/users/{user}/wallet', [AdminOperationsController::class, 'adjustUserWallet']);
+        Route::post('/admin/users/{user}/wallet/promotion', [AdminOperationsController::class, 'grantUserPromotion']);
         Route::get('/admin/financial', [AdminOperationsController::class, 'financial']);
+        Route::get('/admin/referral-stats', [ReferralController::class, 'adminStats']);
         Route::put('/admin/withdrawals/{withdrawalRequest}', [AdminOperationsController::class, 'updateWithdrawal']);
         Route::get('/admin/complaints', [AdminOperationsController::class, 'complaints']);
         Route::put('/admin/complaints/{complaint}/resolve', [AdminOperationsController::class, 'resolveComplaint']);
@@ -212,6 +214,7 @@ Route::prefix('v1')->group(function () {
 
         Route::get('/patient/profile', [PatientProfileController::class, 'show']);
         Route::get('/patient/referrals', [ReferralController::class, 'show']);
+        Route::get('/referrals', [ReferralController::class, 'show']);
         Route::put('/patient/profile', [PatientProfileController::class, 'update']);
         Route::post('/patient/card-purchases', [PatientProfileController::class, 'buyCardPackage']);
         Route::post('/patient/profiles', [PatientProfileController::class, 'storePatientProfile']);

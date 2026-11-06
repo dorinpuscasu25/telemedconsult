@@ -793,6 +793,7 @@ interface WalletTransactionRow {
   id: string;
   date: string;
   amount: number;
+  wallet_type: 'real' | 'points' | 'promo';
   type: string;
   description: string;
   admin: string | null;
@@ -800,16 +801,21 @@ interface WalletTransactionRow {
 
 interface WalletState {
   balance: number;
+  points_balance: number;
+  promo_balance: number;
   currency: string;
+  promotion: { granted: boolean; granted_at: string | null; manual: boolean; amount: number };
   transactions: WalletTransactionRow[];
 }
+
+const WALLET_LABELS: Record<WalletTransactionRow['wallet_type'], string> = { real: 'Lei', points: 'Bonus', promo: 'Promo' };
 
 const money = (value: number) => value.toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /**
- * Portofelul unui utilizator: soldul, ultimele mișcări și formularul de
- * ajustare. Soldul se vede înainte de operație tocmai ca adminul să nu adauge
- * bani pe orb, iar motivul e obligatoriu — rămâne în istoricul tranzacției.
+ * Portofelele unui utilizator. Soldul în lei e doar de citit — e legat numai de
+ * bancă; adminul compensează exclusiv prin puncte bonus (ajustare cu motiv
+ * obligatoriu) sau prin acordarea promoției de 500 de puncte.
  */
 function WalletDialog({ user, onClose }: { user: AdminUser; onClose: () => void }) {
   const [wallet, setWallet] = useState<WalletState | null>(null);
@@ -827,6 +833,21 @@ function WalletDialog({ user, onClose }: { user: AdminUser; onClose: () => void 
   };
 
   useEffect(load, [user.id]);
+
+  const grantPromotion = async () => {
+    setMessage('');
+    setError('');
+    setIsSaving(true);
+    try {
+      const result = await apiRequest<{ message: string }>(`/admin/users/${user.id}/wallet/promotion`, { method: 'POST' });
+      setMessage(result.message);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nu am putut acorda promoția.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -858,12 +879,39 @@ function WalletDialog({ user, onClose }: { user: AdminUser; onClose: () => void 
           <DialogDescription>{user.email}</DialogDescription>
         </DialogHeader>
 
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-          <p className="text-xs text-slate-500">Sold curent</p>
-          <p className="text-2xl font-semibold text-slate-900">
-            {wallet ? `${money(wallet.balance)} ${wallet.currency}` : '…'}
-          </p>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-xs text-slate-500">Sold în lei</p>
+            <p className="text-lg font-semibold text-slate-900">{wallet ? `${money(wallet.balance)} ${wallet.currency}` : '…'}</p>
+            <p className="text-[11px] text-slate-400">Doar prin bancă</p>
+          </div>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <p className="text-xs text-emerald-700">Puncte bonus</p>
+            <p className="text-lg font-semibold text-emerald-900">{wallet ? money(wallet.points_balance) : '…'}</p>
+          </div>
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+            <p className="text-xs text-blue-700">Puncte promoție</p>
+            <p className="text-lg font-semibold text-blue-900">{wallet ? money(wallet.promo_balance) : '…'}</p>
+          </div>
         </div>
+
+        {wallet && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 px-4 py-3">
+            <div className="text-sm">
+              <p className="font-medium text-slate-900">Promoția {wallet.promotion.amount} puncte</p>
+              <p className="text-xs text-slate-500">
+                {wallet.promotion.granted
+                  ? `Acordată${wallet.promotion.manual ? ' manual' : ' la alimentare'}${wallet.promotion.granted_at ? ` pe ${new Date(wallet.promotion.granted_at).toLocaleDateString('ro-RO')}` : ''}.`
+                  : 'Se plătește automat până la 50% din consultația medicului (ex. 250 puncte + 250 lei).'}
+              </p>
+            </div>
+            {!wallet.promotion.granted && (
+              <Button type="button" size="sm" disabled={isSaving} onClick={() => void grantPromotion()}>
+                Acordă promoția
+              </Button>
+            )}
+          </div>
+        )}
 
         {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         {message && (
@@ -871,6 +919,7 @@ function WalletDialog({ user, onClose }: { user: AdminUser; onClose: () => void 
         )}
 
         <form onSubmit={submit} className="space-y-3">
+          <p className="text-sm font-medium text-slate-900">Ajustare puncte bonus</p>
           <div className="flex rounded-lg border border-slate-200 p-0.5">
             {(
               [
@@ -891,7 +940,7 @@ function WalletDialog({ user, onClose }: { user: AdminUser; onClose: () => void 
           </div>
 
           <div className="space-y-1.5">
-            <Label>Sumă (MDL)</Label>
+            <Label>Puncte</Label>
             <Input
               type="number"
               step="0.01"
@@ -921,7 +970,7 @@ function WalletDialog({ user, onClose }: { user: AdminUser; onClose: () => void 
               Închide
             </Button>
             <Button type="submit" disabled={isSaving || !amount || reason.trim().length < 3}>
-              {isSaving ? 'Se procesează…' : direction === 'credit' ? 'Adaugă în portofel' : 'Scade din portofel'}
+              {isSaving ? 'Se procesează…' : direction === 'credit' ? 'Adaugă puncte' : 'Scade puncte'}
             </Button>
           </DialogFooter>
         </form>
@@ -933,7 +982,10 @@ function WalletDialog({ user, onClose }: { user: AdminUser; onClose: () => void 
               {wallet.transactions.map((transaction) => (
                 <div key={transaction.id} className="flex items-start justify-between gap-3 border-b border-slate-100 py-1 text-xs last:border-0">
                   <div>
-                    <p className="text-slate-700">{transaction.description}</p>
+                    <p className="text-slate-700">
+                      <span className="mr-1 rounded bg-slate-100 px-1 py-0.5 text-[10px] font-semibold uppercase text-slate-500">{WALLET_LABELS[transaction.wallet_type] ?? transaction.wallet_type}</span>
+                      {transaction.description}
+                    </p>
                     <p className="text-slate-400">
                       {new Date(transaction.date).toLocaleString('ro-RO', { dateStyle: 'short', timeStyle: 'short' })}
                       {transaction.admin && ` · ${transaction.admin}`}

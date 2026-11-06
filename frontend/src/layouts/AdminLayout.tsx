@@ -21,7 +21,7 @@ import {
   Activity,
   Menu } from
 'lucide-react';
-import { Building2 } from 'lucide-react';
+import { Building2, Gift } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Button } from '../components/ui/button';
 import { Sheet, SheetContent } from '../components/ui/sheet';
@@ -100,6 +100,11 @@ export function AdminLayout() {
     icon: Receipt,
     label: 'Tranzacții',
     path: '/admin/transactions'
+  },
+  {
+    icon: Gift,
+    label: 'Afiliere',
+    path: '/admin/referrals'
   },
   {
     icon: MessageSquareWarning,
