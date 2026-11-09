@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { CreditCard, LockKeyhole, Plus, Stethoscope, WalletCards } from 'lucide-react';
+import { CreditCard, LockKeyhole, Plus, WalletCards } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
@@ -19,11 +19,11 @@ import { apiRequest } from '../../lib/api';
 import { money } from '../../lib/format';
 import { MEDICAL_SECTIONS } from '../../lib/medical-record';
 import { recordProgress, sectionTitle } from '../../lib/patient-alerts';
+import { cn } from '../../components/ui/utils';
 import { PatientBasicsFields, isPatientBasicsComplete } from '../../components/patient/PatientBasicsFields';
 import { patientAge } from '../../lib/medical-record';
 import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 import { PageHeader } from '../../components/app/PageHeader';
-import { ToneBadge } from '../../components/app/StatusBadge';
 import { ReferralPanel, type ReferralResponse } from '../../components/ReferralPanel';
 
 type PatientProfile = {
@@ -317,9 +317,21 @@ function ProfilePageContent() {
     }
   }[activeTab];
 
+  useEffect(() => {
+    if (activeTab === 'patients') document.title = 'Pacienții mei · telemedconsult.md';
+  }, [activeTab]);
+
   return (
     <div className="space-y-6">
-      <PageHeader title={pageHeading.title} description={pageHeading.description} />
+      {activeTab === 'patients' ? (
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <h1 className="text-[26px] font-bold tracking-tight text-slate-950 lg:text-[28px]">Pacienții mei</h1>
+            {canBuyPatientPackages && activePurchase && <span className="text-sm text-slate-500">Pachet {activePurchase.profile_slots === 1 ? '1 profil' : `${activePurchase.profile_slots} profiluri`} · activ până la {new Date(activePurchase.expires_at).toLocaleDateString('ro-RO')}</span>}
+          </div>
+          {canBuyPatientPackages && canAddPatient && <button type="button" onClick={() => changeTab('cards')} className="text-sm font-medium text-blue-600 hover:underline">Cumpără pachet</button>}
+        </div>
+      ) : <PageHeader title={pageHeading.title} description={pageHeading.description} />}
 
       {(message || error) && (
         <div className={`rounded-xl border px-4 py-3 text-sm ${error ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
@@ -358,7 +370,7 @@ function ProfilePageContent() {
       )}
 
       <Tabs value={activeTab} onValueChange={changeTab}>
-        {(activeTab === 'patients' || activeTab === 'cards') && (
+        {activeTab === 'cards' && (
           <TabsList className="mb-6 grid h-auto w-full max-w-md grid-cols-2 gap-1 rounded-xl bg-white/70 p-1">
             <TabsTrigger value="patients">Profiluri pacient</TabsTrigger>
             {canBuyPatientPackages && <TabsTrigger value="cards">Cumpără pachet</TabsTrigger>}
@@ -366,25 +378,26 @@ function ProfilePageContent() {
         )}
 
         <TabsContent id="patient-profiles" value="patients" className="scroll-mt-24 space-y-4">
-          {canBuyPatientPackages && activePurchase && (
-            <p className="text-sm text-slate-500">Pachet {activePurchase.profile_slots === 1 ? '1 profil' : `${activePurchase.profile_slots} profiluri`} · activ până la {new Date(activePurchase.expires_at).toLocaleDateString('ro-RO')}</p>
-          )}
-          {profiles.length > 0 && !canAddPatient && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-              <p className="font-semibold text-slate-950">Ai folosit toate locurile disponibile.</p>
-              <p className="mt-1">Pentru încă un pacient ai nevoie de un pachet nou.</p>
-              <Button variant="outline" className="mt-3 rounded-xl border-amber-300 bg-white" onClick={() => changeTab('cards')}>Cumpără pachet</Button>
+          {profiles.length > 0 && !canAddPatient && canBuyPatientPackages && (
+            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <span className="min-w-0 flex-1"><span className="font-semibold">Ai folosit toate locurile din pachet.</span> Pentru încă un pacient ai nevoie de un pachet nou.</span>
+              <button type="button" onClick={() => changeTab('cards')} className="h-9 rounded-[10px] border border-amber-300 bg-white px-3 font-medium">Cumpără pachet</button>
             </div>
           )}
-          <ul className="grid gap-3 md:grid-cols-2">
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
             {profiles.map((profile) => <PatientCard key={profile.id} profile={profile} />)}
+            {canAddPatient && (
+              <li>
+                <button type="button" onClick={() => setIsPatientOpen(true)} className="flex h-full w-full items-center gap-3 rounded-2xl border-[1.5px] border-dashed border-slate-300 p-4 text-left transition hover:border-slate-400 sm:min-h-[220px] sm:flex-col sm:justify-center sm:p-[18px] sm:text-center">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600 sm:h-12 sm:w-12"><Plus className="h-5 w-5" /></span>
+                  <span className="flex flex-col gap-0.5">
+                    <span className="text-[15px] font-semibold text-slate-950">Adaugă pacient</span>
+                    {canBuyPatientPackages && <span className="text-[13px] text-slate-500">{availableSlots} {availableSlots === 1 ? 'loc liber' : 'locuri libere'}{totalSlots ? ` din ${totalSlots}` : ''}</span>}
+                  </span>
+                </button>
+              </li>
+            )}
           </ul>
-          {canAddPatient && (
-            <button type="button" onClick={() => setIsPatientOpen(true)} className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 p-4 text-sm font-semibold text-primary transition hover:border-primary/40 hover:bg-primary/5">
-              <Plus className="h-4 w-4" />Adaugă pacient
-              {canBuyPatientPackages && <span className="font-normal text-slate-500">· {availableSlots} {availableSlots === 1 ? 'loc liber' : 'locuri libere'}{totalSlots ? ` din ${totalSlots}` : ''}</span>}
-            </button>
-          )}
         </TabsContent>
 
         <TabsContent value="cards" className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
@@ -542,36 +555,72 @@ function patientPageLink(profileId: string, section: string | null, request: str
   return request ? `${base}?tab=consultatii&request=${request}` : base;
 }
 
-/** Un pacient, cu progresul fișei și un singur buton spre următorul lucru care lipsește. */
+/** Textul butonului spre secțiunea care lipsește, ca în design („Adaugă alergiile”). */
+const NEXT_SECTION_ACTION: Record<string, string> = {
+  birth: 'Completează nașterea',
+  vaccinations: 'Adaugă vaccinările',
+  surgeries: 'Adaugă intervențiile',
+  drug_allergies: 'Adaugă alergiile',
+  chronic_conditions: 'Adaugă bolile cronice',
+  family_history: 'Completează antecedentele',
+  lifestyle: 'Completează stilul de viață',
+  disease_history: 'Adaugă bolile și traumatismele'
+};
+
+/** Un pacient (D1): inițiale, cercul fișei, vârsta și codul, un singur buton spre ce lipsește. */
 function PatientCard({ profile }: { profile: PatientProfile }) {
+  const navigate = useNavigate();
   const progress = recordProgress(profile);
   const name = displayName(profile);
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('');
-  const ratio = progress.done / progress.total;
+  const full = !progress.nextKey;
+  const age = profile.birth_date ? patientAge(profile.birth_date) : null;
+  const code = formatPatientCode(profile.patient_code);
+  const action = full ? 'Vezi fișa' : NEXT_SECTION_ACTION[progress.nextKey ?? ''] ?? `Completează: ${sectionTitle(progress.nextKey)}`;
+  const target = full ? `/patient/patients/${profile.id}?tab=fisa` : `/patient/patients/${profile.id}?tab=fisa&section=${progress.nextKey}`;
+  const ring = <ProgressRing done={progress.done} total={progress.total} />;
+  const button = (
+    <button type="button" onClick={() => navigate(target)} className={cn('rounded-[10px] px-3.5 text-sm font-semibold', full ? 'border border-slate-200 bg-white text-slate-900 hover:bg-slate-50' : 'bg-blue-600 text-white hover:bg-blue-700')}>{action}</button>
+  );
+
   return (
-    <li className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <Link to={`/patient/patients/${profile.id}`} className="flex items-center gap-3">
-        <span className="relative grid h-12 w-12 shrink-0 place-items-center">
-          <svg viewBox="0 0 36 36" className="absolute inset-0 h-12 w-12 -rotate-90" aria-hidden="true">
-            <circle cx="18" cy="18" r="16" fill="none" stroke="currentColor" strokeWidth="3" className="text-slate-100" />
-            <circle cx="18" cy="18" r="16" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeDasharray={`${ratio * 100.5} 100.5`} className="text-emerald-500" />
-          </svg>
-          <span className="text-sm font-semibold text-slate-700">{initials}</span>
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2 font-semibold text-slate-950">{name}{profile.can_request_consultation ? null : <ToneBadge tone="warning">Necesită date</ToneBadge>}</span>
-          <span className="block truncate text-xs text-slate-500">{profile.birth_date ? `${patientAge(profile.birth_date)} · ` : ''}{formatPatientCode(profile.patient_code)}</span>
-          <span className="block text-xs text-slate-500">Fișa: {progress.done} din {progress.total}</span>
-        </span>
-      </Link>
-      {profile.request_unavailable_reason && <p className="mt-2 text-xs font-medium text-amber-700">{profile.request_unavailable_reason}</p>}
-      <div className="mt-3 flex flex-wrap gap-2">
-        {progress.nextKey && (
-          <Button asChild size="sm" variant="outline"><Link to={`/patient/patients/${profile.id}?tab=fisa&section=${progress.nextKey}`}>Completează: {sectionTitle(progress.nextKey)}</Link></Button>
-        )}
-        {profile.can_request_consultation && <Button asChild size="sm" variant="ghost" className="text-primary"><Link to={`/patient/doctors?patient_profile=${profile.id}`}><Stethoscope className="h-4 w-4" />Programează</Link></Button>}
+    <li className="rounded-2xl border border-slate-200 bg-white">
+      {/* Telefon (D1a) */}
+      <div className="flex flex-col gap-3.5 p-4 sm:hidden">
+        <Link to={`/patient/patients/${profile.id}`} className="flex items-center gap-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-blue-100 text-[15px] font-semibold text-blue-700">{initials}</span>
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5"><span className="text-base font-semibold text-slate-950">{name}</span><span className="truncate text-xs text-slate-500">{[age, code && <span key="code" className="font-mono">{code}</span>].filter(Boolean).reduce<React.ReactNode[]>((parts, part, index) => (index ? [...parts, ' · ', part] : [part]), [])}</span></span>
+          {ring}
+        </Link>
+        <div className="flex items-center justify-between gap-2.5"><span className="text-[13px] text-slate-500">Fișa: {progress.done} din {progress.total}</span><span className="[&>button]:h-[38px]">{button}</span></div>
+      </div>
+      {/* Desktop (D1b) */}
+      <div className="hidden h-full flex-col gap-4 p-[18px] sm:flex">
+        <Link to={`/patient/patients/${profile.id}`} className="flex items-start justify-between"><span className="grid h-12 w-12 place-items-center rounded-full bg-blue-100 font-semibold text-blue-700">{initials}</span>{ring}</Link>
+        <Link to={`/patient/patients/${profile.id}`} className="flex flex-col gap-[3px]">
+          <span className="text-base font-semibold text-slate-950">{name}</span>
+          {age && <span className="text-[13px] text-slate-500">{age}</span>}
+          {code && <span className="font-mono text-xs text-slate-400">{code}</span>}
+          {!profile.can_request_consultation && profile.request_unavailable_reason && <span className="mt-1 text-xs font-medium text-amber-700">{profile.request_unavailable_reason}</span>}
+        </Link>
+        <span className="mt-auto flex flex-col [&>button]:h-10">{button}</span>
       </div>
     </li>
+  );
+}
+
+/** Cercul fișei: albastru cât timp lipsesc secțiuni, verde când e completă. */
+function ProgressRing({ done, total }: { done: number; total: number }) {
+  const circumference = 2 * Math.PI * 22;
+  const full = done >= total;
+  return (
+    <span className="relative h-[52px] w-[52px] shrink-0">
+      <svg width="52" height="52" viewBox="0 0 52 52" aria-hidden="true">
+        <circle cx="26" cy="26" r="22" fill="none" stroke="#E2E8F0" strokeWidth="5" />
+        <circle cx="26" cy="26" r="22" fill="none" stroke={full ? '#16A34A' : '#2563EB'} strokeWidth="5" strokeLinecap="round" strokeDasharray={`${(done / total) * circumference} ${circumference}`} transform="rotate(-90 26 26)" />
+      </svg>
+      <span className="absolute inset-0 grid place-items-center text-xs font-bold text-slate-950">{done}/{total}</span>
+    </span>
   );
 }
 

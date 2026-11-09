@@ -61,36 +61,36 @@ export function SlotPicker({ doctorId, value, onChange }: { doctorId: string; va
   const day = data?.days[dayIndex];
 
   return (
-    <fieldset className="space-y-3">
-      <legend className="mb-1 text-sm font-semibold text-slate-900">Când îți convine?</legend>
+    <fieldset className="min-w-0 space-y-3">
+      <legend className="mb-1 text-sm font-medium text-slate-900">Când îți convine?</legend>
       {!data && !failed && <Skeleton className="h-24 w-full rounded-xl" />}
       {data && !freeChoice && (
         <>
-          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none]" role="radiogroup" aria-label="Ziua">
+          <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]" role="radiogroup" aria-label="Ziua">
             {data.days.map((item, index) => {
               const date = new Date(`${item.date}T12:00:00Z`);
               const empty = item.slots.length === 0;
               return (
                 <button key={item.date} type="button" role="radio" aria-checked={index === dayIndex} disabled={empty} onClick={() => { setDayIndex(index); setCustom(false); }}
-                  className={cn('flex w-14 shrink-0 flex-col items-center rounded-xl border py-2 text-xs transition disabled:opacity-40', index === dayIndex ? 'border-primary bg-primary text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300')}>
-                  <span className="capitalize">{WEEKDAY.format(date).replace('.', '')}</span>
-                  <span className="text-base font-semibold">{date.getUTCDate()}</span>
+                  className={cn('flex h-[58px] min-w-[52px] flex-1 flex-col items-center justify-center gap-0.5 rounded-[10px] transition disabled:opacity-40', index === dayIndex ? 'border-[1.5px] border-blue-600 bg-blue-50' : 'border border-slate-200 bg-white hover:border-slate-300')}>
+                  <span className={cn('text-xs capitalize', index === dayIndex ? 'text-blue-600' : 'text-slate-500')}>{WEEKDAY.format(date).replace('.', '')}</span>
+                  <span className={cn('text-base font-semibold', index === dayIndex ? 'text-blue-700' : 'text-slate-900')}>{date.getUTCDate()}</span>
                 </button>
               );
             })}
           </div>
           {day && (
             <>
-              <p className="text-xs text-slate-500">Ore libere {DAY_LONG.format(new Date(`${day.date}T12:00:00Z`))}</p>
-              <div className="grid grid-cols-4 gap-2 sm:grid-cols-5" role="radiogroup" aria-label="Ora">
+              <p className="text-[13px] text-slate-500">Ore libere {DAY_LONG.format(new Date(`${day.date}T12:00:00Z`))}</p>
+              <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label="Ora">
                 {day.slots.map((slot) => (
                   <button key={slot.starts_at} type="button" role="radio" aria-checked={!custom && value === slot.starts_at} onClick={() => { setCustom(false); onChange(slot.starts_at); }}
-                    className={cn('h-10 rounded-xl border text-sm font-medium tabular-nums transition', !custom && value === slot.starts_at ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300')}>
+                    className={cn('h-11 rounded-[10px] text-sm tabular-nums transition', !custom && value === slot.starts_at ? 'bg-blue-600 font-semibold text-white' : 'border border-slate-200 bg-white font-medium text-slate-900 hover:border-slate-300')}>
                     {slot.time}
                   </button>
                 ))}
                 <button type="button" aria-pressed={custom} onClick={() => { setCustom(true); onChange(''); }}
-                  className={cn('h-10 rounded-xl border border-dashed text-sm font-medium transition', custom ? 'border-primary text-primary' : 'border-slate-300 text-slate-600 hover:border-slate-400')}>
+                  className={cn('h-11 rounded-[10px] border border-dashed text-[13px] font-medium transition', custom ? 'border-blue-600 text-blue-700' : 'border-slate-300 text-slate-600 hover:border-slate-400')}>
                   Altă oră
                 </button>
               </div>
@@ -110,15 +110,17 @@ export function SlotPicker({ doctorId, value, onChange }: { doctorId: string; va
 }
 
 /**
- * „Cum plătești”: câte bonusuri folosești, în MDL. Maximul e cea mai mică dintre
- * limita de bonusuri a platformei și soldul de bonusuri.
+ * „Cum plătești” (W4): câte bonusuri folosești, în MDL, de la 0 la maximul permis.
+ * Maximul e cea mai mică dintre limita de bonusuri a medicului și soldul de bonusuri.
  */
-export function BonusSlider({ total, maxPercent, pointsBalance, percent, onPercentChange }: {
+export function BonusSlider({ total, realAmount, maxPercent, pointsBalance, percent, onPercentChange, doctorName }: {
   total: number;
+  realAmount: number;
   maxPercent: number;
   pointsBalance: number;
   percent: number;
   onPercentChange: (percent: number) => void;
+  doctorName: string;
 }) {
   if (total <= 0 || pointsBalance <= 0) return null;
   const capByPercent = Math.floor((total * maxPercent) / 100);
@@ -126,32 +128,29 @@ export function BonusSlider({ total, maxPercent, pointsBalance, percent, onPerce
   if (maxBonus <= 0) return null;
   const bonus = Math.min(maxBonus, Math.round((total * percent) / 100));
   const setBonus = (value: number) => onPercentChange(Math.min(maxPercent, Math.floor((Math.max(0, Math.min(maxBonus, value)) / total) * 100)));
-  const limitedByBalance = maxBonus < capByPercent;
 
   return (
-    <section className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-sm">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="font-semibold text-amber-950">Folosește bonusurile</span>
-        <span className="tabular-nums text-amber-900"><span className="font-semibold">{bonus}</span> din max. {maxBonus}</span>
+    <section className="flex flex-col gap-3.5 rounded-2xl border border-slate-200 p-4">
+      <div className="flex items-baseline justify-between"><span className="text-[15px] font-semibold text-slate-950">Cum plătești</span><span className="text-[13px] text-slate-500">bonusuri folosite</span></div>
+      <div className="flex items-baseline gap-1.5"><span className="text-[32px] font-bold tracking-tight tabular-nums text-slate-950">{bonus}</span><span className="text-sm text-slate-500">din max. {maxBonus}</span></div>
+      <input type="range" min={0} max={maxBonus} step={1} value={bonus} onChange={(event) => setBonus(Number(event.target.value))} aria-label="Bonusuri folosite" className="h-7 w-full accent-blue-600" />
+      <div className="-mt-2 flex justify-between text-xs text-slate-400"><span>0</span><span>{maxBonus}</span></div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="flex flex-col gap-0.5 rounded-xl bg-slate-50 p-3"><span className="text-xs text-slate-500">Din bani</span><span className="text-[17px] font-semibold tabular-nums text-slate-950">{mdl(realAmount)} MDL</span></div>
+        <div className="flex flex-col gap-0.5 rounded-xl bg-amber-50 p-3"><span className="text-xs text-amber-800">Din bonusuri</span><span className="text-[17px] font-semibold tabular-nums text-amber-900">{bonus}</span></div>
       </div>
-      <input type="range" min={0} max={maxBonus} step={1} value={bonus} onChange={(event) => setBonus(Number(event.target.value))} aria-label="Bonusuri folosite" className="mt-3 w-full accent-[var(--primary)]" />
-      <div className="flex justify-between text-xs text-amber-800"><span>0</span><span>{maxBonus}</span></div>
-      <p className="mt-2 text-xs leading-5 text-amber-900">
-        Bonusurile acoperă până la {maxPercent}% din preț, adică {capByPercent}. Ai {mdl(pointsBalance)} bonusuri.
-        {limitedByBalance ? ' Maximul e limitat de soldul tău de bonusuri.' : ''}
-      </p>
+      <span className="text-xs leading-[1.45] text-slate-500">{doctorName} acceptă bonusuri până la {maxPercent}% din preț, adică {capByPercent}. Ai {mdl(pointsBalance)} bonusuri.</span>
     </section>
   );
 }
 
-/** Banii lipsă se alimentează din butonul de trimitere, fără să ieși din programare. */
-export function ShortfallNotice({ balance, shortfall }: { balance: number; shortfall: number }) {
+/** Banii lipsă se alimentează din butonul de trimitere, fără să ieși din programare (6d). */
+export function ShortfallNotice({ shortfall }: { shortfall: number }) {
   return (
-    <section className="space-y-2 rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm">
-      <p className="flex items-center justify-between text-slate-700"><span className="flex items-center gap-2"><Wallet className="h-4 w-4" />În portofel</span><span className="tabular-nums font-semibold">{mdl(balance)} MDL</span></p>
-      <p className="font-semibold text-orange-900">Îți lipsesc {mdl(shortfall)} MDL</p>
-      <p className="text-xs leading-5 text-orange-900">Alimentezi cu cardul și cererea pleacă imediat după plată. Datele completate rămân salvate.</p>
-    </section>
+    <div className="flex gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-sm leading-[1.45] text-amber-900">
+      <Wallet className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+      <div className="flex flex-col gap-0.5"><span className="font-semibold">Îți lipsesc {mdl(shortfall)} MDL</span><span className="text-[13px] text-amber-800">Alimentezi cu cardul și cererea pleacă imediat după plată. Datele completate rămân salvate.</span></div>
+    </div>
   );
 }
 
@@ -207,13 +206,12 @@ export function PrepareDoctorCard({ patientProfileId }: { patientProfileId: stri
   }
 
   return (
-    <section className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 text-left text-sm">
-      <p className="font-semibold text-slate-950">Ajută medicul să se pregătească</p>
-      <p className="mt-0.5 text-slate-600">3 întrebări despre alergii, boli cronice și medicamente. Un minut.</p>
+    <section className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left">
+      <div className="flex flex-col gap-1"><p className="text-[15px] font-semibold text-slate-950">Ajută medicul să se pregătească</p><p className="text-[13px] leading-[1.45] text-slate-500">3 întrebări despre alergii, boli cronice și medicamente. Un minut.</p></div>
       {!open ? (
-        <Button type="button" size="sm" className="mt-3" onClick={() => setOpen(true)}>Răspunde acum</Button>
+        <button type="button" onClick={() => setOpen(true)} className="h-11 rounded-[10px] border border-slate-200 bg-white text-sm font-medium text-slate-900 hover:bg-slate-50">Răspunde acum</button>
       ) : (
-        <div className="mt-3 space-y-3">
+        <div className="space-y-3">
           {PREP_QUESTIONS.map((question) => (
             <div key={question.key} className="space-y-2 rounded-xl bg-white p-3">
               <div className="flex items-center justify-between gap-3">

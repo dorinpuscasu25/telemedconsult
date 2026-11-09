@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Award, Check, CheckCircle2, ChevronLeft, ChevronRight, Home, Lock, Search, Star, Stethoscope, UserRound, Video } from 'lucide-react';
+import { Award, Check, ChevronLeft, CreditCard, Home, Info, Lock, MapPin, Search, Send, Star, Stethoscope, Video, X } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -14,7 +14,6 @@ import {
 } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '../../components/ui/select';
-import { Label } from '../../components/ui/label';
 import { ListSkeleton } from '../../components/ui/skeleton';
 import { cn } from '../../components/ui/utils';
 import { PageHeader } from '../../components/app/PageHeader';
@@ -578,18 +577,28 @@ export function DoctorsList() {
         </DialogContent>
       </Dialog>
 
-      {/* Programarea, în trei pași */}
+      {/* Programarea, în trei pași (6a–6g, W4): ecran întreg pe telefon, dialog pe desktop. */}
       <Dialog open={isRequestOpen} onOpenChange={(open) => !open && !isSubmitting && closeRequest()}>
-        <DialogContent className="flex flex-col gap-0 p-0 max-sm:h-dvh max-sm:max-h-dvh max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-0 sm:max-h-[min(92dvh,860px)] sm:max-w-[600px] sm:p-0">
+        <DialogContent className="flex flex-col gap-0 p-0 max-sm:h-dvh max-sm:max-h-dvh max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-0 sm:max-h-[min(92dvh,860px)] sm:max-w-[560px] sm:p-0 [&>button:last-child]:hidden">
           {selectedDoctor && !isSuccess && (
             <form onSubmit={(event) => { if (step < 3) { event.preventDefault(); goNext(); return; } void handleRequest(event); }} className="flex min-h-0 flex-1 flex-col">
-              <DialogHeader className="shrink-0 border-b border-slate-100 px-5 pb-4 pt-5 sm:px-6">
-                <DialogTitle>{['Pacient și tip', 'Ce te deranjează și când', 'Confirmă cererea'][step - 1]}</DialogTitle>
-                <DialogDescription>Pasul {step} din 3 · {selectedDoctor.name}</DialogDescription>
-                <Stepper step={step} />
-              </DialogHeader>
+              <div className="flex shrink-0 flex-col gap-3.5 border-b border-slate-100 px-5 pb-3.5 pt-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    {step > 1 && <button type="button" aria-label="Înapoi" onClick={() => { setError(''); setStep((current) => (current - 1) as 1 | 2 | 3); }} className="-ml-1.5 grid h-10 w-8 place-items-center text-slate-700 sm:hidden"><ChevronLeft className="h-5 w-5" /></button>}
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                      <DialogDescription className="text-xs text-slate-500">Pasul {step} din 3{step > 1 ? ` · ${selectedDoctor.name}` : ''}</DialogDescription>
+                      <DialogTitle className="truncate text-base font-semibold text-slate-950">{step === 1 ? selectedDoctor.name : step === 2 ? 'Ce te deranjează și când' : 'Confirmă cererea'}</DialogTitle>
+                    </div>
+                  </div>
+                  <button type="button" onClick={closeRequest} aria-label="Închide" className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-700 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+                </div>
+                <div className="grid grid-cols-3 gap-1" aria-hidden="true">
+                  {[1, 2, 3].map((item) => <span key={item} className={cn('h-1 rounded-sm', item <= step ? 'bg-blue-600' : 'bg-slate-200')} />)}
+                </div>
+              </div>
 
-              <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
+              <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 py-[22px]">
                 {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 
                 {pendingReview && (
@@ -602,70 +611,48 @@ export function DoctorsList() {
 
                 {step === 1 && (
                   <>
-                    <fieldset className="space-y-2">
-                      <legend className="mb-2 text-sm font-semibold text-slate-900">Pentru cine este consultația?</legend>
-                      {requestablePatientProfiles.length > 0 ? (
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {requestablePatientProfiles.map((profile) => (
-                            <ChoiceCard key={profile.id} selected={patientProfileId === String(profile.id)} onSelect={() => setPatientProfileId(String(profile.id))}>
-                              <span className="flex items-center gap-3">
-                                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600"><UserRound className="h-4 w-4" /></span>
-                                <span className="min-w-0">
-                                  <span className="block truncate font-semibold text-slate-900">{patientProfileName(profile)}</span>
-                                  {(profile.locality || profile.region) && <span className="block truncate text-xs text-slate-500">{profile.locality || profile.region}</span>}
-                                </span>
-                              </span>
-                            </ChoiceCard>
-                          ))}
-                        </div>
-                      ) : (
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-sm font-medium text-slate-900">Pacient</span>
+                      {requestablePatientProfiles.length === 0 ? (
                         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
                           <p className="flex items-center gap-2 font-semibold text-slate-900"><Lock className="h-4 w-4" />Adaugă mai întâi pacientul</p>
-                          <p className="mt-1">Consultația se face pentru un profil de pacient activ (tu sau un membru al familiei). Îl adaugi din „Pacienții mei”.</p>
-                          <Button asChild type="button" variant="outline" size="sm" className="mt-3"><Link to="/patient/profile">Deschide Pacienții mei</Link></Button>
+                          <Button asChild type="button" variant="outline" size="sm" className="mt-3"><Link to="/patient/start">Adaugă pacientul</Link></Button>
                         </div>
+                      ) : requestablePatientProfiles.length === 1 ? (
+                        <div className="flex h-11 items-center rounded-[10px] border border-slate-200 px-3 text-[15px] text-slate-900">{patientProfileName(requestablePatientProfiles[0])}</div>
+                      ) : (
+                        <Select value={patientProfileId} onValueChange={setPatientProfileId}>
+                          <SelectTrigger className="h-11 rounded-[10px] text-[15px]">{selectedProfile ? patientProfileName(selectedProfile) : <span className="text-muted-foreground">Alege pacientul</span>}</SelectTrigger>
+                          <SelectContent>{requestablePatientProfiles.map((profile) => <SelectItem key={profile.id} value={String(profile.id)}>{patientProfileName(profile)}</SelectItem>)}</SelectContent>
+                        </Select>
                       )}
-                    </fieldset>
+                    </div>
 
-                    <fieldset className="space-y-2">
-                      <legend className="mb-2 text-sm font-semibold text-slate-900">Tipul consultației</legend>
-                      {!withExamEnabled && !videoEnabled ? <p className="text-sm text-slate-500">Consultațiile sunt momentan dezactivate.</p> : (
-                        <div className="grid gap-2">
-                          {withExamEnabled && (
-                            <ChoiceCard selected={effectiveKind === 'with_exam'} onSelect={() => setConsultationKind('with_exam')} disabled={!videoEnabled && effectiveKind === 'with_exam'}>
-                              <KindOption icon={Home} title="Cu examinare la domiciliu" description="Un operator vine la pacient, face măsurătorile, apoi medicul dă concluzia." price={`de la ${selectedDoctor.consultation_price} MDL`} />
-                            </ChoiceCard>
-                          )}
-                          {videoEnabled && (
-                            <ChoiceCard selected={effectiveKind === 'video'} onSelect={() => setConsultationKind('video')} disabled={!withExamEnabled && effectiveKind === 'video'}>
-                              <KindOption icon={Video} title="Consultație video" description={`Discuție online cu medicul, ${selectedDoctor.video_duration_minutes ?? 10} minute.`} price={`${selectedDoctor.video_price ?? 500} MDL`} />
-                            </ChoiceCard>
-                          )}
-                        </div>
+                    <div className="flex flex-col gap-2" role="radiogroup" aria-label="Tipul consultației">
+                      <span className="text-sm font-medium text-slate-900">Tipul consultației</span>
+                      {!withExamEnabled && !videoEnabled && <p className="text-sm text-slate-500">Consultațiile sunt momentan dezactivate.</p>}
+                      {videoEnabled && (
+                        <KindCard selected={effectiveKind === 'video'} onSelect={() => setConsultationKind('video')} title="Video" description="Discuți cu medicul de acasă, pe telefon sau calculator." price={`${selectedDoctor.video_price ?? 500} MDL`} />
                       )}
-                    </fieldset>
-
-                    {needsAddress && selectedProfile && (
-                      <fieldset className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                        <legend className="sr-only">Adresa pentru operator</legend>
-                        <p className="text-sm font-semibold text-slate-900">Unde vine operatorul?{selectedProfile.locality ? <span className="font-normal text-slate-500"> · {[selectedProfile.locality, selectedProfile.region].filter(Boolean).join(', ')}</span> : null}</p>
-                        {missingRegion ? (
-                          <p className="text-sm text-amber-800">Profilul nu are raionul și localitatea. <Link to={`/patient/profile?patient_profile=${selectedProfile.id}`} className="font-semibold underline">Completează-le în fișă</Link>, apoi revino.</p>
-                        ) : (
-                          <>
-                            <div className="space-y-2">
-                              <Label htmlFor="booking-street">Strada și numărul</Label>
-                              <Input id="booking-street" autoComplete="street-address" placeholder="str. Cartușa 12, ap. 4" value={street} onChange={(event) => setStreet(event.target.value)} />
+                      {withExamEnabled && (
+                        <KindCard selected={effectiveKind === 'with_exam'} onSelect={() => setConsultationKind('with_exam')} title="Cu examinare la domiciliu" description="Vine un operator cu aparatul medical, apoi medicul dă concluzia." price={`${selectedDoctor.consultation_price} MDL`}>
+                          {needsAddress && selectedProfile && (
+                            <div className="flex flex-col gap-3 border-t border-blue-100 p-3.5">
+                              <p className="flex items-center gap-1.5 text-[13px] text-slate-600"><MapPin className="h-4 w-4" />Unde vine operatorul?{selectedProfile.locality ? ` ${[selectedProfile.locality, selectedProfile.region].filter(Boolean).join(', ')}` : ''}</p>
+                              {missingRegion ? (
+                                <p className="text-sm text-amber-800">Profilul nu are raionul și localitatea. <Link to={`/patient/patients/${selectedProfile.id}`} className="font-semibold underline">Completează-le în fișă</Link>, apoi revino.</p>
+                              ) : (
+                                <>
+                                  <label className="flex flex-col gap-1.5"><span className="text-sm font-medium text-slate-900">Strada și numărul</span><Input autoComplete="street-address" placeholder="str. Cartușa 12, ap. 4" value={street} onChange={(event) => setStreet(event.target.value)} className="h-11 rounded-[10px] text-[15px]" /></label>
+                                  <label className="flex flex-col gap-1.5"><span className="text-sm font-medium text-slate-900">Telefon</span><Input type="tel" autoComplete="tel" placeholder="+373 __ ___ ___" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} className="h-11 rounded-[10px] text-[15px]" /></label>
+                                  <span className="text-xs text-slate-500">Se salvează în profil, ca să nu le completezi data viitoare.</span>
+                                </>
+                              )}
                             </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="booking-phone">Telefon</Label>
-                              <Input id="booking-phone" type="tel" autoComplete="tel" placeholder="+373 __ ___ ___" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} />
-                              <p className="text-xs text-slate-500">Se salvează în profil, ca să nu le completezi data viitoare.</p>
-                            </div>
-                          </>
-                        )}
-                      </fieldset>
-                    )}
+                          )}
+                        </KindCard>
+                      )}
+                    </div>
                   </>
                 )}
 
@@ -675,13 +662,13 @@ export function DoctorsList() {
                     <SlotPicker doctorId={String(selectedDoctor.id)} value={scheduledAt} onChange={setScheduledAt} />
                     {effectiveKind === 'with_exam' && optionalInvestigations.length > 0 && (
                       <fieldset>
-                        <legend className="mb-2 text-sm font-semibold text-slate-900">Investigații opționale</legend>
-                        <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                        <legend className="mb-2 text-sm font-medium text-slate-900">Investigații opționale</legend>
+                        <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200">
                           {optionalInvestigations.map((investigation) => (
                             <label key={investigation.id} className="flex cursor-pointer items-center gap-3 px-3.5 py-3 text-sm">
-                              <input type="checkbox" className="h-4 w-4 accent-[var(--primary)]" checked={selectedOptionalIds.includes(investigation.id)} onChange={() => toggleOptional(investigation.id)} />
+                              <input type="checkbox" className="h-4 w-4 accent-blue-600" checked={selectedOptionalIds.includes(investigation.id)} onChange={() => toggleOptional(investigation.id)} />
                               <span className="flex-1 text-slate-800">{investigation.name}</span>
-                              <span className="tabular text-slate-500">+{investigation.default_price} MDL</span>
+                              <span className="tabular-nums text-slate-500">+{investigation.default_price} MDL</span>
                             </label>
                           ))}
                         </div>
@@ -692,92 +679,88 @@ export function DoctorsList() {
 
                 {step === 3 && (
                   <>
-                    <dl className="divide-y divide-slate-100 rounded-xl border border-slate-200 text-sm">
-                      <SummaryRow label="Pacient" value={selectedProfile ? patientProfileName(selectedProfile) : '—'} onEdit={() => setStep(1)} />
-                      <SummaryRow label="Tip" value={effectiveKind === 'with_exam' ? 'Cu examinare la domiciliu' : 'Consultație video'} onEdit={() => setStep(1)} />
-                      <SummaryRow label="Data dorită" value={scheduledAt ? longDateTime(scheduledAt) : '—'} onEdit={() => setStep(2)} />
-                      <SummaryRow label="Acuze" value={<span className="line-clamp-2">{symptoms}</span>} onEdit={() => setStep(2)} />
-                    </dl>
+                    <div className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3.5">
+                      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-slate-200 text-sm font-semibold text-slate-700">{initialsOf(selectedDoctor.name)}</span>
+                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <span className="text-[15px] font-semibold text-slate-950">{selectedDoctor.name} · {effectiveKind === 'with_exam' ? 'Cu examinare' : 'Video'}</span>
+                        <span className="text-[13px] text-slate-500">{[scheduledAt ? capitalize(longDateTime(scheduledAt)) : 'Cât mai curând', effectiveKind === 'with_exam' && selectedProfile?.address ? selectedProfile.address : selectedProfile?.first_name ? `pentru ${selectedProfile.first_name}` : null].filter(Boolean).join(' · ')}</span>
+                      </div>
+                    </div>
 
-                    <section className="rounded-xl border border-slate-200 p-4 text-sm">
-                      <h3 className="mb-3 font-semibold text-slate-900">Cost</h3>
-                      {previewLoading && <ListSkeleton rows={1} />}
-                      {!previewLoading && effectiveKind === 'with_exam' && preview?.eligible && preview.cost && (
-                        <div className="space-y-1.5">
-                          <Row label="Consultația medicului" value={preview.cost.doctor_base} />
-                          {preview.cost.investigations.map((line) => (
-                            <Row key={line.id} label={`${line.name}${line.requirement === 'optional' ? ' (opțional)' : ''}`} value={line.price} />
-                          ))}
-                          <Row label="Deplasarea operatorului" value={preview.cost.travel_fee} />
-                          <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-semibold text-slate-950"><span>Total</span><span className="tabular">{preview.cost.total} MDL</span></div>
-                          {preview.operator?.name && <p className="pt-1 text-xs text-slate-500">Operator asignat: <strong className="text-slate-700">{preview.operator.name}</strong>{preview.operator.region ? ` · ${preview.operator.region}` : ''}</p>}
+                    {previewLoading ? <ListSkeleton rows={2} /> : preview && !preview.eligible ? (
+                      <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{preview.message || 'Verifică datele solicitării înainte de confirmare.'}</p>
+                    ) : preview?.eligible && preview.payment && (
+                      <>
+                        <div className="flex flex-col rounded-2xl border border-slate-200">
+                          {effectiveKind === 'with_exam' && preview.cost ? (
+                            <>
+                              <CostLine label="Consultația medicului" value={preview.cost.doctor_base} first />
+                              {preview.cost.investigations.map((line) => <CostLine key={line.id} label={`${line.name}${line.requirement === 'optional' ? ' (opțional)' : ''}`} value={line.price} />)}
+                              <CostLine label="Deplasarea operatorului" value={preview.cost.travel_fee} />
+                            </>
+                          ) : (
+                            <CostLine label={`Consultație video${selectedDoctor.video_duration_minutes ? ` · ${selectedDoctor.video_duration_minutes} min` : ''}`} value={preview.payment.total} first />
+                          )}
+                          {preview.payment.promo_amount > 0 && <CostLine label="Bonus promoțional (automat)" value={-preview.payment.promo_amount} accent />}
+                          <div className="flex justify-between border-t border-slate-200 px-4 py-3.5 text-base font-semibold text-slate-950"><span>Total</span><span className="tabular-nums">{mdl(preview.payment.total)} MDL</span></div>
+                          {shortfall > 0 && preview.wallet && <div className="flex justify-between px-4 pb-3.5 text-sm text-slate-600"><span>În portofel</span><span className="tabular-nums">{mdl(preview.wallet.balance)} MDL</span></div>}
                         </div>
-                      )}
-                      {!previewLoading && effectiveKind === 'video' && (
-                        <div className="flex items-center justify-between text-base font-semibold text-slate-950"><span>Consultație video · {selectedDoctor.video_duration_minutes ?? 10} min</span><span className="tabular">{preview?.payment?.total ?? selectedDoctor.video_price ?? 500} MDL</span></div>
-                      )}
-                      {!previewLoading && preview && !preview.eligible && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-amber-900">{preview.message || 'Verifică datele solicitării înainte de confirmare.'}</p>}
-                    </section>
 
-                    {selectedDoctor.accepts_points && preview?.eligible && preview.payment && (
-                      <BonusSlider total={preview.payment.total} maxPercent={maxPointsPercent} pointsBalance={preview.wallet?.points_balance ?? 0} percent={pointsPercent} onPercentChange={setPointsPercent} />
+                        {selectedDoctor.accepts_points && (
+                          <BonusSlider total={preview.payment.total} realAmount={preview.payment.real_amount} maxPercent={maxPointsPercent} pointsBalance={preview.wallet?.points_balance ?? 0} percent={pointsPercent} onPercentChange={setPointsPercent} doctorName={selectedDoctor.name} />
+                        )}
+
+                        {shortfall > 0 && preview.wallet ? (
+                          <ShortfallNotice shortfall={shortfall} />
+                        ) : (
+                          <div className="flex gap-2.5 rounded-xl bg-blue-50 px-3.5 py-3 text-[13px] leading-[1.45] text-blue-950">
+                            <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+                            <span>Rezervăm {mdl(preview.payment.real_amount)} MDL din Bani{preview.payment.points_amount > 0 ? ` și ${mdl(preview.payment.points_amount)} bonusuri` : ''} până după consultație. Dacă medicul refuză sau se anulează, revin în portofel.{preview.wallet ? ` Rămân ${mdl(Math.max(0, preview.wallet.balance - preview.payment.real_amount))} MDL.` : ''}</span>
+                          </div>
+                        )}
+                      </>
                     )}
-
-                    {preview?.eligible && preview.payment && (
-                      <section className="space-y-1.5 rounded-xl bg-blue-50 p-4 text-sm text-blue-950">
-                        <h3 className="mb-1 font-semibold">Cum se achită</h3>
-                        <Row label="Din portofelul de bază" value={preview.payment.real_amount} />
-                        {preview.payment.points_amount > 0 && <Row label="Din bonusuri" value={preview.payment.points_amount} />}
-                        {preview.payment.promo_amount > 0 && <><Row label="Bonus promoțional (automat)" value={preview.payment.promo_amount} /><p className="text-xs text-blue-800">Maximum 50% din tariful medicului eligibil. Examinările și deplasarea se achită separat.</p></>}
-                        <p className="pt-1 text-xs text-blue-800">Rezervăm suma din portofel până confirmă medicul și o plătim doar după consultație. Dacă medicul refuză, banii revin în portofel.{preview.wallet && shortfall === 0 ? ` Rămân ${mdl(Math.max(0, preview.wallet.balance - preview.payment.real_amount))} MDL.` : ''}</p>
-                      </section>
-                    )}
-
-                    {preview?.eligible && preview.wallet && shortfall > 0 && <ShortfallNotice balance={preview.wallet.balance} shortfall={shortfall} />}
                   </>
                 )}
               </div>
 
-              <DialogFooter className="shrink-0 flex-row items-center justify-between gap-2 border-t border-slate-100 px-5 py-3 sm:px-6">
-                {step > 1 ? (
-                  <Button type="button" variant="ghost" onClick={() => { setError(''); setStep((current) => (current - 1) as 1 | 2 | 3); }}><ChevronLeft className="h-4 w-4" />Înapoi</Button>
-                ) : (
-                  <Button type="button" variant="ghost" onClick={closeRequest}>Renunță</Button>
-                )}
+              <div className="flex shrink-0 gap-2 border-t border-slate-100 px-5 py-4">
+                {step > 1 && <Button type="button" variant="outline" className="hidden h-12 sm:inline-flex" onClick={() => { setError(''); setStep((current) => (current - 1) as 1 | 2 | 3); }}>Înapoi</Button>}
                 {step < 3 ? (
-                  <Button type="submit" disabled={step === 1 ? !canContinueStep1 || savingAddress || missingRegion : !canContinueStep2}>{savingAddress ? 'Se salvează…' : 'Continuă'}<ChevronRight className="h-4 w-4" /></Button>
+                  <Button type="submit" className="h-12 flex-1 text-[15px] font-semibold sm:ml-auto sm:flex-none sm:px-8" disabled={step === 1 ? !canContinueStep1 || savingAddress || missingRegion : !canContinueStep2}>{savingAddress ? 'Se salvează…' : 'Continuă'}</Button>
                 ) : (
-                  <Button type="submit" disabled={isSubmitting || isToppingUp || autoSubmit || !effectiveKind || !patientProfileId || previewLoading || !preview?.eligible}>
+                  <Button type="submit" className="h-12 flex-1 text-[15px] font-semibold sm:ml-auto sm:flex-none sm:px-6" disabled={isSubmitting || isToppingUp || autoSubmit || !effectiveKind || !patientProfileId || previewLoading || !preview?.eligible}>
+                    {shortfall > 0 && !isSubmitting && !isToppingUp && !autoSubmit && <CreditCard className="h-4 w-4" />}
                     {isSubmitting || autoSubmit ? 'Se trimite…' : isToppingUp ? 'Se deschide plata…' : shortfall > 0 ? `Alimentează ${mdl(Math.ceil(shortfall))} MDL și trimite cererea` : 'Trimite cererea'}
                   </Button>
                 )}
-              </DialogFooter>
+              </div>
             </form>
           )}
           {selectedDoctor && isSuccess && (
-            <div className="space-y-5 overflow-y-auto px-5 py-8 sm:px-6">
-              <div className="text-center">
-                <span className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-emerald-50 text-emerald-600"><CheckCircle2 className="h-8 w-8" /></span>
-                <h2 className="text-2xl font-bold text-slate-950">Cererea a fost trimisă</h2>
-                <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">Te anunțăm când {selectedDoctor.name} confirmă.</p>
-              </div>
-              <div className="flex items-center gap-3 rounded-xl border border-slate-200 p-4 text-sm">
-                <Avatar className="h-11 w-11"><AvatarFallback className="bg-primary/10 font-semibold text-primary">{initialsOf(selectedDoctor.name)}</AvatarFallback></Avatar>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-slate-950">{selectedDoctor.name}</p>
-                  <p className="text-slate-500">{selectedDoctor.specialty || 'Medic'}</p>
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+              <div className="flex justify-end px-3 pt-3"><button type="button" onClick={closeRequest} aria-label="Închide" className="grid h-10 w-10 place-items-center rounded-lg text-slate-700 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+              <div className="flex flex-1 flex-col gap-[22px] px-5 pb-8 pt-3">
+                <span className="grid h-14 w-14 place-items-center rounded-full bg-green-50 text-green-600"><Check className="h-6 w-6" /></span>
+                <div className="flex flex-col gap-2">
+                  <DialogTitle className="text-[26px] font-bold leading-[1.2] tracking-tight">Cererea a fost trimisă</DialogTitle>
+                  <DialogDescription className="text-[15px] leading-normal text-slate-500">Te anunțăm când {selectedDoctor.name} confirmă.</DialogDescription>
                 </div>
-                <div className="text-right">
-                  <p className="font-medium text-slate-900">{scheduledAt ? longDateTime(scheduledAt) : 'Cât mai curând'}</p>
-                  <p className="text-slate-500">{effectiveKind === 'with_exam' ? 'Cu examinare' : 'Video'}{selectedProfile?.first_name ? ` · pentru ${selectedProfile.first_name}` : ''}</p>
+                <div className="flex flex-col rounded-2xl border border-slate-200">
+                  <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3.5">
+                    <span className="grid h-11 w-11 place-items-center rounded-full bg-slate-200 text-sm font-semibold text-slate-700">{initialsOf(selectedDoctor.name)}</span>
+                    <span className="flex flex-col gap-0.5"><span className="text-[15px] font-semibold text-slate-950">{selectedDoctor.name}</span><span className="text-[13px] text-slate-500">{selectedDoctor.specialty || 'Medic'}</span></span>
+                  </div>
+                  <div className="flex justify-between gap-3 px-4 py-3 text-sm"><span className="text-slate-500">Când</span><span className="text-right font-medium text-slate-900">{scheduledAt ? capitalize(longDateTime(scheduledAt)) : 'Cât mai curând'}</span></div>
+                  <div className="flex justify-between gap-3 px-4 pb-3 text-sm"><span className="text-slate-500">Tip</span><span className="font-medium text-slate-900">{effectiveKind === 'with_exam' ? 'Cu examinare' : 'Video'}{selectedProfile?.first_name ? ` · pentru ${selectedProfile.first_name}` : ''}</span></div>
                 </div>
-              </div>
-              {patientProfileId && <PrepareDoctorCard patientProfileId={patientProfileId} />}
-              <div className="flex flex-col gap-2 sm:flex-row sm:justify-between">
-                {isEnabled('telegram_notifications') ? <Button asChild variant="ghost"><Link to="/patient/telegram">Primește notificări pe Telegram</Link></Button> : <span />}
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  {conversationId && <Button variant="outline" onClick={() => navigate(`/patient/chat?conversation=${conversationId}`)}>Deschide mesajele</Button>}
-                  <Button onClick={() => navigate('/patient')}>Mergi la Acasă</Button>
+                {patientProfileId && <PrepareDoctorCard patientProfileId={patientProfileId} />}
+                <div className="min-h-2 flex-1" />
+                <div className="flex flex-col gap-2.5">
+                  {isEnabled('telegram_notifications')
+                    ? <Button asChild className="h-12 text-[15px] font-semibold"><Link to="/patient/telegram"><Send className="h-4 w-4" />Primește notificări pe Telegram</Link></Button>
+                    : conversationId && <Button className="h-12 text-[15px] font-semibold" onClick={() => navigate(`/patient/chat?conversation=${conversationId}`)}>Deschide mesajele</Button>}
+                  <button type="button" onClick={() => navigate('/patient')} className="p-2.5 text-center text-sm text-slate-600 hover:text-slate-900">Mergi la Acasă</button>
                 </div>
               </div>
             </div>
@@ -788,68 +771,10 @@ export function DoctorsList() {
   );
 }
 
-const STEPS = ['Pacient și tip', 'Detalii', 'Confirmare'];
 
-function Stepper({ step }: { step: number }) {
-  return (
-    <ol className="mt-4 flex items-center gap-2" aria-label="Pași">
-      {STEPS.map((label, index) => {
-        const number = index + 1;
-        const done = number < step;
-        const current = number === step;
-        return (
-          <li key={label} className="flex flex-1 items-center gap-2" aria-current={current ? 'step' : undefined}>
-            <span className={cn('grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold', done ? 'bg-primary text-white' : current ? 'bg-primary/10 text-primary ring-2 ring-primary' : 'bg-slate-100 text-slate-400')}>
-              {done ? <Check className="h-3.5 w-3.5" /> : number}
-            </span>
-            <span className={cn('hidden text-xs font-semibold sm:block', current ? 'text-slate-900' : 'text-slate-400')}>{label}</span>
-            {number < STEPS.length && <span className={cn('h-px flex-1', done ? 'bg-primary' : 'bg-slate-200')} />}
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
 
-function ChoiceCard({ selected, onSelect, disabled = false, children }: { selected: boolean; onSelect: () => void; disabled?: boolean; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={selected}
-      onClick={onSelect}
-      disabled={disabled}
-      className={cn('relative w-full rounded-xl border p-3.5 text-left transition disabled:cursor-default', selected ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-slate-200 bg-white hover:border-slate-300')}>
-      {children}
-      {selected && <span className="absolute right-3 top-3 grid h-5 w-5 place-items-center rounded-full bg-primary text-white"><Check className="h-3 w-3" /></span>}
-    </button>
-  );
-}
 
-function KindOption({ icon: Icon, title, description, price }: { icon: React.ElementType; title: string; description: string; price: string }) {
-  return (
-    <span className="flex items-start gap-3 pr-6">
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Icon className="h-5 w-5" /></span>
-      <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-baseline justify-between gap-x-3">
-          <span className="font-semibold text-slate-900">{title}</span>
-          <span className="tabular text-sm font-semibold text-slate-900">{price}</span>
-        </span>
-        <span className="mt-0.5 block text-sm text-slate-500">{description}</span>
-      </span>
-    </span>
-  );
-}
 
-function SummaryRow({ label, value, onEdit }: { label: string; value: React.ReactNode; onEdit: () => void }) {
-  return (
-    <div className="flex items-start gap-3 px-4 py-3">
-      <dt className="w-24 shrink-0 text-slate-500">{label}</dt>
-      <dd className="min-w-0 flex-1 font-medium text-slate-900">{value}</dd>
-      <button type="button" onClick={onEdit} className="shrink-0 text-xs font-semibold text-primary hover:underline">Modifică</button>
-    </div>
-  );
-}
 
 function PriceRow({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
   return (
@@ -869,14 +794,6 @@ function Stat({ value, label }: { value: string; label: string }) {
   );
 }
 
-function Row({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="flex items-center justify-between gap-3 text-slate-600">
-      <span>{label}</span>
-      <span className="tabular">{value} MDL</span>
-    </div>
-  );
-}
 
 function InfoList({ title, items, empty }: { title: string; items: string[]; empty: string }) {
   return (
@@ -942,4 +859,31 @@ function apiErrorCode(err: unknown): string | undefined {
     return typeof data?.code === 'string' ? data.code : undefined;
   }
   return undefined;
+}
+
+/** Tipul consultației ca buton radio, cu prețul în dreapta; varianta aleasă poate cere date în plus (adresa). */
+function KindCard({ selected, onSelect, title, description, price, children }: { selected: boolean; onSelect: () => void; title: string; description: string; price: string; children?: React.ReactNode }) {
+  return (
+    <div className={cn('overflow-hidden rounded-2xl', selected ? 'border-[1.5px] border-blue-600' : 'border border-slate-200')}>
+      <button type="button" role="radio" aria-checked={selected} onClick={onSelect} className={cn('flex w-full items-start gap-3 p-3.5 text-left', selected && 'bg-blue-50')}>
+        <span className={cn('mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border-[1.5px]', selected ? 'border-blue-600' : 'border-slate-300')}>{selected && <span className="h-2.5 w-2.5 rounded-full bg-blue-600" />}</span>
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5"><span className="text-[15px] font-semibold text-slate-950">{title}</span><span className={cn('text-[13px] leading-[1.4]', selected ? 'text-slate-600' : 'text-slate-500')}>{description}</span></span>
+        <span className="shrink-0 text-[15px] font-semibold tabular-nums text-slate-950">{price}</span>
+      </button>
+      {selected && children}
+    </div>
+  );
+}
+
+function CostLine({ label, value, first = false, accent = false }: { label: string; value: number; first?: boolean; accent?: boolean }) {
+  return (
+    <div className={cn('flex justify-between gap-3 px-4 py-3 text-sm', !first && 'border-t border-slate-100')}>
+      <span className="text-slate-600">{label}</span>
+      <span className={cn('tabular-nums', accent ? 'text-green-600' : 'text-slate-900')}>{value < 0 ? '−' : ''}{mdl(Math.abs(value))} MDL</span>
+    </div>
+  );
+}
+
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
