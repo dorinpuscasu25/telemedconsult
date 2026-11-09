@@ -15,7 +15,7 @@ import { getEcho } from '../../lib/realtime';
 
 type ChatUser = { id: number; name: string };
 type Message = { id: number; body: string; sender_id: number; sender?: ChatUser; type?: 'text' | 'image' | 'file' | 'system'; metadata?: { file_name?: string; url?: string } | null; created_at: string };
-type ChatState = { state: 'pending' | 'open' | 'reactivatable' | 'closed'; can_write: boolean; can_reactivate: boolean; message: string | null; reactivate_until?: string | null };
+type ChatState = { state: 'pending' | 'open' | 'reactivatable' | 'closed'; can_write: boolean; can_reactivate: boolean; message: string | null; reactivate_until?: string | null; reactivation_price?: number | null; reactivation_hours?: number | null };
 type Conversation = {
   id: number;
   is_direct?: boolean;
@@ -400,7 +400,7 @@ function Composer({ conversation, request, isDirect, patientProfileId, doctorId,
       ) : chat.can_reactivate ? (
         <div className="flex flex-col gap-3 text-sm sm:flex-row sm:items-center">
           <p className="min-w-0 flex-1 text-slate-600">{chat.message ?? 'Chatul gratuit s-a încheiat.'}{chat.reactivate_until ? ` Îl poți redeschide până pe ${shortDate(chat.reactivate_until)}. Plătești din portofel.` : ''}</p>
-          <Button disabled={sending} onClick={() => void reactivate()}>Redeschide chatul pentru 24 h</Button>
+          <Button disabled={sending} onClick={() => void reactivate()}>Redeschide chatul pentru {chat.reactivation_hours ?? 24} h{chat.reactivation_price ? ` · ${chat.reactivation_price} MDL` : ''}</Button>
         </div>
       ) : (
         <div className="flex flex-col gap-3 text-sm sm:flex-row sm:items-center">

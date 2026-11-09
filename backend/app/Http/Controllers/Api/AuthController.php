@@ -15,6 +15,7 @@ use App\Notifications\AppEventNotification;
 use App\Services\PlatformConfig;
 use App\Services\ReferralProgram;
 use App\Services\RegistrationBonus;
+use App\Services\TrustedDevices;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,6 +25,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -31,6 +33,8 @@ use Throwable;
 
 class AuthController extends Controller
 {
+    private const OTP_MAX_ATTEMPTS = 5;
+
     public function forgotPassword(Request $request): JsonResponse
     {
         $validated = $request->validate(['email' => ['required', 'email']]);
@@ -48,6 +52,7 @@ class AuthController extends Controller
         $status = Password::reset($validated, function (User $user, string $password): void {
             $user->forceFill(['password' => Hash::make($password), 'remember_token' => Str::random(60)])->save();
             $user->tokens()->delete();
+            app(TrustedDevices::class)->revokeAll($user);
             event(new PasswordReset($user));
         });
         if ($status !== Password::PasswordReset) {
@@ -290,6 +295,7 @@ class AuthController extends Controller
         $validated = $request->validate([
             'email' => ['required', 'email'],
             'password' => ['required', 'string'],
+            'device_token' => ['nullable', 'string', 'max:128'],
         ]);
 
         $user = User::where('email', $validated['email'])->first();
@@ -319,8 +325,10 @@ class AuthController extends Controller
             ], 202);
         }
 
-        if (! $isAdmin && app(PlatformConfig::class)->bool('auth.email_2fa_enabled', true)) {
+        if (! $isAdmin && app(PlatformConfig::class)->bool('auth.email_2fa_enabled', true)
+            && ! app(TrustedDevices::class)->recognizes($user, $validated['device_token'] ?? null)) {
             $devOtp = $this->sendEmailOtp($user, 'login');
+            RateLimiter::clear($this->otpAttemptsKey($user->email));
 
             return response()->json([
                 'message' => 'Am trimis codul de autentificare pe email.',
@@ -340,6 +348,7 @@ class AuthController extends Controller
         $validated = $request->validate([
             'email' => ['required', 'email'],
             'code' => ['required', 'string', 'digits:6'],
+            'remember_device' => ['sometimes', 'boolean'],
         ]);
 
         $user = User::where('email', $validated['email'])->first();
@@ -350,16 +359,29 @@ class AuthController extends Controller
             ]);
         }
 
+        // Un cod de 6 cifre se poate ghici prin încercări repetate: după 5 coduri
+        // greșite, codul curent nu mai e acceptat și trebuie cerut unul nou.
+        $attemptsKey = $this->otpAttemptsKey($user->email);
+        if (RateLimiter::tooManyAttempts($attemptsKey, self::OTP_MAX_ATTEMPTS)) {
+            EmailVerificationOtp::where('user_id', $user->id)->whereNull('verified_at')->delete();
+            throw ValidationException::withMessages([
+                'code' => ['Prea multe coduri greșite. Autentifică-te din nou ca să primești un cod nou.'],
+            ]);
+        }
+
         $otp = EmailVerificationOtp::where('user_id', $user->id)
             ->whereNull('verified_at')
             ->latest()
             ->first();
 
         if (! $otp || $otp->expires_at->isPast() || ! Hash::check($validated['code'], $otp->code_hash)) {
+            RateLimiter::hit($attemptsKey, 600);
             throw ValidationException::withMessages([
                 'code' => ['Codul este invalid sau a expirat.'],
             ]);
         }
+
+        RateLimiter::clear($attemptsKey);
 
         DB::transaction(function () use ($user, $otp) {
             $otp->forceFill(['verified_at' => now()])->save();
@@ -368,7 +390,19 @@ class AuthController extends Controller
 
         $this->forgetDemoOtp($user);
 
-        return $this->tokenResponse($user->refresh(), 'Autentificat cu succes.');
+        $response = $this->tokenResponse($user->refresh(), 'Autentificat cu succes.');
+        $devices = app(TrustedDevices::class);
+
+        if (($validated['remember_device'] ?? false) && $devices->eligible($user)) {
+            $response->setData([...$response->getData(true), 'device_token' => $devices->issue($user, $request->userAgent())]);
+        }
+
+        return $response;
+    }
+
+    private function otpAttemptsKey(string $email): string
+    {
+        return 'login-otp:'.sha1(Str::lower($email));
     }
 
     public function me(Request $request): JsonResponse

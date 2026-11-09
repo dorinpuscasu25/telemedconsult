@@ -1730,6 +1730,9 @@ class WorkflowController extends Controller
                 ? 'Perioada gratuită de discuții s-a încheiat. Poți reactiva chatul contra cost.'
                 : 'Fereastra de discuții pentru această consultație s-a închis definitiv.',
             'reactivate_until' => $request->chat_expires_at,
+            // Prețul și durata redeschiderii, ca butonul să spună cât costă (doar afișare).
+            'reactivation_price' => $reactivatable ? app(PlatformConfig::class)->number('chat.reactivation_price', 50) : null,
+            'reactivation_hours' => $reactivatable ? (int) app(PlatformConfig::class)->number('chat.reactivation_hours', 24) : null,
         ];
     }
 

@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle } from
 '../components/ui/card';
+import { Checkbox } from '../components/ui/checkbox';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { type OtpRequiredError, useAuth } from '../contexts/AuthContext';
@@ -25,6 +26,7 @@ export function LoginPage() {
   const [isResending, setIsResending] = useState(false);
   const [requiresVerification, setRequiresVerification] = useState(false);
   const [otpMode, setOtpMode] = useState<'email_verification' | 'login_2fa'>('email_verification');
+  const [rememberDevice, setRememberDevice] = useState(false);
   const { login, verifyEmailOtp, verifyLoginOtp, resendEmailOtp } = useAuth();
   const navigate = useNavigate();
   const routeForRole = (role: string) => role === 'admin' ? '/admin' : `/${role}`;
@@ -84,7 +86,7 @@ export function LoginPage() {
     setIsSubmitting(true);
     try {
       const user = otpMode === 'login_2fa'
-        ? await verifyLoginOtp(email.trim().toLowerCase(), otpCode)
+        ? await verifyLoginOtp(email.trim().toLowerCase(), otpCode, rememberDevice)
         : await verifyEmailOtp(email.trim().toLowerCase(), otpCode);
       navigate(routeForUser(user));
     } catch (err) {
@@ -232,6 +234,15 @@ export function LoginPage() {
                       onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
                       className="h-12 rounded-xl border-slate-200 bg-white text-center text-xl font-semibold tracking-[0.35em]" />
                   </div>
+                  {otpMode === 'login_2fa' && (
+                    <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm">
+                      <Checkbox checked={rememberDevice} onCheckedChange={(value) => setRememberDevice(value === true)} className="mt-0.5" />
+                      <span>
+                        <span className="block font-medium text-slate-900">Ține-mă minte pe acest dispozitiv 30 de zile</span>
+                        <span className="block text-xs text-slate-500">Nu-ți mai cerem codul la autentificare de pe acest dispozitiv. Doar pentru conturile de pacient; nu bifa pe un calculator comun.</span>
+                      </span>
+                    </label>
+                  )}
                 </div>
               )}
             </CardContent>

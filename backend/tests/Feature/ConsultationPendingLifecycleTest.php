@@ -6,6 +6,7 @@ use App\Models\ConsultationRequest;
 use App\Models\Conversation;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\PlatformConfig;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -51,6 +52,25 @@ class ConsultationPendingLifecycleTest extends TestCase
             ->assertJsonPath('message', 'Solicitarea a expirat. Creează o solicitare nouă pentru a continua consultația.');
         $this->postJson('/api/v1/requests/'.$request->id.'/accept')->assertUnprocessable();
         $this->assertSame('refunded', $request->refresh()->payment_status);
+    }
+
+    public function test_reactivatable_chat_tells_the_patient_the_reactivation_price(): void
+    {
+        [$patient, , $request, $chat] = $this->scenario();
+        app(PlatformConfig::class)->upsert('chat.reactivation_price', 75, 'chat', 'number');
+        $request->update(['status' => 'completed', 'conclusion_sent_at' => now()->subDays(5), 'completed_at' => now()->subDays(5), 'free_chat_until' => now()->subDays(2), 'chat_expires_at' => now()->addDays(9)]);
+        Sanctum::actingAs($patient);
+
+        $this->getJson('/api/v1/conversations/'.$chat->id)->assertOk()
+            ->assertJsonPath('data.chat.state', 'reactivatable')
+            ->assertJsonPath('data.chat.can_reactivate', true)
+            ->assertJsonPath('data.chat.reactivation_price', 75)
+            ->assertJsonPath('data.chat.reactivation_hours', 24);
+
+        $request->update(['chat_expires_at' => now()->subDay()]);
+        $this->getJson('/api/v1/conversations/'.$chat->id)->assertOk()
+            ->assertJsonPath('data.chat.state', 'closed')
+            ->assertJsonPath('data.chat.reactivation_price', null);
     }
 
     public function test_completed_operator_phase_does_not_expire_while_waiting_for_doctor(): void

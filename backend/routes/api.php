@@ -46,8 +46,8 @@ Route::prefix('v1')->group(function () {
     Route::post('/auth/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
     Route::post('/auth/verify-email-otp', [AuthController::class, 'verifyEmailOtp'])->middleware('throttle:10,1');
     Route::post('/auth/resend-email-otp', [AuthController::class, 'resendEmailOtp'])->middleware('throttle:5,1');
-    Route::post('/auth/login', [AuthController::class, 'login']);
-    Route::post('/auth/verify-login-otp', [AuthController::class, 'verifyLoginOtp']);
+    Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+    Route::post('/auth/verify-login-otp', [AuthController::class, 'verifyLoginOtp'])->middleware('throttle:10,1');
 
     Route::get('/catalog/specialties', [CatalogController::class, 'specialties']);
     Route::get('/catalog/doctors', [CatalogController::class, 'doctors']);

@@ -18,6 +18,8 @@
         </include>
     </source>
     <php>
+        <!-- Generarea PDF-urilor (dompdf) depășește 128 MB în suita completă. -->
+        <ini name="memory_limit" value="1G"/>
         <env name="APP_KEY" value="base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>

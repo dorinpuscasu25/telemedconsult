@@ -48,7 +48,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<User>;
   register: (payload: RegisterPayload) => Promise<{message: string; email: string; account_type?: string; requires_approval?: boolean; verification_required: boolean; dev_otp?: string | null}>;
   verifyEmailOtp: (email: string, code: string) => Promise<User>;
-  verifyLoginOtp: (email: string, code: string) => Promise<User>;
+  verifyLoginOtp: (email: string, code: string, rememberDevice?: boolean) => Promise<User>;
   resendEmailOtp: (email: string) => Promise<{message: string; dev_otp?: string | null}>;
   switchRole: (role: RoleName) => Promise<void>;
   refreshUser: () => Promise<User | null>;
@@ -57,6 +57,17 @@ interface AuthContextType {
   isLoading: boolean;
 }
 export const WELCOME_BONUS_KEY = 'welcome_bonus';
+
+/** „Ține-mă minte 30 de zile”: tokenul dispozitivului, păstrat pe email (doar pe acest browser). */
+const TRUSTED_DEVICES_KEY = 'trusted_devices';
+
+function readTrustedDevices(): Record<string, string> {
+  try { return JSON.parse(localStorage.getItem(TRUSTED_DEVICES_KEY) || '{}') as Record<string, string>; } catch { return {}; }
+}
+
+function saveTrustedDevice(email: string, token: string) {
+  try { localStorage.setItem(TRUSTED_DEVICES_KEY, JSON.stringify({ ...readTrustedDevices(), [email.trim().toLowerCase()]: token })); } catch { /* fără stocare: codul se cere din nou */ }
+}
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: {children: ReactNode;}) {
   const [user, setUser] = useState<User | null>(null);
@@ -104,7 +115,7 @@ export function AuthProvider({ children }: {children: ReactNode;}) {
     const response = await apiRequest<{token?: string; user?: User; login_otp_required?: boolean; email_verification_required?: boolean; message?: string; dev_otp?: string | null}>('/auth/login', {
       method: 'POST',
       auth: false,
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ email, password, device_token: readTrustedDevices()[email.trim().toLowerCase()] ?? null })
     });
 
     if (response.email_verification_required) {
@@ -158,12 +169,14 @@ export function AuthProvider({ children }: {children: ReactNode;}) {
     return nextUser;
   };
 
-  const verifyLoginOtp = async (email: string, code: string) => {
-    const response = await apiRequest<{token: string; user: User}>('/auth/verify-login-otp', {
+  const verifyLoginOtp = async (email: string, code: string, rememberDevice = false) => {
+    const response = await apiRequest<{token: string; user: User; device_token?: string}>('/auth/verify-login-otp', {
       method: 'POST',
       auth: false,
-      body: JSON.stringify({ email, code })
+      body: JSON.stringify({ email, code, remember_device: rememberDevice })
     });
+
+    if (response.device_token) saveTrustedDevice(email, response.device_token);
 
     setToken(response.token);
     const nextUser = normalizeUser(response.user);
