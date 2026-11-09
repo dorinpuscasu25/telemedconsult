@@ -14,6 +14,7 @@ import {
   DialogTitle
 } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '../../components/ui/select';
 import { Label } from '../../components/ui/label';
 import { Switch } from '../../components/ui/switch';
 import { ListSkeleton } from '../../components/ui/skeleton';
@@ -197,7 +198,9 @@ export function DoctorsList() {
     setSelectedOptionalIds([]);
     setPreview(null);
     setPointsPercent(0);
-    const requested = requestableProfiles.find((profile) => String(profile.id) === requestedProfileId);
+    // Pacientul fixat sus în listă (din asistent sau ales cu „Schimbă”) rămâne cel preselectat.
+    const requested = requestableProfiles.find((profile) => String(profile.id) === patientProfileId)
+      ?? requestableProfiles.find((profile) => String(profile.id) === requestedProfileId);
     setPatientProfileId(requested ? String(requested.id) : requestableProfiles[0]?.id ? String(requestableProfiles[0].id) : '');
     setStep(1);
     setPendingReview(null);
@@ -287,6 +290,8 @@ export function DoctorsList() {
 
   const requestablePatientProfiles = patientProfiles.filter(canRequestConsultation);
   const selectedProfile = requestablePatientProfiles.find((profile) => String(profile.id) === patientProfileId);
+  const pinnedProfile = !isRequestOpen || selectedProfile ? selectedProfile : undefined;
+  const fromWizard = searchParams.get('from') === 'start';
   const optionalInvestigations = selectedDoctor?.investigation_requirements?.optional ?? [];
   const canContinueStep1 = Boolean(patientProfileId && effectiveKind);
   const canContinueStep2 = Boolean(symptoms.trim() && scheduledAt);
@@ -306,6 +311,31 @@ export function DoctorsList() {
         title="Alege un medic"
         description="Compară specialiștii, prețurile și recenziile, apoi programează consultația în trei pași."
       />
+
+      {fromWizard && (
+        <ol className="flex flex-wrap items-center gap-2 text-sm" aria-label="Pașii de pornire">
+          <li className="flex items-center gap-1.5 text-emerald-700"><Check className="h-4 w-4" />Pachet</li>
+          <li className="flex items-center gap-1.5 text-emerald-700"><Check className="h-4 w-4" />Pacient</li>
+          <li className="flex items-center gap-1.5 font-semibold text-slate-950" aria-current="step"><span className="grid h-5 w-5 place-items-center rounded-full bg-primary text-xs text-white">3</span>Programare</li>
+        </ol>
+      )}
+
+      {pinnedProfile && (
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <Avatar className="h-10 w-10"><AvatarFallback className="bg-primary/10 text-sm font-semibold text-primary">{initials(patientProfileName(pinnedProfile))}</AvatarFallback></Avatar>
+          <p className="min-w-0 flex-1 truncate text-sm text-slate-600">Pentru <span className="font-semibold text-slate-950">{patientProfileName(pinnedProfile)}</span></p>
+          {requestablePatientProfiles.length > 1 ? (
+            <Select value={patientProfileId} onValueChange={setPatientProfileId}>
+              <SelectTrigger className="h-9 w-auto gap-2 rounded-xl border-0 bg-transparent font-semibold text-primary shadow-none hover:bg-primary/5" aria-label="Schimbă pacientul">Schimbă</SelectTrigger>
+              <SelectContent align="end" className="w-56">
+                {requestablePatientProfiles.map((profile) => <SelectItem key={profile.id} value={String(profile.id)}>{patientProfileName(profile)}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Button asChild variant="ghost" size="sm" className="text-primary"><Link to="/patient/profile">Schimbă</Link></Button>
+          )}
+        </div>
+      )}
 
       <div className="space-y-3">
         <div className="relative max-w-xl">
@@ -719,6 +749,10 @@ function normalizeList(value: unknown): string[] {
     if (item && typeof item === 'object' && 'name' in item) return String((item as { name?: unknown }).name || '');
     return '';
   }).filter(Boolean);
+}
+
+function initials(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('');
 }
 
 function patientProfileName(profile: PatientProfile) {

@@ -54,7 +54,7 @@ export function ConfirmCodePage() {
         ? await verifyLoginOtp(email.trim().toLowerCase(), code)
         : await verifyEmailOtp(email.trim().toLowerCase(), code);
       setCode('');
-      navigate(next.status === 'pending' ? '/pending' : `/${next.role}`, { replace: true });
+      navigate(next.status === 'pending' ? '/pending' : initial.purpose !== 'login' && next.role === 'patient' ? '/patient/start' : `/${next.role}`, { replace: true });
     } catch (err) { setError(err instanceof Error ? err.message : 'Codul nu a putut fi verificat.'); }
     finally { setBusy(false); }
   };

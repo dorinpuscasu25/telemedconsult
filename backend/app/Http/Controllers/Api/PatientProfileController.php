@@ -13,11 +13,15 @@ use App\Models\PatientCardPurchase;
 use App\Models\PatientFamilyMember;
 use App\Models\PatientInvestigation;
 use App\Models\PatientProfile;
+use App\Models\Payment;
 use App\Models\Region;
 use App\Models\Wallet;
-use App\Models\WalletTransaction;
 use App\Rules\ValidPhoneNumber;
 use App\Services\FeatureFlags;
+use App\Services\InsufficientWalletBalance;
+use App\Services\MaibCheckout;
+use App\Services\PatientCardPurchaser;
+use App\Services\PlatformConfig;
 use App\Services\WalletLedger;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
@@ -57,6 +61,9 @@ class PatientProfileController extends Controller
                 'bonus_points' => $package->bonus_points_minor / 100,
                 'validity_days' => $package->validity_days,
             ]),
+            'onboarding' => [
+                'first_consultation_topup' => $this->firstConsultationTopupMinor() / 100,
+            ],
             'card_purchases' => PatientCardPurchase::where('user_id', $user->id)->latest()->get()->map(fn (PatientCardPurchase $purchase) => [
                 'id' => $purchase->id,
                 'profile_slots' => $purchase->profile_slots,
@@ -173,56 +180,90 @@ class PatientProfileController extends Controller
             'package_id' => ['required', 'exists:patient_card_packages,id'],
         ]);
 
-        $purchase = DB::transaction(function () use ($user, $validated) {
-            $package = PatientCardPackage::where('is_active', true)->lockForUpdate()->findOrFail($validated['package_id']);
-            $wallet = Wallet::where('user_id', $user->id)->where('type', 'real')->lockForUpdate()->first()
-                ?? Wallet::create(['user_id' => $user->id, 'type' => 'real', 'balance_minor' => 0, 'currency' => 'MDL']);
+        $package = PatientCardPackage::where('is_active', true)->findOrFail($validated['package_id']);
 
-            if ($wallet->balance_minor < $package->price_minor) {
-                throw new HttpResponseException(response()->json([
-                    'message' => 'Balanță insuficientă pentru cartelă. Alimentează portofelul înainte de cumpărare.',
-                    'code' => 'insufficient_wallet_balance',
-                    'required_amount' => $package->price_minor / 100,
-                    'current_balance' => $wallet->balance_minor / 100,
-                    'missing_amount' => max(0, $package->price_minor - $wallet->balance_minor) / 100,
-                ], 422));
-            }
-
-            $wallet->decrement('balance_minor', $package->price_minor);
-
-            $purchase = PatientCardPurchase::create([
-                'user_id' => $user->id,
-                'patient_card_package_id' => $package->id,
-                'profile_slots' => $package->profile_slots,
-                'amount_minor' => $package->price_minor,
-                'validity_days' => $package->validity_days,
-                'expires_at' => now()->addDays($package->validity_days),
-                'settings_snapshot' => $package->toArray(),
-            ]);
-
-            WalletTransaction::create([
-                'wallet_id' => $wallet->id,
-                'user_id' => $user->id,
-                'amount_minor' => -$package->price_minor,
-                'currency' => $wallet->currency,
-                'type' => 'patient_card_purchase',
-                'status' => 'completed',
-                'description' => 'Cumpărare cartelă pacient: '.$package->name,
-                'metadata' => ['patient_card_package_id' => $package->id, 'patient_card_purchase_id' => $purchase->id],
-            ]);
-
-            if ($package->bonus_points_minor > 0) {
-                $ledger = app(WalletLedger::class);
-                $ledger->move($ledger->locked($user, WalletLedger::POINTS), (int) $package->bonus_points_minor, 'patient_card_bonus', 'Bonus la cumpărarea pachetului: '.$package->name, ['patient_card_package_id' => $package->id, 'patient_card_purchase_id' => $purchase->id]);
-            }
-
-            return $purchase;
-        });
+        try {
+            $purchase = app(PatientCardPurchaser::class)->purchase($user->id, $package);
+        } catch (InsufficientWalletBalance $e) {
+            return $this->insufficientBalanceResponse($e);
+        }
 
         return response()->json([
             'message' => 'Cartelă cumpărată.',
             'purchase' => $purchase,
         ], 201);
+    }
+
+    /**
+     * Asistentul de pornire: pachetul (și, opțional, suma pentru prima consultație) într-o singură plată.
+     * Din sold, dacă ajunge și nu se cere alimentare; altfel prin MAIB, iar pachetul se cumpără la confirmarea plății.
+     */
+    public function checkoutCardPackage(Request $request): JsonResponse
+    {
+        $user = $request->user()->loadMissing('roles');
+        abort_unless($user->hasRole('patient') || $user->hasRole('admin'), 403, 'Ai nevoie de rol pacient.');
+        abort_unless(app(FeatureFlags::class)->enabled('patient_cards'), 403, 'Modulul de cartele este momentan dezactivat.');
+        abort_unless(app(FeatureFlags::class)->enabled('payments'), 403, 'Plățile sunt momentan dezactivate.');
+
+        $validated = $request->validate([
+            'package_id' => ['required', 'integer', 'exists:patient_card_packages,id'],
+            'include_topup' => ['sometimes', 'boolean'],
+        ]);
+
+        $package = PatientCardPackage::where('is_active', true)->findOrFail($validated['package_id']);
+        $topupMinor = ($validated['include_topup'] ?? false) ? $this->firstConsultationTopupMinor() : 0;
+
+        if ($topupMinor === 0) {
+            try {
+                $purchase = app(PatientCardPurchaser::class)->purchase($user->id, $package);
+
+                return response()->json(['mode' => 'purchased', 'message' => 'Pachet activat.', 'purchase' => $purchase], 201);
+            } catch (InsufficientWalletBalance) {
+                // Soldul nu ajunge: plătește pachetul cu cardul.
+            }
+        }
+
+        $wallet = Wallet::firstOrCreate(['user_id' => $user->id, 'type' => WalletLedger::REAL], ['balance_minor' => 0, 'currency' => 'MDL']);
+        $payment = Payment::create([
+            'user_id' => $user->id,
+            'wallet_id' => $wallet->id,
+            'amount_minor' => (int) $package->price_minor + $topupMinor,
+            'currency' => 'MDL',
+            'purpose' => 'wallet_top_up',
+            'status' => 'pending',
+            'provider' => 'maib',
+            'metadata' => [
+                'source' => 'patient_onboarding',
+                'buy_package_id' => $package->id,
+                'package_price_minor' => (int) $package->price_minor,
+                'topup_minor' => $topupMinor,
+            ],
+        ]);
+
+        $description = 'Pachet '.$package->name.($topupMinor > 0 ? ' + alimentare portofel' : '').' · telemedconsult.md';
+        $pay = app(MaibCheckout::class)->start($payment, $user, $description, $request->ip());
+
+        if (! $pay) {
+            return response()->json(['message' => 'Nu am putut iniția plata.'], 500);
+        }
+
+        return response()->json(['mode' => 'redirect', 'payment' => $payment->fresh(), 'pay' => $pay]);
+    }
+
+    private function firstConsultationTopupMinor(): int
+    {
+        return (int) round(max(0, app(PlatformConfig::class)->number('onboarding.first_consultation_topup', 500)) * 100);
+    }
+
+    private function insufficientBalanceResponse(InsufficientWalletBalance $e): JsonResponse
+    {
+        return response()->json([
+            'message' => 'Balanță insuficientă pentru cartelă. Alimentează portofelul înainte de cumpărare.',
+            'code' => 'insufficient_wallet_balance',
+            'required_amount' => $e->requiredMinor / 100,
+            'current_balance' => $e->balanceMinor / 100,
+            'missing_amount' => $e->missingMinor() / 100,
+        ], 422);
     }
 
     public function appendLifeHistory(Request $request, PatientProfile $patientProfile): JsonResponse

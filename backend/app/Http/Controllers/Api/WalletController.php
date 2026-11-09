@@ -12,6 +12,8 @@ use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\FeatureFlags;
 use App\Services\FirstTopupPromotion;
+use App\Services\MaibCheckout;
+use App\Services\PatientCardPurchaser;
 use App\Services\PaymentVerification;
 use App\Services\PlatformConfig;
 use App\Services\ReferralProgram;
@@ -20,9 +22,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use MaibEcomm\MaibSdk\MaibApiRequest;
-use MaibEcomm\MaibSdk\MaibAuthRequest;
-use Throwable;
 
 class WalletController extends Controller
 {
@@ -80,64 +79,11 @@ class WalletController extends Controller
             'metadata' => ['source' => 'patient_wallet', 'affiliate_code' => $validated['affiliate_code'] ?? null],
         ]);
 
-        $auth = $this->maibAuth();
-
-        if (! $auth) {
-            $payment->update(['status' => 'failed', 'metadata' => ['error' => 'MAIB auth failed']]);
-
-            return response()->json(['message' => 'Nu am putut iniția plata.'], 500);
-        }
-
-        $maibOrder = [
-            'amount' => $amount,
-            'currency' => 'MDL',
-            'description' => 'Alimentare portofel telemedconsult.md',
-            'language' => 'ro',
-            'orderId' => (string) $payment->id,
-            'email' => $user->email,
-            'phone' => $user->phone ?? '',
-            'clientName' => $user->name,
-            'clientIp' => $request->ip() ?? '127.0.0.1',
-            'delivery' => 0,
-            'items' => [[
-                'id' => (string) $payment->id,
-                'name' => 'Alimentare portofel telemedconsult.md',
-                'price' => $amount,
-                'quantity' => 1,
-            ]],
-            'okUrl' => $this->paymentReturnUrl('MAIB_OK_URL', $payment),
-            'callBackUrl' => $this->paymentReturnUrl('MAIB_CALLBACK_URL', $payment),
-            'failUrl' => $this->paymentReturnUrl('MAIB_FAIL_URL', $payment),
-        ];
-
-        try {
-            $pay = MaibApiRequest::create()->pay($maibOrder, $auth->accessToken);
-        } catch (Throwable $e) {
-            report($e);
-            $payment->update(['status' => 'failed', 'metadata' => ['error' => $e->getMessage()]]);
-
-            return response()->json(['message' => 'Nu am putut iniția plata.'], 500);
-        }
+        $pay = app(MaibCheckout::class)->start($payment, $user, 'Alimentare portofel telemedconsult.md', $request->ip());
 
         if (! $pay) {
-            $payment->update(['status' => 'failed']);
-
-            return response()->json(['message' => 'Procesatorul nu a întors date de plată.'], 500);
+            return response()->json(['message' => 'Nu am putut iniția plata.'], 500);
         }
-
-        $payment->update([
-            'provider_payment_id' => $pay->payId ?? null,
-            'metadata' => [
-                'source' => 'patient_wallet',
-                'pay_url' => $pay->payUrl ?? null,
-                'affiliate_code' => $validated['affiliate_code'] ?? null,
-            ],
-        ]);
-
-        $this->recordPaymentEvent($payment, 'maib.payment_initialized', [
-            'payment_id' => $payment->id,
-            'raw' => $pay,
-        ], $pay->payId ?? null);
 
         return response()->json(['payment' => $payment->fresh(), 'pay' => $pay]);
     }
@@ -181,7 +127,7 @@ class WalletController extends Controller
             }
         }
 
-        return redirect()->away(rtrim((string) config('services.frontend_url'), '/').'/patient/wallet?payment='.($payment?->fresh()->status === 'paid' ? 'ok' : 'pending'));
+        return redirect()->away($this->returnPage($payment).'?payment='.($payment?->fresh()->status === 'paid' ? 'ok' : 'pending'));
     }
 
     public function fail(Request $request): RedirectResponse
@@ -193,25 +139,7 @@ class WalletController extends Controller
             $payment->update(['status' => 'failed']);
         }
 
-        return redirect()->away(rtrim((string) config('services.frontend_url'), '/').'/patient/wallet?payment=fail');
-    }
-
-    private function maibAuth(): false|object
-    {
-        $projectId = config('services.maib.project_id');
-        $projectSecret = config('services.maib.project_secret');
-
-        if (! $projectId || ! $projectSecret) {
-            return false;
-        }
-
-        try {
-            return MaibAuthRequest::create()->generateToken($projectId, $projectSecret);
-        } catch (Throwable $e) {
-            report($e);
-
-            return false;
-        }
+        return redirect()->away($this->returnPage($payment).'?payment=fail');
     }
 
     private function markPaymentPaid(Payment $payment): void
@@ -259,6 +187,10 @@ class WalletController extends Controller
             // Afiliere medic/operator: codul este transmis explicit la top-up.
             $this->creditAffiliateBonus($payment);
             app(FirstTopupPromotion::class)->credit($payment);
+
+            // Checkout pachet: plata a alimentat portofelul; pachetul se cumpără
+            // acum, în aceeași tranzacție. Un callback dublat iese mai sus (status paid).
+            app(PatientCardPurchaser::class)->completeCheckout($payment);
         });
     }
 
@@ -321,20 +253,14 @@ class WalletController extends Controller
         return $orderId ? Payment::find($orderId) : null;
     }
 
-    private function paymentReturnUrl(string $envKey, Payment $payment): ?string
+    /**
+     * Unde se întoarce utilizatorul de la MAIB: asistentul de pornire pentru checkout-ul de pachet, altfel portofelul.
+     */
+    private function returnPage(?Payment $payment): string
     {
-        $key = match ($envKey) {
-            'MAIB_OK_URL' => 'ok_url', 'MAIB_FAIL_URL' => 'fail_url', 'MAIB_CALLBACK_URL' => 'callback_url'
-        };
-        $url = config('services.maib.'.$key);
+        $path = filled($payment?->metadata['buy_package_id'] ?? null) ? '/patient/start' : '/patient/wallet';
 
-        if (! $url) {
-            return null;
-        }
-
-        $separator = str_contains($url, '?') ? '&' : '?';
-
-        return $url.$separator.'orderId='.$payment->id;
+        return rtrim((string) config('services.frontend_url'), '/').$path;
     }
 
     private function walletFor(User $user, string $type = WalletLedger::REAL): Wallet

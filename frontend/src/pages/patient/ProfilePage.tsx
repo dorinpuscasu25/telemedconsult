@@ -13,17 +13,12 @@ import {
 } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from '../../components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Textarea } from '../../components/ui/textarea';
 import { apiRequest } from '../../lib/api';
 import { money } from '../../lib/format';
 import { PatientMedicalRecord } from '../../components/PatientMedicalRecord';
+import { PatientBasicsFields, isPatientBasicsComplete } from '../../components/patient/PatientBasicsFields';
 import { patientAge } from '../../lib/medical-record';
 import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 import { useDialogs } from '../../components/app/DialogProvider';
@@ -191,11 +186,6 @@ export function ProfilePage() {
     setSearchParams(nextParams, { replace: true });
   };
 
-  const localitiesForSelectedRegion =
-    regionsCatalog.find((region) => String(region.id) === patientForm.region_id)?.localities ?? [];
-  const selectedRegionName = regionsCatalog.find((region) => String(region.id) === patientForm.region_id)?.name ?? '';
-  const selectedLocalityName =
-    localitiesForSelectedRegion.find((locality) => String(locality.id) === patientForm.locality_id)?.name ?? '';
 
   const notify = (text: string) => {
     setMessage(text);
@@ -594,38 +584,11 @@ export function ProfilePage() {
               <DialogTitle>Profil pacient nou</DialogTitle>
             </DialogHeader>
             <div className="grid gap-4 py-5 md:grid-cols-2">
-              <Field label="Prenume"><Input value={patientForm.first_name} onChange={(event) => setPatientForm({ ...patientForm, first_name: event.target.value })} required className="rounded-xl" /></Field>
-              <Field label="Nume"><Input value={patientForm.last_name} onChange={(event) => setPatientForm({ ...patientForm, last_name: event.target.value })} required className="rounded-xl" /></Field>
-              <Field label="Data nașterii"><Input type="date" max={new Date().toISOString().slice(0, 10)} value={patientForm.birth_date} onChange={(event) => setPatientForm({ ...patientForm, birth_date: event.target.value })} required className="rounded-xl" /></Field>
-              <Field label="Sex"><select required className="h-11 w-full rounded-xl border bg-white px-3" value={patientForm.gender} onChange={(event) => setPatientForm({ ...patientForm, gender: event.target.value })}><option value="" disabled>Alege</option><option value="M">Masculin</option><option value="F">Feminin</option></select></Field>
+              <div className="md:col-span-2">
+                <PatientBasicsFields value={patientForm} onChange={(next) => setPatientForm({ ...patientForm, ...next })} regions={regionsCatalog} />
+              </div>
               <Field label="Mediul de trai"><select className="h-11 w-full rounded-xl border bg-white px-3" value={patientForm.residential_environment} onChange={(event) => setPatientForm({ ...patientForm, residential_environment: event.target.value })}><option value="">Necompletat</option><option value="rural">Rural</option><option value="urban">Urban</option></select></Field>
               <p className="flex items-end rounded-xl bg-slate-50 p-3 text-sm">Vârsta: {patientAge(patientForm.birth_date)}</p>
-              <Field label="Raion / municipiu">
-                <Select value={patientForm.region_id} onValueChange={(value) => setPatientForm({ ...patientForm, region_id: value, locality_id: '' })}>
-                  <SelectTrigger className="rounded-xl">
-                    {selectedRegionName || <span className="text-muted-foreground">Alege raionul</span>}
-                  </SelectTrigger>
-                  <SelectContent className="max-h-64 overflow-y-auto">
-                    {regionsCatalog.map((region) => (
-                      <SelectItem key={region.id} value={String(region.id)}>{region.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Localitate">
-                <Select value={patientForm.locality_id} onValueChange={(value) => setPatientForm({ ...patientForm, locality_id: value })}>
-                  <SelectTrigger className="rounded-xl">
-                    {selectedLocalityName || (
-                      <span className="text-muted-foreground">{patientForm.region_id ? 'Alege localitatea' : 'Alege întâi raionul'}</span>
-                    )}
-                  </SelectTrigger>
-                  <SelectContent className="max-h-64 overflow-y-auto">
-                    {localitiesForSelectedRegion.map((locality) => (
-                      <SelectItem key={locality.id} value={String(locality.id)}>{locality.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
               <Field label="Strada și numărul (opțional)">
                 <Input value={patientForm.address} onChange={(event) => setPatientForm({ ...patientForm, address: event.target.value })} className="rounded-xl" />
                 <p className="text-xs text-slate-500">Necesară doar pentru examinarea la domiciliu.</p>
@@ -636,7 +599,7 @@ export function ProfilePage() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" className="rounded-xl" onClick={() => setIsPatientOpen(false)}>Anulare</Button>
-              <Button className="rounded-xl" disabled={!patientForm.region_id || !patientForm.locality_id}>Creează profil</Button>
+              <Button className="rounded-xl" disabled={!isPatientBasicsComplete(patientForm)}>Creează profil</Button>
             </DialogFooter>
           </form>
         </DialogContent>

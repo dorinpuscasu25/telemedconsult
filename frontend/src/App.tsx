@@ -27,6 +27,7 @@ import { BlogListPage } from './pages/public/BlogListPage';
 import { BlogPostPage } from './pages/public/BlogPostPage';
 import { PartnersPage as PublicPartnersPage } from './pages/public/PartnersPage';
 import { PatientHome } from './pages/patient/PatientHome';
+import { StartWizardPage } from './pages/patient/StartWizardPage';
 import { DoctorHome } from './pages/doctor/DoctorHome';
 import { OperatorHome } from './pages/operator/OperatorHome';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
@@ -155,6 +156,10 @@ function AppRoutes() {
         element={isAuthenticated ? <Navigate to={homePath} replace /> : <RegisterPage />} />
 
       <Route
+        path="/register/specialist"
+        element={isAuthenticated ? <Navigate to={homePath} replace /> : <RegisterPage audience="specialist" />} />
+
+      <Route
         path="/pending"
         element={
         isAuthenticated ?
@@ -205,6 +210,10 @@ function AppRoutes() {
         <Route path="telegram" element={<TelegramPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
+
+      <Route
+        path="/patient/start"
+        element={<ProtectedRoute allowedRoles={['patient']}><StartWizardPage /></ProtectedRoute>} />
 
       {/* Patient Routes */}
       <Route

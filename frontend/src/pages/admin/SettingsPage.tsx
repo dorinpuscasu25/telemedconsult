@@ -41,6 +41,7 @@ const defaultSettings: SettingsMap = {
   'wallet.registration_bonus_enabled': false,
   'wallet.registration_bonus': 0,
   'wallet.max_points_payment_percent': 40,
+  'onboarding.first_consultation_topup': 500,
   minimum_consultation_price: 500,
   operator_exam_price: 250,
   'chat.free_days': 3,
@@ -68,6 +69,7 @@ const settingLabels: Record<string, string> = {
   'wallet.registration_bonus': 'Bonus de bun-venit (MDL)',
   'wallet.registration_bonus_enabled': 'Acordă bonus la înregistrare',
   'wallet.max_points_payment_percent': 'Procent maxim achitabil din bonusuri (%)',
+  'onboarding.first_consultation_topup': 'Sumă propusă pentru prima consultație (MDL)',
   'wallet.topup_bonus_percent': 'Bonus la alimentare (%)',
   'consultations.addendum_days': 'Fereastră completări consultație (zile)',
   'affiliate.patient_topup_min_amount': 'Alimentare minimă eligibilă (MDL)',
@@ -263,6 +265,23 @@ export function SettingsPage() {
               label={settingLabel('wallet.registration_bonus')}
               value={Number(settings['wallet.registration_bonus'])}
               onChange={(value) => update('wallet.registration_bonus', value)}
+            />
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card border-0 lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center"><Wallet className="mr-2 h-5 w-5 text-primary" /> Pornire pacient nou</CardTitle>
+            <CardDescription>
+              La alegerea pachetului, pacientul poate bifa să adauge această sumă în portofel, în aceeași plată cu
+              pachetul, ca să nu mai alimenteze separat la prima programare. 0 = opțiunea nu apare.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <NumberField
+              label={settingLabel('onboarding.first_consultation_topup')}
+              value={Number(settings['onboarding.first_consultation_topup'])}
+              onChange={(value) => update('onboarding.first_consultation_topup', value)}
             />
           </CardContent>
         </Card>

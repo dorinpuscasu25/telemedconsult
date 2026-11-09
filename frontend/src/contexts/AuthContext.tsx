@@ -56,6 +56,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
 }
+export const WELCOME_BONUS_KEY = 'welcome_bonus';
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: {children: ReactNode;}) {
   const [user, setUser] = useState<User | null>(null);
@@ -141,12 +142,16 @@ export function AuthProvider({ children }: {children: ReactNode;}) {
   };
 
   const verifyEmailOtp = async (email: string, code: string) => {
-    const response = await apiRequest<{token: string; user: User}>('/auth/verify-email-otp', {
+    const response = await apiRequest<{token: string; user: User; registration_bonus?: number}>('/auth/verify-email-otp', {
       method: 'POST',
       auth: false,
       body: JSON.stringify({ email, code })
     });
 
+    // Bonusul de bun-venit se anunță în asistentul de pornire.
+    if (response.registration_bonus) {
+      try { sessionStorage.setItem(WELCOME_BONUS_KEY, String(response.registration_bonus)); } catch { /* fără stocare: nu-l anunțăm */ }
+    }
     setToken(response.token);
     const nextUser = normalizeUser(response.user);
     setUser(nextUser);

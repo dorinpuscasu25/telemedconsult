@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Activity, ArrowLeft, CheckCircle2, Gift, HeartPulse, Mail, ShieldCheck, Stethoscope, Users } from 'lucide-react';
+import { Activity, ArrowLeft, CheckCircle2, Eye, EyeOff, Gift, Mail, ShieldCheck, Stethoscope, Users } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '../components/ui/button';
 import {
@@ -21,15 +21,20 @@ type RegisterStep = 'details' | 'verify';
 type Specialty = { id: number; name: string };
 type Region = { id: number; name: string };
 
-const ACCOUNT_TYPES: { value: AccountType; label: string; hint: string; icon: React.ElementType }[] = [
-  { value: 'patient', label: 'Utilizator', hint: 'Adaugi pacienți și soliciți consultații', icon: HeartPulse },
+const SPECIALIST_TYPES: { value: AccountType; label: string; hint: string; icon: React.ElementType }[] = [
   { value: 'doctor', label: 'Medic', hint: 'Oferă consultații', icon: Stethoscope },
   { value: 'operator', label: 'Operator', hint: 'Examinări la domiciliu', icon: Users }
 ];
 
-export function RegisterPage() {
+/**
+ * `/register` e formularul pacientului (nume, email, parolă). Medicii și operatorii
+ * se înregistrează pe `/register/specialist`, pe același endpoint.
+ */
+export function RegisterPage({ audience = 'patient' }: { audience?: 'patient' | 'specialist' }) {
+  const isPatientForm = audience === 'patient';
   const [step, setStep] = useState<RegisterStep>('details');
-  const [accountType, setAccountType] = useState<AccountType>('patient');
+  const [accountType, setAccountType] = useState<AccountType>(isPatientForm ? 'patient' : 'doctor');
+  const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -48,12 +53,13 @@ export function RegisterPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const { register, verifyEmailOtp, resendEmailOtp } = useAuth();
+  const formRef = useRef<HTMLFormElement>(null);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
   const normalizedEmail = useMemo(() => email.trim().toLowerCase(), [email]);
   const referralCode = useMemo(() => (searchParams.get('ref') || '').trim().toUpperCase(), [searchParams]);
-  const passwordsMatch = passwordConfirmation.length === 0 || password === passwordConfirmation;
+  const passwordsMatch = isPatientForm || passwordConfirmation.length === 0 || password === passwordConfirmation;
   const isProvider = accountType === 'doctor' || accountType === 'operator';
 
   useEffect(() => {
@@ -78,7 +84,7 @@ export function RegisterPage() {
       setError('Parola trebuie să aibă minim 8 caractere.');
       return;
     }
-    if (password !== passwordConfirmation) {
+    if (!isPatientForm && password !== passwordConfirmation) {
       setError('Parolele introduse nu coincid.');
       return;
     }
@@ -98,7 +104,7 @@ export function RegisterPage() {
         email: normalizedEmail,
         phone: phone.trim() || undefined,
         password,
-        password_confirmation: passwordConfirmation,
+        password_confirmation: isPatientForm ? password : passwordConfirmation,
         account_type: accountType,
         specialty_id: accountType === 'doctor' ? Number(specialtyId) : undefined,
         license_number: accountType === 'doctor' ? licenseNumber.trim() || undefined : undefined,
@@ -117,8 +123,9 @@ export function RegisterPage() {
     }
   };
 
-  const handleVerify = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const handleVerify = async (event?: React.FormEvent) => {
+    event?.preventDefault();
+    if (isSubmitting) return;
     setError('');
     setMessage('');
 
@@ -130,7 +137,7 @@ export function RegisterPage() {
     setIsSubmitting(true);
     try {
       const user = await verifyEmailOtp(normalizedEmail, otpCode);
-      navigate(user.status === 'pending' ? '/pending' : routeForRole(user.role));
+      navigate(user.status === 'pending' ? '/pending' : user.role === 'patient' ? '/patient/start' : routeForRole(user.role));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nu am putut verifica emailul.');
     } finally {
@@ -178,10 +185,10 @@ export function RegisterPage() {
                   <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
                     <ShieldCheck className="h-5 w-5" />
                   </div>
-                  <CardTitle className="text-2xl font-bold tracking-tight">Creare cont</CardTitle>
+                  <CardTitle className="text-2xl font-bold tracking-tight">{isPatientForm ? 'Creează-ți contul' : 'Cont de medic sau operator'}</CardTitle>
                   <CardDescription>
-                    {accountType === 'patient'
-                      ? 'Contul de utilizator se activează imediat după confirmarea emailului. Pacienții îi adaugi după, din contul tău.'
+                    {isPatientForm
+                      ? 'Consultații video sau acasă, pentru tine și familia ta.'
                       : 'Contul se activează după confirmarea emailului și aprobarea unui administrator.'}
                   </CardDescription>
                 </CardHeader>
@@ -202,10 +209,10 @@ export function RegisterPage() {
                     </div>
                   )}
 
-                  <div className="space-y-2">
+                  {!isPatientForm && <div className="space-y-2">
                     <Label className="font-medium text-slate-700">Tip de cont</Label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {ACCOUNT_TYPES.map((option) => {
+                    <div className="grid grid-cols-2 gap-2">
+                      {SPECIALIST_TYPES.map((option) => {
                         const active = accountType === option.value;
                         return (
                           <button
@@ -226,7 +233,7 @@ export function RegisterPage() {
                         );
                       })}
                     </div>
-                  </div>
+                  </div>}
 
                   <Field label="Nume complet" htmlFor="name">
                     <Input
@@ -251,7 +258,7 @@ export function RegisterPage() {
                       className="h-11 rounded-xl border-slate-200 bg-white" />
                   </Field>
 
-                  <Field label={accountType === 'patient' ? 'Telefon' : 'Telefon *'} htmlFor="phone">
+                  {!isPatientForm && <Field label="Telefon *" htmlFor="phone">
                     <Input
                       id="phone"
                       type="tel"
@@ -266,7 +273,7 @@ export function RegisterPage() {
                         Obligatoriu — pacienții te contactează la acest număr.
                       </p>
                     )}
-                  </Field>
+                  </Field>}
 
                   {accountType === 'doctor' && (
                     <>
@@ -313,17 +320,25 @@ export function RegisterPage() {
                   )}
 
                   <Field label="Parolă" htmlFor="password">
-                    <Input
-                      id="password"
-                      type="password"
-                      autoComplete="new-password"
-                      required
-                      value={password}
-                      onChange={(event) => setPassword(event.target.value)}
-                      className="h-11 rounded-xl border-slate-200 bg-white" />
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        type={showPassword ? 'text' : 'password'}
+                        autoComplete="new-password"
+                        required
+                        minLength={8}
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        className="h-11 rounded-xl border-slate-200 bg-white pr-24" />
+                      <button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute inset-y-0 right-2 my-auto flex h-8 items-center gap-1 rounded-lg px-2 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800" aria-pressed={showPassword}>
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        {showPassword ? 'Ascunde' : 'Arată'}
+                      </button>
+                    </div>
+                    <p className="text-xs text-slate-500">Minim 8 caractere.</p>
                   </Field>
 
-                  <Field label="Confirmare parolă" htmlFor="password_confirmation">
+                  {!isPatientForm && <Field label="Confirmare parolă" htmlFor="password_confirmation">
                     <Input
                       id="password_confirmation"
                       type="password"
@@ -332,25 +347,33 @@ export function RegisterPage() {
                       value={passwordConfirmation}
                       onChange={(event) => setPasswordConfirmation(event.target.value)}
                       className={`h-11 rounded-xl bg-white ${passwordsMatch ? 'border-slate-200' : 'border-red-300 focus-visible:ring-red-200'}`} />
-                  </Field>
+                  </Field>}
                 </CardContent>
                 <CardFooter className="flex flex-col space-y-4">
                   <Button
                     type="submit"
                     disabled={isSubmitting}
                     className="h-12 w-full rounded-xl text-base shadow-lg shadow-primary/20">
-                    {isSubmitting ? 'Se creează contul...' : isProvider ? 'Trimite cererea' : 'Creează cont'}
+                    {isSubmitting ? 'Se creează contul...' : isProvider ? 'Trimite cererea' : 'Creează contul'}
                   </Button>
+                  {isPatientForm && (
+                    <p className="text-center text-xs text-slate-500">
+                      Continuând, ești de acord cu Termenii și Politica de confidențialitate.
+                    </p>
+                  )}
                   <div className="text-center text-sm text-slate-500">
                     Aveți deja cont?{' '}
                     <Link to="/login" className="font-semibold text-primary transition-colors hover:text-primary/80">
                       Autentificați-vă
                     </Link>
                   </div>
+                  <Link to={isPatientForm ? '/register/specialist' : '/register'} className="text-center text-xs text-slate-400 hover:text-slate-600">
+                    {isPatientForm ? 'Ești medic sau operator?' : 'Vrei consultații pentru tine sau familie? Cont de pacient'}
+                  </Link>
                 </CardFooter>
               </form>
             ) : (
-              <form onSubmit={handleVerify}>
+              <form ref={formRef} onSubmit={handleVerify}>
                 <CardHeader className="space-y-2 text-center">
                   <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
                     <Mail className="h-5 w-5" />
@@ -376,7 +399,11 @@ export function RegisterPage() {
                       placeholder="000000"
                       required
                       value={otpCode}
-                      onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                      onChange={(event) => {
+                        const next = event.target.value.replace(/\D/g, '').slice(0, 6);
+                        setOtpCode(next);
+                        if (next.length === 6 && next !== otpCode) window.setTimeout(() => formRef.current?.requestSubmit(), 0);
+                      }}
                       className="h-12 rounded-xl border-slate-200 bg-white text-center text-xl font-semibold tracking-[0.35em]" />
                   </Field>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">

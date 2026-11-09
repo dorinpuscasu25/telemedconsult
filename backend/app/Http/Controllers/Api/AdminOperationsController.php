@@ -511,6 +511,14 @@ class AdminOperationsController extends Controller
                 }
             }
 
+            if ($key === 'onboarding.first_consultation_topup') {
+                if (! is_numeric($value) || (float) $value < 0 || (float) $value > 50000) {
+                    throw ValidationException::withMessages([
+                        'settings' => ['Suma pentru prima consultație trebuie să fie între 0 și 50.000 MDL.'],
+                    ]);
+                }
+            }
+
             if ($key === 'affiliate.patient_registration_rules'
                 && mb_strlen((string) ($value ?? '')) > 4000) {
                 throw ValidationException::withMessages([

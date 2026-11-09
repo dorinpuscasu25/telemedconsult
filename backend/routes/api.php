@@ -217,6 +217,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/referrals', [ReferralController::class, 'show']);
         Route::put('/patient/profile', [PatientProfileController::class, 'update']);
         Route::post('/patient/card-purchases', [PatientProfileController::class, 'buyCardPackage']);
+        Route::post('/patient/card-purchases/checkout', [PatientProfileController::class, 'checkoutCardPackage'])->middleware('throttle:10,1');
         Route::post('/patient/profiles', [PatientProfileController::class, 'storePatientProfile']);
         Route::put('/patient/profiles/{patientProfile}', [PatientProfileController::class, 'updatePatientProfile']);
         Route::delete('/patient/profiles/{patientProfile}', [PatientProfileController::class, 'destroyPatientProfile']);

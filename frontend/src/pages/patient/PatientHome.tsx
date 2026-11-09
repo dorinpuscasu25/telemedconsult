@@ -87,7 +87,8 @@ export function PatientHome() {
 
   const active = useMemo(() => requests.filter((request) => ACTIVE.includes(request.status)), [requests]);
   const hasRequestablePatient = profiles.some((profile) => profile.can_request_consultation);
-  const needsPackage = isEnabled('patient_cards') && paymentsEnabled && availableSlots === 0;
+  const packagesRequired = isEnabled('patient_cards') && paymentsEnabled;
+  const needsPackage = packagesRequired && availableSlots === 0;
   const pendingReview = reviewable[0];
 
   const hero: Hero = useMemo(() => {
@@ -102,15 +103,15 @@ export function PatientHome() {
     if (rescheduled) return { tone: 'orange', icon: CalendarClock, eyebrow: 'Ai de răspuns', title: 'Ți s-a propus o oră nouă', description: `${rescheduled.doctor?.name ?? 'Medicul'} propune ${dateTime(rescheduled.proposed_scheduled_at)} pentru ${rescheduled.patient_profile?.name ?? 'consultație'}.`, request: rescheduled };
     if (!hasRequestablePatient && profiles.length === 0) {
       return needsPackage
-        ? { tone: 'slate', kind: 'setup', icon: CreditCard, eyebrow: 'Primul pas', title: 'Alege pachetul', description: 'Un profil este o persoană din familie, cu fișa ei medicală, activ un an. După pachet adaugi pacientul și alegi medicul.' }
-        : { tone: 'slate', kind: 'setup', icon: UserPlus, eyebrow: 'Pasul următor', title: 'Adaugă pacientul', description: 'Spune-ne pentru cine e prima consultație, apoi alegi medicul.' };
+        ? { tone: 'slate', kind: 'setup', icon: CreditCard, eyebrow: 'Pasul 1 din 3', title: 'Alege pachetul', description: 'Un profil este o persoană din familie, cu fișa ei medicală, activ un an. După pachet adaugi pacientul și alegi medicul.' }
+        : { tone: 'slate', kind: 'setup', icon: UserPlus, eyebrow: packagesRequired ? 'Pasul 2 din 3' : 'Pasul următor', title: 'Adaugă pacientul', description: 'Pachetul e activ. Spune-ne pentru cine e prima consultație, apoi alegi medicul.' };
     }
     if (pendingReview) return { tone: 'orange', kind: 'review', icon: Star, eyebrow: 'Ai de evaluat', title: `Cum a fost consultația${pendingReview.doctor_name ? ` cu ${pendingReview.doctor_name}` : ''}?`, description: 'Evaluarea durează un minut și e necesară înainte de următoarea programare.' };
     if (upcoming) return { tone: 'blue', icon: CalendarClock, eyebrow: 'Următoarea consultație', title: upcoming.scheduled_at ? dateTime(upcoming.scheduled_at) : 'Confirmată', description: `${consultationTitle(upcoming)}${upcoming.doctor?.name ? ` cu ${upcoming.doctor.name}` : ''}${upcoming.patient_profile?.name ? `, pentru ${upcoming.patient_profile.name}` : ''}. Medicul deschide consultația la ora stabilită.`, request: upcoming };
     if (waiting) return { tone: 'amber', icon: Clock, eyebrow: 'În așteptare', title: 'Așteptăm confirmarea', description: `${waiting.type === 'operator' ? 'Un operator' : waiting.doctor?.name ?? 'Medicul'} trebuie să confirme cererea${waiting.scheduled_at ? ` pentru ${dateTime(waiting.scheduled_at)}` : ''}. Te anunțăm imediat.`, request: waiting };
     if (!hasRequestablePatient) return { tone: 'slate', icon: UserPlus, eyebrow: 'Primul pas', title: 'Adaugă pacientul', description: 'Consultațiile se fac pentru un profil de pacient: tu sau un membru al familiei. Adaugă-l o singură dată și îl folosești la fiecare cerere.' };
     return { tone: 'slate', icon: Stethoscope, eyebrow: 'Totul e în regulă', title: 'Nicio consultație programată', description: 'Când ai nevoie, alege un medic pentru o consultație online sau cere o examinare la domiciliu.' };
-  }, [active, hasRequestablePatient, profiles.length, needsPackage, pendingReview]);
+  }, [active, hasRequestablePatient, profiles.length, needsPackage, packagesRequired, pendingReview]);
 
   const acceptProposal = async (request: PatientConsultation) => {
     setAccepting(true);
@@ -164,7 +165,7 @@ export function PatientHome() {
                 {hero.request?.status === 'accepted' && hero.request.doctor_started_at && <Button asChild><Link to={`/consultations/${hero.request.id}/video`}><Video className="h-4 w-4" />Intră în apel</Link></Button>}
                 {hero.request && <Button asChild variant="outline" className="bg-white"><Link to={`/patient/chat?request=${hero.request.id}`}><MessageSquare className="h-4 w-4" />Mesaje</Link></Button>}
                 {hero.request && <Button asChild variant="ghost"><Link to="/patient/consultations">Detalii<ArrowRight className="h-4 w-4" /></Link></Button>}
-                {hero.kind === 'setup' && <Button asChild><Link to={needsPackage ? '/patient/profile?tab=cards' : '/patient/profile'}>{needsPackage ? <CreditCard className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}{needsPackage ? 'Alege pachetul' : 'Adaugă pacientul'}</Link></Button>}
+                {hero.kind === 'setup' && <Button asChild><Link to="/patient/start">{needsPackage ? <CreditCard className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}{needsPackage ? 'Alege pachetul' : 'Adaugă pacientul'}</Link></Button>}
                 {!hero.request && !hero.kind && !hasRequestablePatient && <Button asChild><Link to="/patient/profile"><UserPlus className="h-4 w-4" />Verifică pacientul</Link></Button>}
                 {!hero.request && !hero.kind && hasRequestablePatient && doctorsEnabled && <Button asChild><Link to="/patient/doctors"><Plus className="h-4 w-4" />Programează o consultație</Link></Button>}
               </div>
