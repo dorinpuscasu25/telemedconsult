@@ -42,6 +42,7 @@ interface PatientProfile {
   patient_code?: string | null;
   region?: string | null;
   locality?: string | null;
+  address?: string | null;
   status?: string | null;
   active_until?: string | null;
   can_request_consultation?: boolean;
@@ -51,6 +52,7 @@ export function OperatorsList() {
   const [operators, setOperators] = useState<Operator[]>([]);
   const [patientProfiles, setPatientProfiles] = useState<PatientProfile[]>([]);
   const [patientProfileId, setPatientProfileId] = useState('');
+  const [accountPhone, setAccountPhone] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedOperator, setSelectedOperator] = useState<Operator | null>(null);
   const [address, setAddress] = useState('');
@@ -71,9 +73,10 @@ export function OperatorsList() {
       .then((response) => setOperators(response.data ?? []))
       .catch(() => setOperators([]))
       .finally(() => setIsLoading(false));
-    apiRequest<{patient_profiles: PatientProfile[]}>('/patient/profile')
+    apiRequest<{patient_profiles: PatientProfile[]; user?: { phone?: string | null }}>('/patient/profile')
       .then((response) => {
         const profiles = response.patient_profiles ?? [];
+        setAccountPhone(response.user?.phone || '');
         const requestableProfiles = profiles.filter(canRequestConsultation);
         setPatientProfiles(profiles);
         setPatientProfileId(requestableProfiles[0]?.id ? String(requestableProfiles[0].id) : '');
@@ -90,8 +93,9 @@ export function OperatorsList() {
     const requestableProfiles = patientProfiles.filter(canRequestConsultation);
     setSelectedOperator(operator);
     setPatientProfileId(requestableProfiles[0]?.id ? String(requestableProfiles[0].id) : '');
-    setAddress('');
-    setPhone(operator.phone || '');
+    setAddress(profileAddress(requestableProfiles[0]));
+    // Telefonul este al pacientului (din cont), nu al operatorului.
+    setPhone(accountPhone);
     setNotes('');
     setIllnessHistory('');
     setSymptoms('');
@@ -221,7 +225,7 @@ export function OperatorsList() {
                       {requestableProfiles.map((profile) => {
                         const selected = patientProfileId === String(profile.id);
                         return (
-                          <button key={profile.id} type="button" role="radio" aria-checked={selected} onClick={() => setPatientProfileId(String(profile.id))} className={cn('flex items-center gap-3 rounded-xl border p-3 text-left transition', selected ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-slate-200 hover:border-slate-300')}>
+                          <button key={profile.id} type="button" role="radio" aria-checked={selected} onClick={() => { setPatientProfileId(String(profile.id)); setAddress(profileAddress(profile)); }} className={cn('flex items-center gap-3 rounded-xl border p-3 text-left transition', selected ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-slate-200 hover:border-slate-300')}>
                             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600"><UserRound className="h-4 w-4" /></span>
                             <span className="min-w-0 flex-1"><span className="block truncate font-semibold text-slate-900">{patientProfileName(profile)}</span>{profile.region && <span className="block truncate text-xs text-slate-500">{profile.region}</span>}</span>
                             {selected && <Check className="h-4 w-4 text-primary" />}
@@ -299,4 +303,9 @@ function canRequestConsultation(profile: PatientProfile) {
   if (profile.active_until && new Date(profile.active_until).getTime() <= Date.now()) return false;
 
   return Boolean(profile.first_name && profile.last_name);
+}
+
+function profileAddress(profile?: PatientProfile): string {
+  if (!profile) return '';
+  return [profile.address, profile.locality, profile.region].filter(Boolean).join(', ');
 }

@@ -93,12 +93,15 @@ class RegionsAndAddressGatingTest extends TestCase
             'country' => 'Republica Moldova',
         ])
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(['region_id', 'locality_id', 'address']);
+            ->assertJsonValidationErrors(['region_id', 'locality_id', 'birth_date', 'gender'])
+            ->assertJsonMissingValidationErrors('address');
 
         $response = $this->postJson('/api/v1/patient/profiles', [
             'first_name' => 'Ana',
             'last_name' => 'Popescu',
             'country' => 'Republica Moldova',
+            'birth_date' => '1990-01-01',
+            'gender' => 'F',
             'region_id' => $locality->region_id,
             'locality_id' => $locality->id,
             'address' => 'Strada Ismail 5',

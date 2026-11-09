@@ -44,6 +44,7 @@ interface WalletData {
     currency: string;
     type: 'points';
   };
+  payments?: Array<{ id: number; status: string; amount_minor: number }>;
   transactions: Array<{
     id: number;
     date: string;
@@ -53,13 +54,20 @@ interface WalletData {
   }>;
 }
 
+type PaymentResult = 'ok' | 'pending' | 'fail';
+
+const PENDING_RETRIES = 3;
+const PENDING_INTERVAL_MS = 3000;
+
 type PaymentRedirect = {
   payUrl?: string;
   payId?: string;
 };
 
 export function WalletPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(() => paymentResultParam(searchParams.get('payment')));
+  const [pendingChecks, setPendingChecks] = useState(0);
   const [walletData, setWalletData] = useState<WalletData | null>(null);
   const [amount, setAmount] = useState('500');
   const [isTopUpOpen, setIsTopUpOpen] = useState(false);
@@ -70,8 +78,38 @@ export function WalletPage() {
 
   const loadWallet = () => {
     setError('');
-    apiRequest<WalletData>('/wallet').then(setWalletData).catch((err) => { setWalletData(null); setError(err instanceof Error ? err.message : 'Portofelele nu au putut fi încărcate.'); });
+    return apiRequest<WalletData>('/wallet')
+      .then((data) => { setWalletData(data); return data; })
+      .catch((err) => { setWalletData(null); setError(err instanceof Error ? err.message : 'Portofelele nu au putut fi încărcate.'); return null; });
   };
+
+  // Întoarcerea de la MAIB: „pending” înseamnă că banca n-a confirmat încă; verificăm de câteva ori.
+  useEffect(() => {
+    if (paymentResult !== 'pending' || pendingChecks >= PENDING_RETRIES) return;
+    const timer = window.setTimeout(() => {
+      loadWallet().then((data) => {
+        const status = data?.payments?.[0]?.status;
+        if (status === 'paid') setPaymentResult('ok');
+        else if (status === 'failed') setPaymentResult('fail');
+        setPendingChecks((count) => count + 1);
+      });
+    }, PENDING_INTERVAL_MS);
+    return () => window.clearTimeout(timer);
+  }, [paymentResult, pendingChecks]);
+
+  const dismissPaymentResult = () => {
+    setPaymentResult(null);
+    const next = new URLSearchParams(searchParams);
+    next.delete('payment');
+    setSearchParams(next, { replace: true });
+  };
+
+  const retryPayment = () => {
+    dismissPaymentResult();
+    setIsTopUpOpen(true);
+  };
+
+  const recheckPayment = () => setPendingChecks(0);
 
   useEffect(() => {
     loadWallet();
@@ -127,6 +165,16 @@ export function WalletPage() {
         description="Soldul tău, bonusurile și toate plățile pentru consultații."
         actions={<Button disabled={!walletData} onClick={() => setIsTopUpOpen(true)}><Plus className="h-4 w-4" />Alimentează</Button>}
       />
+
+      {paymentResult && (
+        <PaymentResultBanner
+          result={paymentResult}
+          stillChecking={paymentResult === 'pending' && pendingChecks < PENDING_RETRIES}
+          onClose={dismissPaymentResult}
+          onRetry={retryPayment}
+          onRecheck={recheckPayment}
+        />
+      )}
 
       {error && !isTopUpOpen && <div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}<Button variant="outline" size="sm" onClick={loadWallet}>Reîncearcă</Button></div>}
 
@@ -254,4 +302,48 @@ function groupByDay<T extends { date: string }>(items: T[]): Array<[string, T[]]
 
 function displayTransactionType(type: string) {
   return type.replace(/\s*\([^)]+\)/g, '').trim();
+}
+
+function paymentResultParam(value: string | null): PaymentResult | null {
+  return value === 'ok' || value === 'pending' || value === 'fail' ? value : null;
+}
+
+function PaymentResultBanner({ result, stillChecking, onClose, onRetry, onRecheck }: {
+  result: PaymentResult;
+  stillChecking: boolean;
+  onClose: () => void;
+  onRetry: () => void;
+  onRecheck: () => void;
+}) {
+  if (result === 'ok') {
+    return (
+      <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+        <ShieldCheck className="h-5 w-5 shrink-0" />
+        <p className="min-w-0 flex-1"><span className="font-semibold">Alimentare reușită.</span> Soldul de mai jos este actualizat.</p>
+        <Button variant="outline" size="sm" className="bg-white" onClick={onClose}>Închide</Button>
+      </div>
+    );
+  }
+
+  if (result === 'pending') {
+    return (
+      <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+        <CreditCard className="h-5 w-5 shrink-0" />
+        <p className="min-w-0 flex-1">
+          <span className="font-semibold">Banca confirmă plata.</span>{' '}
+          {stillChecking ? 'Pagina se actualizează singură.' : 'Încă nu avem răspunsul băncii.'} Nu plătești de două ori dacă închizi pagina.
+        </p>
+        {!stillChecking && <Button variant="outline" size="sm" className="bg-white" onClick={onRecheck}>Verifică din nou</Button>}
+      </div>
+    );
+  }
+
+  return (
+    <div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+      <CreditCard className="h-5 w-5 shrink-0" />
+      <p className="min-w-0 flex-1"><span className="font-semibold">Plata nu a trecut.</span> De pe card nu s-a retras nimic. Verifică soldul cardului sau încearcă alt card.</p>
+      <Button size="sm" onClick={onRetry}>Încearcă din nou</Button>
+      <Button variant="ghost" size="sm" onClick={onClose}>Închide</Button>
+    </div>
+  );
 }

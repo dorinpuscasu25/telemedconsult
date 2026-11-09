@@ -14,6 +14,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use App\Services\PlatformConfig;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\Sanctum;
@@ -159,7 +160,63 @@ class PatientCardsAndConsultationFlowTest extends TestCase
 
         $this->postJson('/api/v1/patient/profiles', $this->profilePayload('Maria'))
             ->assertUnprocessable()
-            ->assertJsonPath('message', 'Nu ai cartele disponibile pentru un profil nou.');
+            ->assertJsonPath('code', 'package_required');
+    }
+
+    public function test_first_patient_profile_requires_a_package(): void
+    {
+        $patient = $this->userWithRole('patient');
+        Sanctum::actingAs($patient);
+
+        $this->postJson('/api/v1/patient/profiles', $this->profilePayload('Ana'))
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'package_required')
+            ->assertJsonPath('message', 'Alege un pachet ca să adaugi pacienți.');
+
+        $this->assertDatabaseMissing('patient_profiles', ['user_id' => $patient->id]);
+    }
+
+    public function test_profiles_are_added_without_a_package_when_cards_or_payments_are_disabled(): void
+    {
+        foreach (['feature.patient_cards', 'feature.payments'] as $flag) {
+            $patient = $this->userWithRole('patient');
+            app(PlatformConfig::class)->upsert($flag, false, 'features', 'boolean');
+            Sanctum::actingAs($patient);
+
+            $this->postJson('/api/v1/patient/profiles', $this->profilePayload('Ana'))
+                ->assertCreated()
+                ->assertJsonPath('patient_profile.active_until', null);
+
+            app(PlatformConfig::class)->upsert($flag, true, 'features', 'boolean');
+        }
+    }
+
+    public function test_profile_creation_requires_birth_date_and_gender_but_not_street(): void
+    {
+        $patient = $this->userWithRole('patient');
+        PatientCardPurchase::create(['user_id' => $patient->id, 'profile_slots' => 2, 'amount_minor' => 45000, 'validity_days' => 365, 'used_slots' => 0, 'expires_at' => now()->addYear()]);
+        Sanctum::actingAs($patient);
+
+        $payload = $this->profilePayload('Ana');
+        unset($payload['birth_date'], $payload['gender'], $payload['address'], $payload['country']);
+
+        $this->postJson('/api/v1/patient/profiles', $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['birth_date', 'gender'])
+            ->assertJsonMissingValidationErrors(['address', 'country']);
+
+        $response = $this->postJson('/api/v1/patient/profiles', [...$payload, 'birth_date' => '1990-01-01', 'gender' => 'M'])
+            ->assertCreated()
+            ->assertJsonPath('patient_profile.country', 'Republica Moldova');
+
+        $profile = PatientProfile::findOrFail($response->json('patient_profile.id'));
+        $this->assertNull($profile->address);
+        $this->assertFalse($profile->hasCompleteAddress());
+
+        $this->getJson('/api/v1/patient/profile')
+            ->assertOk()
+            ->assertJsonPath('patient_profiles.0.needs_data', false)
+            ->assertJsonPath('patient_profiles.0.has_complete_address', false);
     }
 
     public function test_package_with_bonus_points_credits_the_bonus_wallet_and_others_do_not(): void

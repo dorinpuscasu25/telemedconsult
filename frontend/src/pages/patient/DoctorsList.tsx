@@ -123,7 +123,8 @@ export function DoctorsList() {
   const [detailDoctor, setDetailDoctor] = useState<Doctor | null>(null);
   const [doctorReviews, setDoctorReviews] = useState<DoctorReview[]>([]);
   const [patientProfileId, setPatientProfileId] = useState('');
-  const [consultationKind, setConsultationKind] = useState<'with_exam' | 'video'>('with_exam');
+  const [consultationKind, setConsultationKind] = useState<'with_exam' | 'video'>('video');
+  const [pendingReview, setPendingReview] = useState<{ id: string; doctor_name?: string | null } | null>(null);
   const effectiveKind = consultationKind === 'with_exam' && withExamEnabled ? 'with_exam' : consultationKind === 'video' && videoEnabled ? 'video' : videoEnabled ? 'video' : withExamEnabled ? 'with_exam' : null;
   const [symptoms, setSymptoms] = useState('');
   const [illnessHistory, setIllnessHistory] = useState('');
@@ -173,7 +174,7 @@ export function DoctorsList() {
     return matchesSearch && matchesSpec;
   }), [doctors, searchTerm, specFilter]);
 
-  const openRequestDialog = (doctor: Doctor, kind: 'with_exam' | 'video' = 'with_exam') => {
+  const openRequestDialog = (doctor: Doctor, kind: 'with_exam' | 'video' = 'video') => {
     const availableKind = kind === 'with_exam' && withExamEnabled
       ? 'with_exam'
       : kind === 'video' && videoEnabled
@@ -199,7 +200,12 @@ export function DoctorsList() {
     const requested = requestableProfiles.find((profile) => String(profile.id) === requestedProfileId);
     setPatientProfileId(requested ? String(requested.id) : requestableProfiles[0]?.id ? String(requestableProfiles[0].id) : '');
     setStep(1);
+    setPendingReview(null);
     setIsRequestOpen(true);
+    // Evaluarea restantă blochează cererea: o arătăm de la început, nu la trimitere.
+    apiRequest<{ data: Array<{ id: string; doctor_name?: string | null }> }>('/patient/reviewable-requests')
+      .then((response) => setPendingReview(response.data?.[0] ?? null))
+      .catch(() => setPendingReview(null));
   };
 
   useEffect(() => {
@@ -288,6 +294,7 @@ export function DoctorsList() {
 
   const goNext = () => {
     setError('');
+    if (pendingReview) { setError('Evaluează mai întâi consultația anterioară.'); return; }
     if (step === 1 && !canContinueStep1) { setError('Alege pacientul și tipul consultației.'); return; }
     if (step === 2 && !canContinueStep2) { setError('Descrie acuzele și alege data și ora dorită.'); return; }
     setStep((current) => (current < 3 ? (current + 1) as 1 | 2 | 3 : current));
@@ -353,7 +360,7 @@ export function DoctorsList() {
 
               <div className="mt-auto flex gap-2 pt-4">
                 <Button variant="ghost" className="flex-1" onClick={() => { setDetailDoctor(doctor); setIsDetailOpen(true); }}>Vezi profilul</Button>
-                {(withExamEnabled || videoEnabled) && <Button className="flex-1" onClick={() => openRequestDialog(doctor, withExamEnabled ? 'with_exam' : 'video')}>Programează</Button>}
+                {(withExamEnabled || videoEnabled) && <Button className="flex-1" onClick={() => openRequestDialog(doctor, videoEnabled ? 'video' : 'with_exam')}>Programează</Button>}
               </div>
             </article>
           ))}
@@ -405,7 +412,7 @@ export function DoctorsList() {
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Închide</Button>
-                {(withExamEnabled || videoEnabled) && <Button onClick={() => { setIsDetailOpen(false); openRequestDialog(detailDoctor, withExamEnabled ? 'with_exam' : 'video'); }}>Programează o consultație</Button>}
+                {(withExamEnabled || videoEnabled) && <Button onClick={() => { setIsDetailOpen(false); openRequestDialog(detailDoctor, videoEnabled ? 'video' : 'with_exam'); }}>Programează o consultație</Button>}
               </DialogFooter>
             </>
           )}
@@ -425,6 +432,14 @@ export function DoctorsList() {
 
               <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
                 {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+
+                {pendingReview && (
+                  <div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900">
+                    <Star className="h-5 w-5 shrink-0 text-orange-500" />
+                    <p className="min-w-0 flex-1"><span className="font-semibold">Ai de evaluat consultația{pendingReview.doctor_name ? ` cu ${pendingReview.doctor_name}` : ''}.</span> Evaluarea e necesară înainte de o cerere nouă și durează un minut.</p>
+                    <Button asChild type="button" size="sm"><Link to="/patient">Evaluează acum</Link></Button>
+                  </div>
+                )}
 
                 {step === 1 && (
                   <>

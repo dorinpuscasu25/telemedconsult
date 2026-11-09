@@ -51,6 +51,7 @@ type PatientProfile = {
   can_request_consultation?: boolean;
   request_unavailable_reason?: string | null;
   has_complete_address?: boolean;
+  needs_data?: boolean;
   investigations?: Array<{ id: number; title: string; type: string; notes?: string | null; created_at: string }>;
 };
 
@@ -228,8 +229,10 @@ export function ProfilePage() {
         method: 'POST',
         body: JSON.stringify({ package_id: pack.id })
       });
-      notify('Cartelă cumpărată din portofel.');
+      notify('Pachet activ. Acum adaugă pacientul.');
       loadProfile();
+      changeTab('patients');
+      setIsPatientOpen(true);
     } catch (err) {
       const data = apiErrorData(err);
       if (data?.code === 'insufficient_wallet_balance') {
@@ -246,10 +249,11 @@ export function ProfilePage() {
   const savePatient = async (event: React.FormEvent) => {
     event.preventDefault();
     try {
-      await apiRequest('/patient/profiles', {
+      const created = await apiRequest<{ patient_profile: PatientProfile }>('/patient/profiles', {
         method: 'POST',
         body: JSON.stringify({
           ...patientForm,
+          address: patientForm.address || null,
           gender: patientForm.gender || null,
           residential_environment: patientForm.residential_environment || null,
           region_id: patientForm.region_id ? Number(patientForm.region_id) : null,
@@ -258,9 +262,17 @@ export function ProfilePage() {
       });
       setIsPatientOpen(false);
       setPatientForm(emptyPatient);
+      if (isEnabled('doctors')) {
+        navigate(`/patient/doctors?patient_profile=${created.patient_profile.id}`);
+        return;
+      }
       notify('Profil pacient creat.');
       loadProfile();
     } catch (err) {
+      if (apiErrorData(err)?.code === 'package_required') {
+        setIsPatientOpen(false);
+        changeTab('cards');
+      }
       fail(err, 'Nu am putut crea profilul.');
     }
   };
@@ -297,26 +309,19 @@ export function ProfilePage() {
   const packages = data?.card_packages ?? [];
   const purchases = data?.card_purchases ?? [];
   const availableSlots = purchases.reduce((sum, item) => sum + item.available_slots, 0);
-  const hasPurchasedCards = purchases.length > 0;
   const hasRequestablePatient = profiles.some((profile) => profile.can_request_consultation);
+  // Pachetul e obligatoriu cât timp cartelele și plățile sunt pornite; altfel pacienții se adaugă liber.
   const canBuyPatientPackages = isEnabled('patient_cards') && isEnabled('payments');
-  const patientNextStep = !canBuyPatientPackages && !hasRequestablePatient
-    ? {
-        step: 'Indisponibil momentan',
-        title: 'Pachetele pentru pacienți sunt dezactivate',
-        description: 'Administratorul a dezactivat temporar cumpărarea pachetelor. Profilurile deja active rămân disponibile.',
-        action: 'Deschide contul meu',
-        onClick: () => changeTab('account')
-      }
-    : profiles.length === 0 && !hasPurchasedCards
+  const canAddPatient = !canBuyPatientPackages || availableSlots > 0;
+  const patientNextStep = !canAddPatient && profiles.length === 0
     ? {
         step: 'Primul pas',
-        title: 'Adaugă primul pacient gratuit',
-        description: 'Primul profil de pacient este gratuit. Pentru profilurile următoare vei putea cumpăra un pachet.',
-        action: 'Adaugă pacient',
-        onClick: () => setIsPatientOpen(true)
+        title: 'Alege un pachet ca să adaugi pacienți',
+        description: 'Un profil este o persoană din familie, cu fișa ei medicală, activ un an. După plată adaugi pacientul și alegi medicul.',
+        action: 'Alege pachetul',
+        onClick: () => changeTab('cards')
       }
-    : profiles.length === 0 && availableSlots > 0
+    : profiles.length === 0
       ? {
           step: 'Pasul următor',
           title: 'Adaugă primul pacient',
@@ -369,7 +374,7 @@ export function ProfilePage() {
         </div>
       )}
 
-      {activeTab === 'patients' && !hasRequestablePatient && (
+      {activeTab === 'patients' && data && !hasRequestablePatient && (
         <section className="rounded-2xl border border-blue-200 bg-blue-50 p-5 shadow-sm sm:p-6">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex gap-4">
@@ -384,11 +389,8 @@ export function ProfilePage() {
             </div>
             <div className="flex shrink-0 flex-col gap-2 sm:items-end">
               <Button onClick={patientNextStep.onClick}>
-                {hasPurchasedCards ? <Plus className="h-4 w-4" /> : <CreditCard className="h-4 w-4" />}
+                {canAddPatient ? <Plus className="h-4 w-4" /> : <CreditCard className="h-4 w-4" />}
                 {patientNextStep.action}
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/patient/wallet')}>
-                Deschide portofelul
               </Button>
             </div>
           </div>
@@ -409,32 +411,26 @@ export function ProfilePage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <CardTitle>Profiluri pacient</CardTitle>
-                  <CardDescription>Locuri disponibile pentru pacienți: {availableSlots}</CardDescription>
+                  {canBuyPatientPackages && <CardDescription>Locuri disponibile pentru pacienți: {availableSlots}</CardDescription>}
                 </div>
-                <Button className="rounded-xl" disabled={availableSlots <= 0} onClick={() => setIsPatientOpen(true)}>
+                <Button className="rounded-xl" disabled={!canAddPatient} onClick={() => setIsPatientOpen(true)}>
                   <Plus className="mr-2 h-4 w-4" />
                   Adaugă
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {profiles.length === 0 && availableSlots > 0 && (
+              {profiles.length === 0 && canAddPatient && (
                 <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm text-slate-600">
                   <p className="font-semibold text-slate-950">Niciun pacient adăugat</p>
                   <p className="mt-1">Adaugă persoana pentru care soliciți consultații: tu, un copil sau un părinte.</p>
                   <Button className="mt-3" onClick={() => setIsPatientOpen(true)}><Plus className="h-4 w-4" />Adaugă pacient</Button>
                 </div>
               )}
-              {profiles.length === 0 && availableSlots <= 0 && (
-                <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-5 text-sm text-amber-900">
-                  <p className="font-semibold text-slate-950">Ai nevoie de un pachet</p>
-                  <p className="mt-1">Pachetul îți dă locuri pentru profilurile de pacient. Alege unul, apoi adaugă pacientul.</p>
-                  <Button variant="outline" className="mt-3 rounded-xl border-amber-300 bg-white" onClick={() => changeTab('cards')}>
-                    Vezi pachetele
-                  </Button>
-                </div>
+              {profiles.length === 0 && !canAddPatient && (
+                <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm text-slate-500">Niciun pacient adăugat încă.</p>
               )}
-              {profiles.length > 0 && availableSlots <= 0 && (
+              {profiles.length > 0 && !canAddPatient && (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                   <p className="font-semibold text-slate-950">Ai folosit toate locurile disponibile.</p>
                   <p className="mt-1">Pentru încă un pacient trebuie să cumperi un pachet nou. Profilurile existente rămân în istoric.</p>
@@ -459,7 +455,10 @@ export function ProfilePage() {
                       {profile.request_unavailable_reason && (
                         <p className="mt-1 text-xs font-medium text-amber-700">{profile.request_unavailable_reason}</p>
                       )}
-                      {!profile.request_unavailable_reason && profile.has_complete_address === false && (
+                      {!profile.request_unavailable_reason && profile.needs_data && (
+                        <p className="mt-1 text-xs font-medium text-amber-700">Completează data nașterii și sexul în „Date personale”.</p>
+                      )}
+                      {!profile.request_unavailable_reason && !profile.needs_data && profile.has_complete_address === false && (
                         <p className="mt-1 text-xs font-medium text-amber-700">Completează adresa (raion, localitate, stradă) pentru consultații cu examinare la domiciliu.</p>
                       )}
                     </div>
@@ -597,11 +596,10 @@ export function ProfilePage() {
             <div className="grid gap-4 py-5 md:grid-cols-2">
               <Field label="Prenume"><Input value={patientForm.first_name} onChange={(event) => setPatientForm({ ...patientForm, first_name: event.target.value })} required className="rounded-xl" /></Field>
               <Field label="Nume"><Input value={patientForm.last_name} onChange={(event) => setPatientForm({ ...patientForm, last_name: event.target.value })} required className="rounded-xl" /></Field>
-              <Field label="Data nașterii"><Input type="date" value={patientForm.birth_date} onChange={(event) => setPatientForm({ ...patientForm, birth_date: event.target.value })} className="rounded-xl" /></Field>
-              <Field label="Sex"><select className="h-11 w-full rounded-xl border bg-white px-3" value={patientForm.gender} onChange={(event) => setPatientForm({ ...patientForm, gender: event.target.value })}><option value="">Necompletat</option><option value="M">Masculin</option><option value="F">Feminin</option></select></Field>
+              <Field label="Data nașterii"><Input type="date" max={new Date().toISOString().slice(0, 10)} value={patientForm.birth_date} onChange={(event) => setPatientForm({ ...patientForm, birth_date: event.target.value })} required className="rounded-xl" /></Field>
+              <Field label="Sex"><select required className="h-11 w-full rounded-xl border bg-white px-3" value={patientForm.gender} onChange={(event) => setPatientForm({ ...patientForm, gender: event.target.value })}><option value="" disabled>Alege</option><option value="M">Masculin</option><option value="F">Feminin</option></select></Field>
               <Field label="Mediul de trai"><select className="h-11 w-full rounded-xl border bg-white px-3" value={patientForm.residential_environment} onChange={(event) => setPatientForm({ ...patientForm, residential_environment: event.target.value })}><option value="">Necompletat</option><option value="rural">Rural</option><option value="urban">Urban</option></select></Field>
               <p className="flex items-end rounded-xl bg-slate-50 p-3 text-sm">Vârsta: {patientAge(patientForm.birth_date)}</p>
-              <Field label="Țară"><Input value={patientForm.country} onChange={(event) => setPatientForm({ ...patientForm, country: event.target.value })} required className="rounded-xl" /></Field>
               <Field label="Raion / municipiu">
                 <Select value={patientForm.region_id} onValueChange={(value) => setPatientForm({ ...patientForm, region_id: value, locality_id: '' })}>
                   <SelectTrigger className="rounded-xl">
@@ -628,14 +626,17 @@ export function ProfilePage() {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="Adresă (stradă și număr)"><Input value={patientForm.address} onChange={(event) => setPatientForm({ ...patientForm, address: event.target.value })} required className="rounded-xl" /></Field>
+              <Field label="Strada și numărul (opțional)">
+                <Input value={patientForm.address} onChange={(event) => setPatientForm({ ...patientForm, address: event.target.value })} className="rounded-xl" />
+                <p className="text-xs text-slate-500">Necesară doar pentru examinarea la domiciliu.</p>
+              </Field>
               <div className="md:col-span-2">
                 <Field label="Istoricul vieții"><Textarea placeholder="Naștere și dezvoltare, boli anterioare, accidente, operații și antecedente familiale. Detaliile se completează în compartimentele fișei." value={patientForm.medical_summary} onChange={(event) => setPatientForm({ ...patientForm, medical_summary: event.target.value })} className="rounded-xl" /></Field>
               </div>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" className="rounded-xl" onClick={() => setIsPatientOpen(false)}>Anulare</Button>
-              <Button className="rounded-xl">Creează profil</Button>
+              <Button className="rounded-xl" disabled={!patientForm.region_id || !patientForm.locality_id}>Creează profil</Button>
             </DialogFooter>
           </form>
         </DialogContent>

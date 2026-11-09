@@ -108,8 +108,9 @@ class PatientProfileController extends Controller
         abort_unless($user->hasRole('patient') || $user->hasRole('admin'), 403, 'Ai nevoie de rol pacient.');
 
         $validated = $this->validatePatientProfile($request);
+        $packageRequired = $this->packageRequired();
 
-        $profile = DB::transaction(function () use ($user, $validated) {
+        $profile = DB::transaction(function () use ($user, $validated, $packageRequired) {
             $purchase = PatientCardPurchase::where('user_id', $user->id)
                 ->where('expires_at', '>', now())
                 ->whereColumn('used_slots', '<', 'profile_slots')
@@ -120,10 +121,13 @@ class PatientProfileController extends Controller
             if ($purchase && $purchase->availableSlots() > 0) {
                 $purchase->increment('used_slots');
                 $activeUntil = $purchase->expires_at;
+            } elseif ($packageRequired) {
+                throw new HttpResponseException(response()->json([
+                    'message' => 'Alege un pachet ca să adaugi pacienți.',
+                    'code' => 'package_required',
+                ], 422));
             } else {
-                // Primul profil al unui cont este gratuit. Pachetele sunt
-                // necesare doar pentru al doilea profil și următoarele.
-                abort_unless(! $user->patientProfiles()->exists(), 422, 'Nu ai cartele disponibile pentru un profil nou.');
+                // Cu modulul de cartele sau plățile oprite, pacienții se adaugă fără pachet.
                 $activeUntil = null;
             }
 
@@ -371,9 +375,9 @@ class PatientProfileController extends Controller
         $validated = $request->validate([
             'first_name' => [$required, 'string', 'max:255'],
             'last_name' => [$required, 'string', 'max:255'],
-            'birth_date' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today'],
-            'gender' => ['nullable', Rule::in(['M', 'F', 'Altul'])],
-            'country' => [$required, 'string', 'max:100'],
+            'birth_date' => [$creating ? 'required' : 'nullable', 'date_format:Y-m-d', 'before_or_equal:today'],
+            'gender' => [$creating ? 'required' : 'nullable', Rule::in(['M', 'F', 'Altul'])],
+            'country' => ['sometimes', $creating ? 'nullable' : 'filled', 'string', 'max:100'],
             'region_id' => [$required, $creating ? 'filled' : 'nullable', 'integer', Rule::exists('regions', 'id')->where('is_active', true)],
             'locality_id' => [$required, $creating ? 'filled' : 'nullable', 'integer', Rule::exists('localities', 'id')->where(function ($query) use ($request) {
                 $query->where('is_active', true);
@@ -381,7 +385,7 @@ class PatientProfileController extends Controller
                     $query->where('region_id', $request->integer('region_id'));
                 }
             })],
-            'address' => [$required, 'string', 'max:255'],
+            'address' => ['sometimes', 'nullable', 'string', 'max:255'],
             'emergency_contact' => ['nullable', 'string', 'max:255'],
             'medical_summary' => ['nullable', 'string', 'max:4000'],
             'pseudonymized' => ['sometimes', 'boolean'],
@@ -397,8 +401,13 @@ class PatientProfileController extends Controller
             'region_id.exists' => 'Raionul selectat nu este disponibil.',
             'locality_id.required' => 'Alege localitatea din listă.',
             'locality_id.exists' => 'Localitatea selectată nu aparține raionului ales sau este inactivă.',
-            'address.required' => 'Completează adresa (stradă și număr).',
+            'birth_date.required' => 'Completează data nașterii.',
+            'gender.required' => 'Alege sexul pacientului.',
         ]);
+
+        if ($creating && blank($validated['country'] ?? null)) {
+            $validated['country'] = 'Republica Moldova';
+        }
 
         // Keep the denormalized region/locality name columns in sync with the catalog.
         if (array_key_exists('region_id', $validated)) {
@@ -420,8 +429,19 @@ class PatientProfileController extends Controller
             'can_request_consultation' => $this->canRequestConsultation($profile),
             'request_unavailable_reason' => $this->requestUnavailableReason($profile),
             'has_complete_address' => $profile->hasCompleteAddress(),
+            'needs_data' => $profile->birth_date === null || blank($profile->gender),
             'investigations' => $profile->investigations->sortByDesc('performed_at')->values()->map(fn ($item) => PatientMedicalRecordController::document($item)),
         ];
+    }
+
+    /**
+     * Pachetul e obligatoriu pentru orice profil nou, cât timp cartelele și plățile sunt pornite.
+     */
+    private function packageRequired(): bool
+    {
+        $flags = app(FeatureFlags::class);
+
+        return $flags->enabled('patient_cards') && $flags->enabled('payments');
     }
 
     private function canRequestConsultation(PatientProfile $profile): bool

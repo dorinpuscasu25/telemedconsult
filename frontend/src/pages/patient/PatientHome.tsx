@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Activity, ArrowRight, CalendarClock, ChevronRight, Clock, Gift, Home, MessageSquare, Plus, Stethoscope, UserPlus, Users, Video, Wallet } from 'lucide-react';
+import { Activity, ArrowRight, CalendarClock, ChevronRight, Clock, CreditCard, Gift, Home, MessageSquare, Plus, Star, Stethoscope, UserPlus, Users, Video, Wallet } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { ListSkeleton, Skeleton } from '../../components/ui/skeleton';
+import { Textarea } from '../../components/ui/textarea';
 import { cn } from '../../components/ui/utils';
 import { PageHeader, SectionHeader } from '../../components/app/PageHeader';
 import { StatusBadge } from '../../components/app/StatusBadge';
@@ -24,11 +25,19 @@ interface PatientProfile {
   can_request_consultation?: boolean;
 }
 
+interface ReviewableRequest {
+  id: string;
+  doctor_name?: string | null;
+  operator_name?: string | null;
+  completed_at?: string | null;
+}
+
 const ACTIVE = ['new', 'accepted', 'rescheduled'];
 const time = (value?: string | null) => (value ? new Date(value).getTime() : 0);
 
 type Hero = {
   tone: 'blue' | 'amber' | 'orange' | 'green' | 'slate';
+  kind?: 'setup' | 'review';
   icon: React.ElementType;
   eyebrow: string;
   title: string;
@@ -47,6 +56,8 @@ export function PatientHome() {
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [requests, setRequests] = useState<PatientConsultation[]>([]);
   const [profiles, setProfiles] = useState<PatientProfile[]>([]);
+  const [availableSlots, setAvailableSlots] = useState(0);
+  const [reviewable, setReviewable] = useState<ReviewableRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
 
@@ -56,13 +67,18 @@ export function PatientHome() {
   const affiliateEnabled = isEnabled('affiliate_program');
 
   const load = useCallback(async () => {
-    const [walletResponse, profileResponse, requestsResponse] = await Promise.allSettled([
+    const [walletResponse, profileResponse, requestsResponse, reviewableResponse] = await Promise.allSettled([
       apiRequest<WalletData>('/wallet'),
-      apiRequest<{ patient_profiles: PatientProfile[] }>('/patient/profile'),
-      apiRequest<{ data: PatientConsultation[] }>('/requests')
+      apiRequest<{ patient_profiles: PatientProfile[]; card_purchases?: Array<{ available_slots: number }> }>('/patient/profile'),
+      apiRequest<{ data: PatientConsultation[] }>('/requests'),
+      apiRequest<{ data: ReviewableRequest[] }>('/patient/reviewable-requests')
     ]);
     if (walletResponse.status === 'fulfilled') setWallet(walletResponse.value);
-    if (profileResponse.status === 'fulfilled') setProfiles(profileResponse.value.patient_profiles ?? []);
+    if (profileResponse.status === 'fulfilled') {
+      setProfiles(profileResponse.value.patient_profiles ?? []);
+      setAvailableSlots((profileResponse.value.card_purchases ?? []).reduce((sum, item) => sum + item.available_slots, 0));
+    }
+    if (reviewableResponse.status === 'fulfilled') setReviewable(reviewableResponse.value.data ?? []);
     if (requestsResponse.status === 'fulfilled') setRequests(requestsResponse.value.data ?? []);
     setIsLoading(false);
   }, []);
@@ -71,6 +87,8 @@ export function PatientHome() {
 
   const active = useMemo(() => requests.filter((request) => ACTIVE.includes(request.status)), [requests]);
   const hasRequestablePatient = profiles.some((profile) => profile.can_request_consultation);
+  const needsPackage = isEnabled('patient_cards') && paymentsEnabled && availableSlots === 0;
+  const pendingReview = reviewable[0];
 
   const hero: Hero = useMemo(() => {
     const rescheduled = active.find((request) => request.status === 'rescheduled');
@@ -82,11 +100,17 @@ export function PatientHome() {
 
     if (live) return { tone: 'green', icon: Video, eyebrow: 'Acum', title: 'Consultația a început', description: `${consultationTitle(live)}${live.doctor?.name ? ` cu ${live.doctor.name}` : ''}. Intră în apel sau scrie-i medicului.`, request: live };
     if (rescheduled) return { tone: 'orange', icon: CalendarClock, eyebrow: 'Ai de răspuns', title: 'Ți s-a propus o oră nouă', description: `${rescheduled.doctor?.name ?? 'Medicul'} propune ${dateTime(rescheduled.proposed_scheduled_at)} pentru ${rescheduled.patient_profile?.name ?? 'consultație'}.`, request: rescheduled };
+    if (!hasRequestablePatient && profiles.length === 0) {
+      return needsPackage
+        ? { tone: 'slate', kind: 'setup', icon: CreditCard, eyebrow: 'Primul pas', title: 'Alege pachetul', description: 'Un profil este o persoană din familie, cu fișa ei medicală, activ un an. După pachet adaugi pacientul și alegi medicul.' }
+        : { tone: 'slate', kind: 'setup', icon: UserPlus, eyebrow: 'Pasul următor', title: 'Adaugă pacientul', description: 'Spune-ne pentru cine e prima consultație, apoi alegi medicul.' };
+    }
+    if (pendingReview) return { tone: 'orange', kind: 'review', icon: Star, eyebrow: 'Ai de evaluat', title: `Cum a fost consultația${pendingReview.doctor_name ? ` cu ${pendingReview.doctor_name}` : ''}?`, description: 'Evaluarea durează un minut și e necesară înainte de următoarea programare.' };
     if (upcoming) return { tone: 'blue', icon: CalendarClock, eyebrow: 'Următoarea consultație', title: upcoming.scheduled_at ? dateTime(upcoming.scheduled_at) : 'Confirmată', description: `${consultationTitle(upcoming)}${upcoming.doctor?.name ? ` cu ${upcoming.doctor.name}` : ''}${upcoming.patient_profile?.name ? `, pentru ${upcoming.patient_profile.name}` : ''}. Medicul deschide consultația la ora stabilită.`, request: upcoming };
     if (waiting) return { tone: 'amber', icon: Clock, eyebrow: 'În așteptare', title: 'Așteptăm confirmarea', description: `${waiting.type === 'operator' ? 'Un operator' : waiting.doctor?.name ?? 'Medicul'} trebuie să confirme cererea${waiting.scheduled_at ? ` pentru ${dateTime(waiting.scheduled_at)}` : ''}. Te anunțăm imediat.`, request: waiting };
     if (!hasRequestablePatient) return { tone: 'slate', icon: UserPlus, eyebrow: 'Primul pas', title: 'Adaugă pacientul', description: 'Consultațiile se fac pentru un profil de pacient: tu sau un membru al familiei. Adaugă-l o singură dată și îl folosești la fiecare cerere.' };
     return { tone: 'slate', icon: Stethoscope, eyebrow: 'Totul e în regulă', title: 'Nicio consultație programată', description: 'Când ai nevoie, alege un medic pentru o consultație online sau cere o examinare la domiciliu.' };
-  }, [active, hasRequestablePatient]);
+  }, [active, hasRequestablePatient, profiles.length, needsPackage, pendingReview]);
 
   const acceptProposal = async (request: PatientConsultation) => {
     setAccepting(true);
@@ -134,13 +158,15 @@ export function PatientHome() {
                   <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">{hero.description}</p>
                 </div>
               </div>
+              {hero.kind === 'review' && pendingReview && <InlineReview key={pendingReview.id} request={pendingReview} onDone={() => { void load(); }} />}
               <div className="mt-5 flex flex-wrap gap-2 sm:pl-16">
                 {hero.request?.status === 'rescheduled' && <Button onClick={() => { if (hero.request) void acceptProposal(hero.request); }} disabled={accepting}>{accepting ? 'Se confirmă…' : 'Acceptă ora propusă'}</Button>}
                 {hero.request?.status === 'accepted' && hero.request.doctor_started_at && <Button asChild><Link to={`/consultations/${hero.request.id}/video`}><Video className="h-4 w-4" />Intră în apel</Link></Button>}
                 {hero.request && <Button asChild variant="outline" className="bg-white"><Link to={`/patient/chat?request=${hero.request.id}`}><MessageSquare className="h-4 w-4" />Mesaje</Link></Button>}
                 {hero.request && <Button asChild variant="ghost"><Link to="/patient/consultations">Detalii<ArrowRight className="h-4 w-4" /></Link></Button>}
-                {!hero.request && !hasRequestablePatient && <Button asChild><Link to="/patient/profile"><UserPlus className="h-4 w-4" />Adaugă pacientul</Link></Button>}
-                {!hero.request && hasRequestablePatient && doctorsEnabled && <Button asChild><Link to="/patient/doctors"><Plus className="h-4 w-4" />Programează o consultație</Link></Button>}
+                {hero.kind === 'setup' && <Button asChild><Link to={needsPackage ? '/patient/profile?tab=cards' : '/patient/profile'}>{needsPackage ? <CreditCard className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}{needsPackage ? 'Alege pachetul' : 'Adaugă pacientul'}</Link></Button>}
+                {!hero.request && !hero.kind && !hasRequestablePatient && <Button asChild><Link to="/patient/profile"><UserPlus className="h-4 w-4" />Verifică pacientul</Link></Button>}
+                {!hero.request && !hero.kind && hasRequestablePatient && doctorsEnabled && <Button asChild><Link to="/patient/doctors"><Plus className="h-4 w-4" />Programează o consultație</Link></Button>}
               </div>
             </section>
           )}
@@ -242,5 +268,43 @@ function ServiceCard({ to, icon: Icon, title, description }: { to: string; icon:
       <span className="mt-1 text-sm leading-6 text-slate-500">{description}</span>
       <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-primary">Începe<ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" /></span>
     </Link>
+  );
+}
+
+/** Evaluarea restantă blochează următoarea programare, așa că o cerem direct din cardul de sus. */
+function InlineReview({ request, onDone }: { request: ReviewableRequest; onDone: () => void }) {
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!rating || !comment.trim()) return;
+    setSaving(true);
+    try {
+      await apiRequest(`/requests/${request.id}/review`, { method: 'POST', body: JSON.stringify({ rating, comment: comment.trim() }) });
+      toast.success('Mulțumim! Poți programa din nou.');
+      onDone();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Nu am putut salva evaluarea.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="mt-4 space-y-3 sm:pl-16">
+      <div className="flex gap-1" role="radiogroup" aria-label="Nota">
+        {[1, 2, 3, 4, 5].map((value) => (
+          <button key={value} type="button" role="radio" aria-checked={rating === value} aria-label={`${value} din 5`} onClick={() => setRating(value)} className="rounded-lg p-1 transition hover:bg-orange-100">
+            <Star className={cn('h-7 w-7', value <= rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300')} />
+          </button>
+        ))}
+      </div>
+      {rating > 0 && (
+        <Textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Câteva cuvinte despre consultație" maxLength={2000} className="min-h-[72px] bg-white" required />
+      )}
+      {rating > 0 && <Button type="submit" disabled={saving || !comment.trim()}>{saving ? 'Se trimite…' : 'Trimite evaluarea'}</Button>}
+    </form>
   );
 }
