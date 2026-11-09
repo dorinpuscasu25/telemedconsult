@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Activity, ArrowLeft, CheckCircle2, Eye, EyeOff, Gift, Mail, ShieldCheck, Stethoscope, Users } from 'lucide-react';
+import { Activity, ArrowLeft, CheckCircle2, Eye, EyeOff, Gift, Mail, RotateCw, ShieldCheck, Stethoscope, Users } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '../components/ui/button';
 import {
@@ -14,7 +14,7 @@ import {
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '../components/ui/select';
-import { AccountType, useAuth } from '../contexts/AuthContext';
+import { AccountType, useAuth, WELCOME_BONUS_KEY } from '../contexts/AuthContext';
 import { apiRequest } from '../lib/api';
 import { rememberNext, safePatientPath } from '../lib/onboarding-next';
 
@@ -53,6 +53,8 @@ export function RegisterPage({ audience = 'patient' }: { audience?: 'patient' | 
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
+  const [verified, setVerified] = useState<{ bonus: number } | null>(null);
   const { register, verifyEmailOtp, resendEmailOtp } = useAuth();
   const formRef = useRef<HTMLFormElement>(null);
   const navigate = useNavigate();
@@ -73,6 +75,12 @@ export function RegisterPage({ audience = 'patient' }: { audience?: 'patient' | 
       .then((response) => setRegions(response.data ?? []))
       .catch(() => setRegions([]));
   }, []);
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const timer = window.setTimeout(() => setResendIn((value) => value - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [resendIn]);
 
   const specialtyLabel = specialties.find((item) => String(item.id) === specialtyId)?.name;
 
@@ -118,6 +126,7 @@ export function RegisterPage({ audience = 'patient' }: { audience?: 'patient' | 
       setRequiresApproval(Boolean(response.requires_approval));
       setDevOtp(response.dev_otp || null);
       if (response.dev_otp) setOtpCode(response.dev_otp);
+      setResendIn(60);
       setStep('verify');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nu am putut crea contul.');
@@ -140,7 +149,14 @@ export function RegisterPage({ audience = 'patient' }: { audience?: 'patient' | 
     setIsSubmitting(true);
     try {
       const user = await verifyEmailOtp(normalizedEmail, otpCode);
-      navigate(user.status === 'pending' ? '/pending' : user.role === 'patient' ? '/patient/start' : routeForRole(user.role));
+      if (user.role === 'patient' && user.status !== 'pending') {
+        // 2b: confirmarea și bonusul se arată aici; asistentul nu-l mai repetă.
+        let bonus = 0;
+        try { bonus = Number(sessionStorage.getItem(WELCOME_BONUS_KEY)) || 0; sessionStorage.removeItem(WELCOME_BONUS_KEY); } catch { /* fără stocare */ }
+        setVerified({ bonus });
+        return;
+      }
+      navigate(user.status === 'pending' ? '/pending' : routeForRole(user.role));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nu am putut verifica emailul.');
     } finally {
@@ -155,6 +171,7 @@ export function RegisterPage({ audience = 'patient' }: { audience?: 'patient' | 
     try {
       const response = await resendEmailOtp(normalizedEmail);
       setMessage(response.message);
+      setResendIn(60);
       setDevOtp(response.dev_otp || null);
       if (response.dev_otp) setOtpCode(response.dev_otp);
     } catch (err) {
@@ -181,14 +198,14 @@ export function RegisterPage({ audience = 'patient' }: { audience?: 'patient' | 
             </span>
           </Link>
 
-          <Card className="border border-slate-200 bg-white shadow-xl shadow-slate-200/70">
+          <Card className="border-0 bg-white shadow-none sm:border sm:border-slate-200 sm:shadow-xl sm:shadow-slate-200/70">
             {step === 'details' ? (
               <form onSubmit={handleRegister}>
-                <CardHeader className="space-y-2 text-center">
-                  <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <CardHeader className={isPatientForm ? 'space-y-2' : 'space-y-2 text-center'}>
+                  {!isPatientForm && <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
                     <ShieldCheck className="h-5 w-5" />
-                  </div>
-                  <CardTitle className="text-2xl font-bold tracking-tight">{isPatientForm ? 'Creează-ți contul' : 'Cont de medic sau operator'}</CardTitle>
+                  </div>}
+                  <CardTitle className={isPatientForm ? 'text-[28px] font-bold leading-[1.2] tracking-tight' : 'text-2xl font-bold tracking-tight'}>{isPatientForm ? 'Creează-ți contul' : 'Cont de medic sau operator'}</CardTitle>
                   <CardDescription>
                     {isPatientForm
                       ? 'Consultații video sau acasă, pentru tine și familia ta.'
@@ -365,9 +382,9 @@ export function RegisterPage({ audience = 'patient' }: { audience?: 'patient' | 
                     </p>
                   )}
                   <div className="text-center text-sm text-slate-500">
-                    Aveți deja cont?{' '}
+                    {isPatientForm ? 'Ai deja cont?' : 'Aveți deja cont?'}{' '}
                     <Link to={nextPath ? `/login?next=${encodeURIComponent(nextPath)}` : '/login'} className="font-semibold text-primary transition-colors hover:text-primary/80">
-                      Autentificați-vă
+                      {isPatientForm ? 'Intră' : 'Autentificați-vă'}
                     </Link>
                   </div>
                   <Link to={isPatientForm ? '/register/specialist' : '/register'} className="text-center text-xs text-slate-400 hover:text-slate-600">
@@ -376,77 +393,69 @@ export function RegisterPage({ audience = 'patient' }: { audience?: 'patient' | 
                 </CardFooter>
               </form>
             ) : (
-              <form ref={formRef} onSubmit={handleVerify}>
-                <CardHeader className="space-y-2 text-center">
-                  <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
-                    <Mail className="h-5 w-5" />
+              <form ref={formRef} onSubmit={handleVerify} className="flex flex-col gap-7 p-6 sm:p-8">
+                <span className={`grid h-12 w-12 place-items-center rounded-[14px] ${verified ? 'bg-green-50 text-green-600' : 'bg-blue-50 text-blue-600'}`}>
+                  {verified ? <CheckCircle2 className="h-6 w-6" /> : <Mail className="h-6 w-6" />}
+                </span>
+                <div className="flex flex-col gap-2">
+                  <h1 className="text-[28px] font-bold leading-[1.2] tracking-tight text-slate-950">{verified ? 'Gata, contul e activ' : 'Verifică-ți emailul'}</h1>
+                  <p className="text-[15px] leading-[1.5] text-slate-500">
+                    {verified
+                      ? 'Mai sunt 3 pași până la prima consultație: alegi pachetul, adaugi pacientul și programezi.'
+                      : <>Ți-am trimis un cod de 6 cifre la <span className="font-medium text-slate-950">{normalizedEmail}</span>.</>}
+                  </p>
+                </div>
+                <Feedback error={error} message={verified ? '' : message} />
+                {requiresApproval && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    După confirmarea emailului, contul tău va fi verificat de un administrator înainte de activare.
                   </div>
-                  <CardTitle className="text-2xl font-bold tracking-tight">Verificare email</CardTitle>
-                  <CardDescription>
-                    Am trimis un cod de 6 cifre la <span className="font-medium text-slate-700">{normalizedEmail}</span>.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <Feedback error={error} message={message} />
-                  {requiresApproval && (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                      După confirmarea emailului, contul tău va fi verificat de un administrator înainte de activare.
+                )}
+                <OtpBoxes
+                  value={otpCode}
+                  done={Boolean(verified)}
+                  disabled={isSubmitting || Boolean(verified)}
+                  onChange={(next) => {
+                    setOtpCode(next);
+                    if (next.length === 6 && next !== otpCode) window.setTimeout(() => formRef.current?.requestSubmit(), 0);
+                  }} />
+                {verified ? (
+                  <>
+                    {verified.bonus > 0 && (
+                      <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3.5">
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-amber-100 text-amber-700"><Gift className="h-5 w-5" /></span>
+                        <span className="flex flex-col gap-0.5"><span className="text-[15px] font-semibold text-amber-900">Ai primit {verified.bonus} MDL bonus</span><span className="text-[13px] text-amber-800">Se scad automat din prima consultație.</span></span>
+                      </div>
+                    )}
+                    <Button type="button" onClick={() => navigate('/patient/start')} className="h-12 w-full rounded-[10px] text-[15px] font-semibold">Începe</Button>
+                  </>
+                ) : (
+                  <>
+                    {devOtp && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-800">Cod demo: {devOtp}</div>}
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-500">N-a ajuns?</span>
+                        <button type="button" disabled={isResending || resendIn > 0} onClick={handleResend} className="flex h-10 items-center gap-1.5 rounded-[10px] border border-slate-200 bg-white px-3 text-sm font-medium text-slate-900 hover:bg-slate-50 disabled:opacity-50">
+                          <RotateCw className="h-4 w-4" />{isResending ? 'Se retrimite…' : 'Retrimite codul'}
+                        </button>
+                      </div>
+                      <p className="text-[13px] text-slate-500">Verifică și dosarul Spam.{resendIn > 0 ? ` Poți retrimite peste ${Math.floor(resendIn / 60)}:${String(resendIn % 60).padStart(2, '0')}.` : ''}</p>
                     </div>
-                  )}
-                  <Field label="Cod OTP" htmlFor="otp">
-                    <Input
-                      id="otp"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      maxLength={6}
-                      placeholder="000000"
-                      required
-                      value={otpCode}
-                      onChange={(event) => {
-                        const next = event.target.value.replace(/\D/g, '').slice(0, 6);
-                        setOtpCode(next);
-                        if (next.length === 6 && next !== otpCode) window.setTimeout(() => formRef.current?.requestSubmit(), 0);
+                    {isSubmitting && <p role="status" className="text-sm text-slate-500">Se verifică…</p>}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStep('details');
+                        setOtpCode('');
+                        setError('');
+                        setMessage('');
                       }}
-                      className="h-12 rounded-xl border-slate-200 bg-white text-center text-xl font-semibold tracking-[0.35em]" />
-                  </Field>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                    Codul expiră în 10 minute. Dacă nu îl găsiți, verificați și folderul Spam.
-                  </div>
-                  {devOtp && (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-800">
-                      Cod demo: {devOtp}
-                    </div>
-                  )}
-                </CardContent>
-                <CardFooter className="flex flex-col space-y-3">
-                  <Button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="h-12 w-full rounded-xl text-base shadow-lg shadow-primary/20">
-                    <CheckCircle2 className="mr-2 h-4 w-4" />
-                    {isSubmitting ? 'Se verifică...' : 'Verifică și continuă'}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={isResending}
-                    onClick={handleResend}
-                    className="h-11 w-full rounded-xl bg-white">
-                    {isResending ? 'Se retrimite...' : 'Retrimite codul'}
-                  </Button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStep('details');
-                      setOtpCode('');
-                      setError('');
-                      setMessage('');
-                    }}
-                    className="inline-flex items-center justify-center text-sm font-medium text-slate-500 hover:text-slate-800">
-                    <ArrowLeft className="mr-1 h-4 w-4" />
-                    Înapoi la datele contului
-                  </button>
-                </CardFooter>
+                      className="inline-flex items-center justify-center text-sm font-medium text-slate-500 hover:text-slate-800">
+                      <ArrowLeft className="mr-1 h-4 w-4" />
+                      Înapoi la datele contului
+                    </button>
+                  </>
+                )}
               </form>
             )}
           </Card>
@@ -474,5 +483,39 @@ function Feedback({ error, message }: { error: string; message: string }) {
     <div className={`rounded-xl border px-3 py-2 text-sm ${error ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
       {error || message}
     </div>
+  );
+}
+
+/** Șase căsuțe pentru cod (2a); un singur input ascuns ține valoarea, ca lipirea și autocompletarea să meargă. */
+function OtpBoxes({ value, onChange, disabled, done }: { value: string; onChange: (value: string) => void; disabled: boolean; done: boolean }) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <label className="relative grid grid-cols-6 gap-2">
+      <span className="sr-only">Codul din email</span>
+      <input
+        id="otp"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        autoFocus
+        maxLength={6}
+        disabled={disabled}
+        value={value}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onChange={(event) => onChange(event.target.value.replace(/\D/g, '').slice(0, 6))}
+        className="absolute inset-0 h-full w-full cursor-text opacity-0" />
+      {Array.from({ length: 6 }, (_, index) => {
+        const digit = value[index];
+        const active = focused && !done && index === Math.min(value.length, 5);
+        return (
+          <span key={index} aria-hidden="true" className={`grid h-14 place-items-center rounded-[10px] text-2xl font-semibold text-slate-950 ${
+            done ? 'border border-green-300 bg-green-50'
+              : active ? 'border-2 border-blue-600 shadow-[0_0_0_3px_rgba(37,99,235,.15)]'
+                : digit ? 'border border-slate-300' : 'border border-slate-200'}`}>
+            {digit ?? (active ? <span className="h-6 w-0.5 animate-pulse bg-blue-600" /> : null)}
+          </span>
+        );
+      })}
+    </label>
   );
 }
