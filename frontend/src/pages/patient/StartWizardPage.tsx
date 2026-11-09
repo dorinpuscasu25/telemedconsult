@@ -9,6 +9,7 @@ import { PatientBasicsFields, emptyPatientBasics, isPatientBasicsComplete, patie
 import { WELCOME_BONUS_KEY } from '../../contexts/AuthContext';
 import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 import { apiRequest } from '../../lib/api';
+import { bookingAfterOnboarding, clearNext, peekNext } from '../../lib/onboarding-next';
 
 type CardPackage = { id: number; name: string; description?: string | null; profile_slots: number; price: number; validity_days: number; bonus_points?: number };
 type CardPurchase = { id: number; profile_slots: number; used_slots: number; available_slots: number; expires_at: string };
@@ -80,7 +81,7 @@ export function StartWizardPage() {
 
   // Contul care are deja un pacient nu mai are ce face aici: trece la programare.
   useEffect(() => {
-    if (data && hasRequestablePatient && step === 'package') navigate('/patient/doctors', { replace: true });
+    if (data && hasRequestablePatient && step === 'package') { const next = peekNext(); clearNext(); navigate(next ?? '/patient/doctors', { replace: true }); }
   }, [data, hasRequestablePatient, step, navigate]);
 
   // Întoarcerea de la MAIB cu „pending”: banca n-a confirmat încă, verificăm de câteva ori.
@@ -146,7 +147,7 @@ export function StartWizardPage() {
     try {
       const response = await apiRequest<{ patient_profile: { id: number } }>('/patient/profiles', { method: 'POST', body: JSON.stringify(patientBasicsPayload(patient)) });
       try { sessionStorage.removeItem(CHECKOUT_KEY); } catch { /* opțional */ }
-      navigate(`/patient/doctors?patient_profile=${response.patient_profile.id}&from=start`);
+      navigate(bookingAfterOnboarding(response.patient_profile.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nu am putut salva pacientul.');
     } finally {

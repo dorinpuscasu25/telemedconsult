@@ -281,7 +281,7 @@ export function LoginPage() {
               <div className="text-sm text-center text-slate-500">
                 Nu aveți cont?{' '}
                 <Link
-                  to="/register"
+                  to={safeNext ? `/register?next=${encodeURIComponent(safeNext)}` : '/register'}
                   className="text-primary hover:text-primary/80 font-semibold transition-colors">
                   
                   Înregistrați-vă

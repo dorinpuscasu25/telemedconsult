@@ -23,6 +23,7 @@ export function PublicLayout() {
   // Etichetele de meniu sunt editabile din panoul de conținut.
   const navLinks = [
     { label: text('header.nav_home'), to: '/' },
+    { label: text('header.nav_doctors'), to: '/medici' },
     { label: text('header.nav_news'), to: '/noutati' },
     { label: text('header.nav_partners'), to: '/parteneri' }
   ];

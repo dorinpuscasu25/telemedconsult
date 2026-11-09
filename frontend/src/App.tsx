@@ -26,6 +26,7 @@ import { HomePage } from './pages/public/HomePage';
 import { BlogListPage } from './pages/public/BlogListPage';
 import { BlogPostPage } from './pages/public/BlogPostPage';
 import { PartnersPage as PublicPartnersPage } from './pages/public/PartnersPage';
+import { DoctorsPage as PublicDoctorsPage } from './pages/public/DoctorsPage';
 import { PatientHome } from './pages/patient/PatientHome';
 import { StartWizardPage } from './pages/patient/StartWizardPage';
 import { PatientRecordPage } from './pages/patient/PatientRecordPage';
@@ -145,6 +146,7 @@ function AppRoutes() {
         <Route path="/blog" element={<Navigate to="/noutati" replace />} />
         <Route path="/blog/:slug" element={<LegacyBlogPostRedirect />} />
         <Route path="/parteneri" element={<PublicPartnersPage />} />
+        <Route path="/medici" element={<PublicDoctorsPage />} />
       </Route>
 
       <Route
