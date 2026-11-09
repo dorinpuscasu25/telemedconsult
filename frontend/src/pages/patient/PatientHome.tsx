@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Activity, ArrowRight, CalendarClock, ChevronRight, Clock, CreditCard, Gift, Home, MessageSquare, Plus, Star, Stethoscope, UserPlus, Users, Video, Wallet } from 'lucide-react';
+import { CalendarClock, ChevronDown, ChevronRight, Clock, CreditCard, FileText, Plus, Star, Stethoscope, UserPlus, Video, X } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import { ListSkeleton, Skeleton } from '../../components/ui/skeleton';
+import { Skeleton } from '../../components/ui/skeleton';
 import { Textarea } from '../../components/ui/textarea';
 import { cn } from '../../components/ui/utils';
 import { PageHeader, SectionHeader } from '../../components/app/PageHeader';
@@ -11,279 +11,345 @@ import { StatusBadge } from '../../components/app/StatusBadge';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 import { apiRequest } from '../../lib/api';
-import { dateTime, money } from '../../lib/format';
+import { patientAge } from '../../lib/medical-record';
+import { buildHomeAlerts, countdown, readDismissed, recordProgress, writeDismissed, type HomeAlert, type HomeProfile, type ReviewableRequest } from '../../lib/patient-alerts';
 import { consultationTitle, type PatientConsultation } from '../../lib/patient-consultations';
 
 interface WalletData {
-  points_wallet?: { balance: number; currency: string };
   wallet: { balance: number; currency: string };
+  points_wallet?: { balance: number };
+  promo_wallet?: { balance: number };
+  reserved?: { total: number };
 }
 
-interface PatientProfile {
-  id: number;
-  first_name?: string | null;
-  can_request_consultation?: boolean;
-}
-
-interface ReviewableRequest {
-  id: string;
-  doctor_name?: string | null;
-  operator_name?: string | null;
-  completed_at?: string | null;
-}
-
-const ACTIVE = ['new', 'accepted', 'rescheduled'];
-const time = (value?: string | null) => (value ? new Date(value).getTime() : 0);
-
-type Hero = {
-  tone: 'blue' | 'amber' | 'orange' | 'green' | 'slate';
-  kind?: 'setup' | 'review';
-  icon: React.ElementType;
-  eyebrow: string;
-  title: string;
-  description: string;
-  request?: PatientConsultation;
+type ProfileResponse = {
+  patient_profiles: HomeProfile[];
+  card_purchases?: Array<{ available_slots: number; profile_slots: number; expires_at: string }>;
 };
 
+const TODO_VISIBLE = 3;
+
 /**
- * Prima pagină a pacientului spune un singur lucru clar: ce urmează. Cardul de
- * sus se schimbă după situație (fără pacient activ, cerere în așteptare, oră
- * nouă propusă, consultație azi), iar dedesubt stau cele două tipuri de servicii.
+ * Acasă: un card „Acum”, trei lucruri de făcut, restul la un click.
+ * Toate alertele vin dintr-o listă ordonată pe niveluri (vezi `lib/patient-alerts`).
  */
 export function PatientHome() {
   const { user } = useAuth();
   const { isEnabled } = useFeatureFlags();
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [requests, setRequests] = useState<PatientConsultation[]>([]);
-  const [profiles, setProfiles] = useState<PatientProfile[]>([]);
-  const [availableSlots, setAvailableSlots] = useState(0);
+  const [profileData, setProfileData] = useState<ProfileResponse | null>(null);
   const [reviewable, setReviewable] = useState<ReviewableRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [accepting, setAccepting] = useState(false);
+  const [dismissed, setDismissed] = useState<string[]>(() => readDismissed());
+  const [showAll, setShowAll] = useState(false);
+  const [now, setNow] = useState(() => new Date());
 
-  const doctorsEnabled = isEnabled('doctors');
-  const operatorsEnabled = isEnabled('operators');
   const paymentsEnabled = isEnabled('payments');
-  const affiliateEnabled = isEnabled('affiliate_program');
+  const doctorsEnabled = isEnabled('doctors');
 
   const load = useCallback(async () => {
     const [walletResponse, profileResponse, requestsResponse, reviewableResponse] = await Promise.allSettled([
       apiRequest<WalletData>('/wallet'),
-      apiRequest<{ patient_profiles: PatientProfile[]; card_purchases?: Array<{ available_slots: number }> }>('/patient/profile'),
+      apiRequest<ProfileResponse>('/patient/profile'),
       apiRequest<{ data: PatientConsultation[] }>('/requests'),
       apiRequest<{ data: ReviewableRequest[] }>('/patient/reviewable-requests')
     ]);
     if (walletResponse.status === 'fulfilled') setWallet(walletResponse.value);
-    if (profileResponse.status === 'fulfilled') {
-      setProfiles(profileResponse.value.patient_profiles ?? []);
-      setAvailableSlots((profileResponse.value.card_purchases ?? []).reduce((sum, item) => sum + item.available_slots, 0));
-    }
-    if (reviewableResponse.status === 'fulfilled') setReviewable(reviewableResponse.value.data ?? []);
+    if (profileResponse.status === 'fulfilled') setProfileData(profileResponse.value);
     if (requestsResponse.status === 'fulfilled') setRequests(requestsResponse.value.data ?? []);
+    if (reviewableResponse.status === 'fulfilled') setReviewable(reviewableResponse.value.data ?? []);
     setIsLoading(false);
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
 
-  const active = useMemo(() => requests.filter((request) => ACTIVE.includes(request.status)), [requests]);
-  const hasRequestablePatient = profiles.some((profile) => profile.can_request_consultation);
+  const profiles = profileData?.patient_profiles ?? [];
+  const purchases = profileData?.card_purchases ?? [];
+  const availableSlots = purchases.reduce((sum, item) => sum + item.available_slots, 0);
   const packagesRequired = isEnabled('patient_cards') && paymentsEnabled;
   const needsPackage = packagesRequired && availableSlots === 0;
-  const pendingReview = reviewable[0];
+  const requestableProfiles = profiles.filter((profile) => profile.can_request_consultation);
 
-  const hero: Hero = useMemo(() => {
-    const rescheduled = active.find((request) => request.status === 'rescheduled');
-    const live = active.find((request) => request.status === 'accepted' && request.doctor_started_at);
-    const upcoming = active
-      .filter((request) => request.status === 'accepted' && !request.doctor_started_at)
-      .sort((a, b) => (time(a.scheduled_at) || Number.MAX_SAFE_INTEGER) - (time(b.scheduled_at) || Number.MAX_SAFE_INTEGER))[0];
-    const waiting = active.find((request) => request.status === 'new');
+  const alerts = useMemo(
+    () => buildHomeAlerts({ requests, reviewable, profiles, needsPackage, now }).filter((alert) => !dismissed.includes(alert.id)),
+    [requests, reviewable, profiles, needsPackage, now, dismissed]
+  );
+  const [current, ...rest] = alerts;
+  const todo = showAll ? rest : rest.slice(0, TODO_VISIBLE);
+  const hiddenCount = rest.length - TODO_VISIBLE;
+  const recentConsultations = useMemo(() => [...requests].sort((a, b) => new Date(b.scheduled_at ?? b.created_at).getTime() - new Date(a.scheduled_at ?? a.created_at).getTime()).slice(0, 4), [requests]);
+  const showFab = doctorsEnabled && requestableProfiles.length > 0 && current !== undefined;
 
-    if (live) return { tone: 'green', icon: Video, eyebrow: 'Acum', title: 'Consultația a început', description: `${consultationTitle(live)}${live.doctor?.name ? ` cu ${live.doctor.name}` : ''}. Intră în apel sau scrie-i medicului.`, request: live };
-    if (rescheduled) return { tone: 'orange', icon: CalendarClock, eyebrow: 'Ai de răspuns', title: 'Ți s-a propus o oră nouă', description: `${rescheduled.doctor?.name ?? 'Medicul'} propune ${dateTime(rescheduled.proposed_scheduled_at)} pentru ${rescheduled.patient_profile?.name ?? 'consultație'}.`, request: rescheduled };
-    if (!hasRequestablePatient && profiles.length === 0) {
-      return needsPackage
-        ? { tone: 'slate', kind: 'setup', icon: CreditCard, eyebrow: 'Pasul 1 din 3', title: 'Alege pachetul', description: 'Un profil este o persoană din familie, cu fișa ei medicală, activ un an. După pachet adaugi pacientul și alegi medicul.' }
-        : { tone: 'slate', kind: 'setup', icon: UserPlus, eyebrow: packagesRequired ? 'Pasul 2 din 3' : 'Pasul următor', title: 'Adaugă pacientul', description: 'Pachetul e activ. Spune-ne pentru cine e prima consultație, apoi alegi medicul.' };
-    }
-    if (pendingReview) return { tone: 'orange', kind: 'review', icon: Star, eyebrow: 'Ai de evaluat', title: `Cum a fost consultația${pendingReview.doctor_name ? ` cu ${pendingReview.doctor_name}` : ''}?`, description: 'Evaluarea durează un minut și e necesară înainte de următoarea programare.' };
-    if (upcoming) return { tone: 'blue', icon: CalendarClock, eyebrow: 'Următoarea consultație', title: upcoming.scheduled_at ? dateTime(upcoming.scheduled_at) : 'Confirmată', description: `${consultationTitle(upcoming)}${upcoming.doctor?.name ? ` cu ${upcoming.doctor.name}` : ''}${upcoming.patient_profile?.name ? `, pentru ${upcoming.patient_profile.name}` : ''}. Medicul deschide consultația la ora stabilită.`, request: upcoming };
-    if (waiting) return { tone: 'amber', icon: Clock, eyebrow: 'În așteptare', title: 'Așteptăm confirmarea', description: `${waiting.type === 'operator' ? 'Un operator' : waiting.doctor?.name ?? 'Medicul'} trebuie să confirme cererea${waiting.scheduled_at ? ` pentru ${dateTime(waiting.scheduled_at)}` : ''}. Te anunțăm imediat.`, request: waiting };
-    if (!hasRequestablePatient) return { tone: 'slate', icon: UserPlus, eyebrow: 'Primul pas', title: 'Adaugă pacientul', description: 'Consultațiile se fac pentru un profil de pacient: tu sau un membru al familiei. Adaugă-l o singură dată și îl folosești la fiecare cerere.' };
-    return { tone: 'slate', icon: Stethoscope, eyebrow: 'Totul e în regulă', title: 'Nicio consultație programată', description: 'Când ai nevoie, alege un medic pentru o consultație online sau cere o examinare la domiciliu.' };
-  }, [active, hasRequestablePatient, profiles.length, needsPackage, packagesRequired, pendingReview]);
-
-  const acceptProposal = async (request: PatientConsultation) => {
-    setAccepting(true);
-    try {
-      await apiRequest(`/requests/${request.id}/accept-proposed-time`, { method: 'POST' });
-      toast.success('Ora propusă a fost acceptată.');
-      await load();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Nu am putut accepta ora propusă.');
-    } finally {
-      setAccepting(false);
-    }
+  const dismiss = (id: string) => {
+    const next = [...dismissed, id];
+    setDismissed(next);
+    writeDismissed(next);
   };
 
   const firstName = user?.name?.split(' ')[0] ?? '';
-  const heroTones: Record<Hero['tone'], string> = {
-    blue: 'border-blue-200 bg-gradient-to-br from-blue-50 to-white',
-    amber: 'border-amber-200 bg-gradient-to-br from-amber-50 to-white',
-    orange: 'border-orange-200 bg-gradient-to-br from-orange-50 to-white',
-    green: 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-white',
-    slate: 'border-slate-200 bg-white'
-  };
-  const heroIconTones: Record<Hero['tone'], string> = {
-    blue: 'bg-blue-600 text-white',
-    amber: 'bg-amber-500 text-white',
-    orange: 'bg-orange-500 text-white',
-    green: 'bg-emerald-600 text-white',
-    slate: 'bg-primary/10 text-primary'
-  };
 
   return (
-    <div className="space-y-6">
-      <PageHeader title={`Bună, ${firstName}`} documentTitle="Acasă" description="Consultațiile, mesajele și pacienții tăi — într-un singur loc." />
+    <div className="space-y-6 pb-20 lg:pb-0">
+      <PageHeader title={`Bună, ${firstName}`} documentTitle="Acasă" />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="space-y-6">
-          {/* Ce urmează */}
-          {isLoading ? <Skeleton className="h-48 w-full rounded-2xl" /> : (
-            <section className={cn('rounded-2xl border p-5 shadow-sm sm:p-6', heroTones[hero.tone])}>
-              <div className="flex items-start gap-4">
-                <span className={cn('grid h-12 w-12 shrink-0 place-items-center rounded-2xl', heroIconTones[hero.tone])}><hero.icon className="h-6 w-6" /></span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-slate-500">{hero.eyebrow}</p>
-                  <h2 className="mt-0.5 text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{hero.title}</h2>
-                  <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">{hero.description}</p>
-                </div>
-              </div>
-              {hero.kind === 'review' && pendingReview && <InlineReview key={pendingReview.id} request={pendingReview} onDone={() => { void load(); }} />}
-              <div className="mt-5 flex flex-wrap gap-2 sm:pl-16">
-                {hero.request?.status === 'rescheduled' && <Button onClick={() => { if (hero.request) void acceptProposal(hero.request); }} disabled={accepting}>{accepting ? 'Se confirmă…' : 'Acceptă ora propusă'}</Button>}
-                {hero.request?.status === 'accepted' && hero.request.doctor_started_at && <Button asChild><Link to={`/consultations/${hero.request.id}/video`}><Video className="h-4 w-4" />Intră în apel</Link></Button>}
-                {hero.request && <Button asChild variant="outline" className="bg-white"><Link to={`/patient/chat?request=${hero.request.id}`}><MessageSquare className="h-4 w-4" />Mesaje</Link></Button>}
-                {hero.request && <Button asChild variant="ghost"><Link to="/patient/consultations">Detalii<ArrowRight className="h-4 w-4" /></Link></Button>}
-                {hero.kind === 'setup' && <Button asChild><Link to="/patient/start">{needsPackage ? <CreditCard className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}{needsPackage ? 'Alege pachetul' : 'Adaugă pacientul'}</Link></Button>}
-                {!hero.request && !hero.kind && !hasRequestablePatient && <Button asChild><Link to="/patient/profile"><UserPlus className="h-4 w-4" />Verifică pacientul</Link></Button>}
-                {!hero.request && !hero.kind && hasRequestablePatient && doctorsEnabled && <Button asChild><Link to="/patient/doctors"><Plus className="h-4 w-4" />Programează o consultație</Link></Button>}
-              </div>
-            </section>
+          {isLoading ? <Skeleton className="h-44 w-full rounded-2xl" /> : current ? (
+            <NowCard alert={current} now={now} onChanged={load} onDismiss={dismiss} />
+          ) : (
+            <CalmCard canBook={doctorsEnabled && requestableProfiles.length > 0} />
           )}
 
-          {/* Servicii */}
-          {(doctorsEnabled || operatorsEnabled) && (
-            <section className="grid gap-3 sm:grid-cols-2">
-              {doctorsEnabled && (
-                <ServiceCard
-                  to={hasRequestablePatient ? '/patient/doctors' : '/patient/profile'}
-                  icon={Stethoscope}
-                  title="Consultație cu un medic"
-                  description="Alege specialistul, descrie simptomele și programează ora. Video sau cu examinare acasă."
-                />
-              )}
-              {operatorsEnabled && (
-                <ServiceCard
-                  to={hasRequestablePatient ? '/patient/operators' : '/patient/profile'}
-                  icon={Home}
-                  title="Examinare la domiciliu"
-                  description="Un operator vine la pacient, face măsurătorile, iar rezultatele ajung la medic."
-                />
+          {!isLoading && todo.length > 0 && (
+            <section aria-labelledby="todo-title" className="rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+              <h2 id="todo-title" className="px-3 pb-1 pt-2 text-sm font-semibold text-slate-500">De făcut</h2>
+              <ul className="divide-y divide-slate-100">
+                {todo.map((alert) => <TodoRow key={alert.id} alert={alert} onChanged={load} onDismiss={dismiss} />)}
+              </ul>
+              {hiddenCount > 0 && (
+                <button type="button" onClick={() => setShowAll((value) => !value)} className="flex w-full items-center justify-center gap-1 rounded-xl py-2 text-sm font-semibold text-primary hover:bg-primary/5">
+                  {showAll ? 'Arată mai puține' : `Vezi toate (${rest.length})`}<ChevronDown className={cn('h-4 w-4 transition', showAll && 'rotate-180')} />
+                </button>
               )}
             </section>
           )}
 
-          {/* În curs */}
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <SectionHeader title="Consultații în curs" actions={<Link to="/patient/consultations" className="text-sm font-semibold text-primary hover:underline">Toate</Link>} />
-            <div className="mt-4">
-              {isLoading ? <ListSkeleton rows={2} /> : active.length === 0 ? (
-                <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">Nu ai consultații în curs. Istoricul complet este în „Consultații”.</p>
-              ) : (
-                <ul className="divide-y divide-slate-100">
-                  {active.slice(0, 4).map((request) => (
-                    <li key={request.id}>
-                      <Link to={`/patient/chat?request=${request.id}`} className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-3 transition hover:bg-slate-50">
-                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">{request.type === 'operator' ? <Activity className="h-5 w-5" /> : <Stethoscope className="h-5 w-5" />}</span>
-                        <span className="min-w-0 flex-1">
-                          <span className="flex flex-wrap items-center gap-2">
-                            <span className="truncate font-semibold text-slate-900">{consultationTitle(request)}</span>
-                            <StatusBadge request={request} perspective="patient" />
-                          </span>
-                          <span className="block truncate text-sm text-slate-500">{[request.patient_profile?.name, request.doctor?.name, request.scheduled_at && dateTime(request.scheduled_at)].filter(Boolean).join(' · ')}</span>
-                        </span>
-                        <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </section>
+          {!isLoading && requests.length > 0 && (
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <SectionHeader title="Consultații" actions={<Link to="/patient/consultations" className="text-sm font-semibold text-primary hover:underline">Toate</Link>} />
+              <ul className="mt-3 divide-y divide-slate-100">
+                {recentConsultations.map((request) => <ConsultationRow key={request.id} request={request} />)}
+              </ul>
+            </section>
+          )}
         </div>
 
         <aside className="space-y-4">
-          {paymentsEnabled && (
+          {!isLoading && profiles.length > 0 && (
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between">
-                <p className="flex items-center gap-2 text-sm font-medium text-slate-500"><Wallet className="h-4 w-4" />Portofel</p>
-                <Link to="/patient/wallet" className="text-sm font-semibold text-primary hover:underline">Detalii</Link>
-              </div>
-              {isLoading ? <Skeleton className="mt-3 h-8 w-32" /> : <p className="tabular mt-2 text-3xl font-bold tracking-tight text-slate-950">{money(wallet?.wallet.balance)} <span className="text-base font-medium text-slate-500">{wallet?.wallet.currency ?? 'MDL'}</span></p>}
-              {(wallet?.points_wallet?.balance ?? 0) > 0 && <p className="mt-1 text-sm text-amber-700">+ {money(wallet?.points_wallet?.balance)} MDL bonusuri</p>}
-              <Button asChild variant="outline" className="mt-4 w-full"><Link to="/patient/wallet?topup=1"><Plus className="h-4 w-4" />Alimentează</Link></Button>
+              <SectionHeader title="Pacienții mei" actions={<Link to="/patient/profile" className="text-sm font-semibold text-primary hover:underline">Toți</Link>} />
+              <ul className="mt-3 space-y-2">
+                {profiles.slice(0, 4).map((profile) => <PatientRow key={profile.id} profile={profile} canBook={doctorsEnabled} />)}
+              </ul>
+              {(!packagesRequired || availableSlots > 0) && (
+                <Button asChild variant="ghost" className="mt-2 w-full justify-start text-primary">
+                  <Link to="/patient/profile"><Plus className="h-4 w-4" />Adaugă pacient{packagesRequired ? <span className="ml-auto text-xs font-normal text-slate-500">{availableSlots} {availableSlots === 1 ? 'loc liber' : 'locuri libere'}</span> : null}</Link>
+                </Button>
+              )}
             </section>
           )}
 
-          <Link to="/patient/profile" className="group flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-primary/30">
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-600"><Users className="h-5 w-5" /></span>
-            <span className="min-w-0 flex-1">
-              <span className="block font-semibold text-slate-900">Pacienții mei</span>
-              <span className="block text-sm text-slate-500">{isLoading ? '…' : profiles.length === 0 ? 'Niciun pacient adăugat' : `${profiles.length} ${profiles.length === 1 ? 'profil' : 'profiluri'}${profiles[0]?.first_name ? `: ${profiles.slice(0, 3).map((profile) => profile.first_name).filter(Boolean).join(', ')}` : ''}`}</span>
-            </span>
-            <ChevronRight className="h-4 w-4 text-slate-400 transition group-hover:translate-x-0.5" />
-          </Link>
-
-          {affiliateEnabled && (
-            <Link to="/patient/profile?tab=referrals" className="group flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-primary/30">
-              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-amber-50 text-amber-600"><Gift className="h-5 w-5" /></span>
-              <span className="min-w-0 flex-1">
-                <span className="block font-semibold text-slate-900">Invită și câștigă</span>
-                <span className="block text-sm text-slate-500">Primești bonus când persoanele invitate alimentează contul.</span>
-              </span>
-              <ChevronRight className="h-4 w-4 text-slate-400 transition group-hover:translate-x-0.5" />
-            </Link>
+          {paymentsEnabled && (
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <SectionHeader title="Portofel" actions={<Link to="/patient/wallet" className="text-sm font-semibold text-primary hover:underline">Detalii</Link>} />
+              {isLoading ? <Skeleton className="mt-3 h-16 w-full" /> : (
+                <dl className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                  <WalletFigure label="Bani" value={`${mdl(wallet?.wallet.balance)} MDL`} strong />
+                  <WalletFigure label="Bonusuri" value={mdl((wallet?.points_wallet?.balance ?? 0) + (wallet?.promo_wallet?.balance ?? 0))} />
+                  {(wallet?.reserved?.total ?? 0) > 0 && <WalletFigure label="Rezervat" value={`${mdl(wallet?.reserved?.total)} MDL`} />}
+                </dl>
+              )}
+              <Button asChild variant="outline" className="mt-4 w-full"><Link to="/patient/wallet?topup=1"><Plus className="h-4 w-4" />Alimentează</Link></Button>
+            </section>
           )}
         </aside>
       </div>
+
+      {showFab && (
+        <Button asChild size="lg" className="fixed bottom-20 right-4 z-30 rounded-full shadow-lg lg:hidden">
+          <Link to="/patient/doctors"><Plus className="h-5 w-5" />Programează</Link>
+        </Button>
+      )}
     </div>
   );
 }
 
-function ServiceCard({ to, icon: Icon, title, description }: { to: string; icon: React.ElementType; title: string; description: string }) {
+function NowCard({ alert, now, onChanged, onDismiss }: { alert: HomeAlert; now: Date; onChanged: () => void; onDismiss: (id: string) => void }) {
+  const tone = alert.kind === 'live' ? 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-white'
+    : alert.kind === 'review' || alert.kind === 'proposal' ? 'border-orange-200 bg-gradient-to-br from-orange-50 to-white'
+      : alert.kind === 'today' ? 'border-blue-200 bg-gradient-to-br from-blue-50 to-white'
+        : 'border-slate-200 bg-white';
+  const scheduled = alert.request?.scheduled_at ? new Date(alert.request.scheduled_at) : null;
+
   return (
-    <Link to={to} className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-primary/30 hover:shadow-md">
-      <span className="grid h-11 w-11 place-items-center rounded-xl bg-primary/10 text-primary"><Icon className="h-5 w-5" /></span>
-      <span className="mt-4 text-base font-semibold text-slate-950">{title}</span>
-      <span className="mt-1 text-sm leading-6 text-slate-500">{description}</span>
-      <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-primary">Începe<ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" /></span>
-    </Link>
+    <section aria-label="Acum" className={cn('relative rounded-2xl border p-5 shadow-sm sm:p-6', tone)}>
+      {alert.dismissable && <DismissButton onClick={() => onDismiss(alert.id)} />}
+      <div className="flex items-start gap-4">
+        <AlertIcon alert={alert} large />
+        <div className="min-w-0 flex-1">
+          {alert.chip && <p className="text-sm font-semibold text-slate-500">{alert.chip}{alert.kind === 'today' && scheduled ? ` · ${countdown(scheduled, now)}` : ''}</p>}
+          <h2 className="mt-0.5 text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{alert.title}</h2>
+          <p className="mt-1.5 max-w-xl text-sm leading-6 text-slate-600">{alert.sub}</p>
+        </div>
+      </div>
+      {alert.kind === 'review' && alert.reviewId ? (
+        <InlineReview requestId={alert.reviewId} onDone={onChanged} className="mt-4 sm:pl-16" />
+      ) : (
+        <div className="mt-5 flex flex-wrap gap-2 sm:pl-16"><AlertActions alert={alert} onChanged={onChanged} primary /></div>
+      )}
+    </section>
   );
 }
 
-/** Evaluarea restantă blochează următoarea programare, așa că o cerem direct din cardul de sus. */
-function InlineReview({ request, onDone }: { request: ReviewableRequest; onDone: () => void }) {
+function TodoRow({ alert, onChanged, onDismiss }: { alert: HomeAlert; onChanged: () => void; onDismiss: (id: string) => void }) {
+  const [rating, setRating] = useState(false);
+
+  return (
+    <li className="px-3 py-3">
+      <div className="flex items-start gap-3">
+        <AlertIcon alert={alert} />
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-slate-900">{alert.title}</p>
+          <p className="text-sm text-slate-500">{alert.sub}</p>
+          {alert.kind === 'review' && alert.reviewId && rating && <InlineReview requestId={alert.reviewId} onDone={onChanged} className="mt-3" />}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {alert.kind === 'review' ? (
+            !rating && <Button size="sm" variant="outline" onClick={() => setRating(true)}><Star className="h-4 w-4" />Evaluează</Button>
+          ) : <AlertActions alert={alert} onChanged={onChanged} />}
+          {alert.dismissable && <DismissButton onClick={() => onDismiss(alert.id)} inline />}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function AlertActions({ alert, onChanged, primary = false }: { alert: HomeAlert; onChanged: () => void; primary?: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const size = primary ? 'default' : 'sm';
+  const request = alert.request;
+
+  const acceptProposal = async () => {
+    if (!request) return;
+    setBusy(true);
+    try {
+      await apiRequest(`/requests/${request.id}/accept-proposed-time`, { method: 'POST' });
+      toast.success('Ora propusă a fost acceptată.');
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Nu am putut accepta ora propusă.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  switch (alert.kind) {
+    case 'setup':
+      return <Button asChild size={size}><Link to="/patient/start">{alert.title}</Link></Button>;
+    case 'live':
+      return <Button asChild size={size} className="bg-emerald-600 hover:bg-emerald-700"><Link to={`/consultations/${request?.id}/video`}><Video className="h-4 w-4" />Intră în apel</Link></Button>;
+    case 'proposal':
+      return (
+        <>
+          <Button size={size} disabled={busy} onClick={() => void acceptProposal()}>{busy ? 'Se confirmă…' : 'Accept'}</Button>
+          <Button asChild size={size} variant="outline" className="bg-white"><Link to={`/patient/chat?request=${request?.id}`}>Altă oră</Link></Button>
+        </>
+      );
+    case 'record':
+      return <Button asChild size={size} variant={primary ? 'default' : 'ghost'}><Link to={`/patient/profile?patient_profile=${alert.profileId}&section=${alert.sectionKey}`}>Completează</Link></Button>;
+    default:
+      return request ? <Button asChild size={size} variant={primary ? 'default' : 'ghost'}><Link to={`/patient/chat?request=${request.id}`}>Vezi detaliile</Link></Button> : null;
+  }
+}
+
+function AlertIcon({ alert, large = false }: { alert: HomeAlert; large?: boolean }) {
+  const Icon = { setup: alert.title === 'Alege pachetul' ? CreditCard : UserPlus, live: Video, today: CalendarClock, proposal: CalendarClock, review: Star, waiting: Clock, upcoming: CalendarClock, record: FileText }[alert.kind];
+  const tone = alert.kind === 'live' ? 'bg-emerald-600 text-white'
+    : alert.kind === 'review' || alert.kind === 'proposal' ? 'bg-orange-100 text-orange-600'
+      : alert.kind === 'today' ? 'bg-blue-600 text-white'
+        : 'bg-slate-100 text-slate-600';
+  return <span className={cn('grid shrink-0 place-items-center', large ? 'h-12 w-12 rounded-2xl' : 'h-9 w-9 rounded-xl', tone)}><Icon className={large ? 'h-6 w-6' : 'h-4 w-4'} /></span>;
+}
+
+function DismissButton({ onClick, inline = false }: { onClick: () => void; inline?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} aria-label="Închide" className={cn('grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700', !inline && 'absolute right-3 top-3')}>
+      <X className="h-4 w-4" />
+    </button>
+  );
+}
+
+function CalmCard({ canBook }: { canBook: boolean }) {
+  return (
+    <section aria-label="Acum" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <div className="flex items-start gap-4">
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary"><Stethoscope className="h-6 w-6" /></span>
+        <div>
+          <h2 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">Nicio consultație programată</h2>
+          <p className="mt-1.5 text-sm leading-6 text-slate-600">Când ai nevoie, alegi medicul și ora. Video sau cu examinare acasă.</p>
+        </div>
+      </div>
+      {canBook && <div className="mt-5 sm:pl-16"><Button asChild><Link to="/patient/doctors"><Plus className="h-4 w-4" />Programează o consultație</Link></Button></div>}
+    </section>
+  );
+}
+
+function ConsultationRow({ request }: { request: PatientConsultation }) {
+  const date = new Date(request.scheduled_at ?? request.created_at);
+  return (
+    <li>
+      <Link to={`/patient/chat?request=${request.id}`} className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-3 transition hover:bg-slate-50">
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-center leading-none text-slate-700">
+          <span>
+            <span className="block text-[10px] uppercase">{date.toLocaleDateString('ro-RO', { weekday: 'short', timeZone: 'Europe/Chisinau' }).replace('.', '')}</span>
+            <span className="block text-base font-semibold">{date.toLocaleDateString('ro-RO', { day: 'numeric', timeZone: 'Europe/Chisinau' })}</span>
+          </span>
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-semibold text-slate-900">{request.doctor?.name ?? request.operator?.name ?? consultationTitle(request)}</span>
+          <span className="block truncate text-sm text-slate-500">{[request.consultation_kind === 'with_exam' ? 'Cu examinare' : request.type === 'operator' ? 'Examinare' : 'Video', request.patient_profile?.name].filter(Boolean).join(' · ')}</span>
+        </span>
+        <StatusBadge request={request} perspective="patient" />
+        <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+      </Link>
+    </li>
+  );
+}
+
+function PatientRow({ profile, canBook }: { profile: HomeProfile; canBook: boolean }) {
+  const progress = recordProgress(profile);
+  const name = `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim();
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('');
+  return (
+    <li className="flex items-center gap-3">
+      <Link to={`/patient/profile?patient_profile=${profile.id}`} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-1 hover:bg-slate-50">
+        <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary/10 text-sm font-semibold text-primary">{initials}</span>
+        <span className="min-w-0">
+          <span className="block truncate font-semibold text-slate-900">{name}</span>
+          <span className="block truncate text-xs text-slate-500">{profile.birth_date ? `${patientAge(profile.birth_date)} · ` : ''}Fișa {progress.done}/{progress.total}</span>
+        </span>
+      </Link>
+      {canBook && profile.can_request_consultation && <Button asChild size="sm" variant="ghost" className="text-primary"><Link to={`/patient/doctors?patient_profile=${profile.id}`}>Programează</Link></Button>}
+    </li>
+  );
+}
+
+function WalletFigure({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div className="rounded-xl bg-slate-50 px-3 py-2">
+      <dt className="text-xs text-slate-500">{label}</dt>
+      <dd className={cn('tabular-nums text-slate-950', strong ? 'text-lg font-bold' : 'font-semibold')}>{value}</dd>
+    </div>
+  );
+}
+
+/** Evaluarea restantă blochează următoarea programare, așa că o cerem direct din card. */
+function InlineReview({ requestId, onDone, className }: { requestId: string; onDone: () => void; className?: string }) {
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const submit = async (event: React.FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!rating || !comment.trim()) return;
     setSaving(true);
     try {
-      await apiRequest(`/requests/${request.id}/review`, { method: 'POST', body: JSON.stringify({ rating, comment: comment.trim() }) });
+      await apiRequest(`/requests/${requestId}/review`, { method: 'POST', body: JSON.stringify({ rating, comment: comment.trim() }) });
       toast.success('Mulțumim! Poți programa din nou.');
       onDone();
     } catch (err) {
@@ -294,7 +360,7 @@ function InlineReview({ request, onDone }: { request: ReviewableRequest; onDone:
   };
 
   return (
-    <form onSubmit={submit} className="mt-4 space-y-3 sm:pl-16">
+    <form onSubmit={submit} className={cn('space-y-3', className)}>
       <div className="flex gap-1" role="radiogroup" aria-label="Nota">
         {[1, 2, 3, 4, 5].map((value) => (
           <button key={value} type="button" role="radio" aria-checked={rating === value} aria-label={`${value} din 5`} onClick={() => setRating(value)} className="rounded-lg p-1 transition hover:bg-orange-100">
@@ -302,10 +368,13 @@ function InlineReview({ request, onDone }: { request: ReviewableRequest; onDone:
           </button>
         ))}
       </div>
-      {rating > 0 && (
-        <Textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Câteva cuvinte despre consultație" maxLength={2000} className="min-h-[72px] bg-white" required />
-      )}
+      {rating > 0 && <Textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Câteva cuvinte despre consultație" maxLength={2000} className="min-h-[72px] bg-white" required />}
       {rating > 0 && <Button type="submit" disabled={saving || !comment.trim()}>{saving ? 'Se trimite…' : 'Trimite evaluarea'}</Button>}
     </form>
   );
+}
+
+function mdl(value: unknown): string {
+  const numeric = Number(value) || 0;
+  return Number.isInteger(numeric) ? String(numeric) : numeric.toFixed(2);
 }

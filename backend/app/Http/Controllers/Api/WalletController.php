@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ConsultationRequest;
 use App\Models\DoctorProfile;
 use App\Models\OperatorProfile;
 use App\Models\Payment;
@@ -21,37 +22,126 @@ use App\Services\WalletLedger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class WalletController extends Controller
 {
     public function show(Request $request): JsonResponse
     {
-        $wallet = $this->walletFor($request->user(), WalletLedger::REAL);
-        $points = $this->walletFor($request->user(), WalletLedger::POINTS);
-        $promo = $this->walletFor($request->user(), WalletLedger::PROMO);
+        $user = $request->user();
+        $wallet = $this->walletFor($user, WalletLedger::REAL);
+        $points = $this->walletFor($user, WalletLedger::POINTS);
+        $promo = $this->walletFor($user, WalletLedger::PROMO);
+
+        $realTransactions = $wallet->transactions()->latest()->orderByDesc('id')->limit(50)->get();
+        $pointsTransactions = $points->transactions()->latest()->orderByDesc('id')->limit(50)->get();
+        $promoTransactions = $promo->transactions()->latest()->orderByDesc('id')->limit(50)->get();
+        $consultations = $this->consultationsFor($user, $realTransactions->concat($pointsTransactions)->concat($promoTransactions)->pluck('consultation_request_id')->filter()->unique());
+        $serialize = fn (WalletTransaction $transaction) => $this->serializeTransaction($transaction, $consultations);
 
         return response()->json([
             'topup_bonus_percent' => min(100, max(0, app(PlatformConfig::class)->number('wallet.topup_bonus_percent', 0))),
             'max_bonus_payment_percent' => app(PlatformConfig::class)->number('wallet.max_points_payment_percent', 40),
             'promo_wallet' => $this->serializeWallet($promo),
-            'first_topup_promotion' => app(FirstTopupPromotion::class)->describe($request->user()->id),
-            'promo_transactions' => $promo->transactions()->latest()->limit(50)->get()->map(fn (WalletTransaction $transaction) => ['id' => $transaction->id, 'date' => $transaction->created_at, 'type' => $transaction->description, 'amount' => $transaction->amount_minor / 100, 'status' => $transaction->status]),
+            'first_topup_promotion' => app(FirstTopupPromotion::class)->describe($user->id),
+            'promo_transactions' => $promoTransactions->map($serialize),
             'wallet' => $this->serializeWallet($wallet),
             'points_wallet' => $this->serializeWallet($points),
-            'transactions' => $wallet->transactions()->latest()->limit(50)->get()->map(fn (WalletTransaction $transaction) => [
-                'id' => $transaction->id,
-                'date' => $transaction->created_at,
-                'type' => $transaction->description,
-                'amount' => $transaction->amount_minor / 100,
-                'status' => $transaction->status,
-            ]),
-            'points_transactions' => $points->transactions()->latest()->limit(50)->get()->map(fn (WalletTransaction $transaction) => [
-                'id' => $transaction->id, 'date' => $transaction->created_at, 'type' => $transaction->description,
-                'amount' => $transaction->amount_minor / 100, 'status' => $transaction->status,
-            ]),
-            'payments' => Payment::where('user_id', $request->user()->id)->latest()->limit(20)->get(),
+            'transactions' => $realTransactions->map($serialize),
+            'points_transactions' => $pointsTransactions->map($serialize),
+            'reserved' => $this->reservedFor($user),
+            'payments' => Payment::where('user_id', $user->id)->latest()->limit(20)->get(),
         ]);
+    }
+
+    /**
+     * Banii rezervați acum pentru consultații (plătite doar după consultație).
+     * Doar citire: sumele vin din cererile cu plata `held`.
+     *
+     * @return array{total: float, points_total: float, items: list<array<string, mixed>>}
+     */
+    private function reservedFor(User $user): array
+    {
+        $items = ConsultationRequest::with(['doctor', 'operator', 'patientProfile'])
+            ->where('patient_id', $user->id)
+            ->where('payment_status', 'held')
+            ->orderBy('scheduled_at')
+            ->get()
+            ->map(fn (ConsultationRequest $item) => [
+                'consultation_request_id' => $item->id,
+                'amount' => $this->heldRealMinor($item) / 100,
+                'points_amount' => ((int) $item->points_amount_minor) / 100,
+                'provider_name' => $item->doctor?->name ?? $item->operator?->name,
+                'patient_name' => $item->patientProfile?->display_name,
+                'scheduled_at' => $item->scheduled_at,
+                'status' => $item->status,
+            ])
+            ->values();
+
+        return [
+            'total' => round($items->sum('amount'), 2),
+            'points_total' => round($items->sum('points_amount'), 2),
+            'items' => $items->all(),
+        ];
+    }
+
+    private function heldRealMinor(ConsultationRequest $item): int
+    {
+        if ($item->real_amount_minor !== null) {
+            return (int) $item->real_amount_minor;
+        }
+
+        return max(0, (int) $item->amount_minor - (int) $item->points_amount_minor - (int) $item->promo_amount_minor);
+    }
+
+    /**
+     * @param  Collection<int, int>  $ids
+     * @return Collection<int, ConsultationRequest>
+     */
+    private function consultationsFor(User $user, Collection $ids): Collection
+    {
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+
+        return ConsultationRequest::with(['doctor', 'operator', 'patientProfile'])
+            ->where('patient_id', $user->id)
+            ->whereIn('id', $ids)
+            ->get()
+            ->keyBy('id');
+    }
+
+    /**
+     * O operație din istoric, cu tipul ei și, dacă ține de o consultație, starea rezervării:
+     * `reserved` (bani puși deoparte), `paid` (plătiți după consultație) sau `refunded`.
+     *
+     * @param  Collection<int, ConsultationRequest>  $consultations
+     */
+    private function serializeTransaction(WalletTransaction $transaction, Collection $consultations): array
+    {
+        $consultation = $transaction->consultation_request_id ? $consultations->get($transaction->consultation_request_id) : null;
+
+        return [
+            'id' => $transaction->id,
+            'date' => $transaction->created_at,
+            'type' => $transaction->description,
+            'kind' => $transaction->type,
+            'amount' => $transaction->amount_minor / 100,
+            'status' => $transaction->status,
+            'consultation_request_id' => $consultation?->id,
+            'consultation' => $consultation ? [
+                'provider_name' => $consultation->doctor?->name ?? $consultation->operator?->name,
+                'patient_name' => $consultation->patientProfile?->display_name,
+                'scheduled_at' => $consultation->scheduled_at,
+                'reservation_state' => match ($consultation->payment_status) {
+                    'held' => 'reserved',
+                    'captured' => 'paid',
+                    'refunded' => 'refunded',
+                    default => null,
+                },
+            ] : null,
+        ];
     }
 
     public function topUp(Request $request): JsonResponse
