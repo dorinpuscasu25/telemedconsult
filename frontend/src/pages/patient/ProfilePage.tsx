@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { CreditCard, Download, LockKeyhole, Plus, Stethoscope, Trash2, User, WalletCards } from 'lucide-react';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { CreditCard, LockKeyhole, Plus, Stethoscope, WalletCards } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
@@ -17,11 +17,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/ta
 import { Textarea } from '../../components/ui/textarea';
 import { apiRequest } from '../../lib/api';
 import { money } from '../../lib/format';
-import { PatientMedicalRecord } from '../../components/PatientMedicalRecord';
+import { MEDICAL_SECTIONS } from '../../lib/medical-record';
+import { recordProgress, sectionTitle } from '../../lib/patient-alerts';
 import { PatientBasicsFields, isPatientBasicsComplete } from '../../components/patient/PatientBasicsFields';
 import { patientAge } from '../../lib/medical-record';
 import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
-import { useDialogs } from '../../components/app/DialogProvider';
 import { PageHeader } from '../../components/app/PageHeader';
 import { ToneBadge } from '../../components/app/StatusBadge';
 import { ReferralPanel, type ReferralResponse } from '../../components/ReferralPanel';
@@ -47,6 +47,7 @@ type PatientProfile = {
   request_unavailable_reason?: string | null;
   has_complete_address?: boolean;
   needs_data?: boolean;
+  medical_record?: Record<string, unknown> | null;
   investigations?: Array<{ id: number; title: string; type: string; notes?: string | null; created_at: string }>;
 };
 
@@ -96,18 +97,25 @@ const emptyPatient = {
   medical_summary: ''
 };
 
+/** Linkurile vechi spre fișa unui pacient (?patient_profile=…&section=…) deschid pagina pacientului. */
 export function ProfilePage() {
-  const dialogs = useDialogs();
+  const [searchParams] = useSearchParams();
+  const legacyProfile = searchParams.get('patient_profile');
+  if (legacyProfile) {
+    return <Navigate to={patientPageLink(legacyProfile, searchParams.get('section'), searchParams.get('request'))} replace />;
+  }
+  return <ProfilePageContent />;
+}
+
+function ProfilePageContent() {
   const navigate = useNavigate();
   const { isEnabled } = useFeatureFlags();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [medicalDirty, setMedicalDirty] = useState(false);
   const [data, setData] = useState<ProfileResponse | null>(null);
   const [referralData, setReferralData] = useState<ReferralResponse | null>(null);
   const [accountForm, setAccountForm] = useState({ name: '', phone: '' });
   const [patientForm, setPatientForm] = useState(emptyPatient);
   const [regionsCatalog, setRegionsCatalog] = useState<CatalogRegion[]>([]);
-  const [selectedProfile, setSelectedProfile] = useState<PatientProfile | null>(null);
   const [isPatientOpen, setIsPatientOpen] = useState(false);
   const [activeTab, setActiveTab] = useState(() => profileTab(searchParams.get('tab')));
   const [message, setMessage] = useState('');
@@ -120,15 +128,6 @@ export function ProfilePage() {
       setAccountForm({
         name: response.user.name || '',
         phone: response.user.phone || ''
-      });
-      setSelectedProfile((current) => {
-        const requested = Number(searchParams.get('patient_profile'));
-        const target = response.patient_profiles.find((profile) => Number(profile.id) === requested);
-        if (target) return target;
-        if (current && response.patient_profiles.some((profile) => profile.id === current.id)) {
-          return response.patient_profiles.find((profile) => profile.id === current.id) || null;
-        }
-        return response.patient_profiles[0] || null;
       });
     });
   };
@@ -158,13 +157,6 @@ export function ProfilePage() {
     setActiveTab(permittedTab);
     if (permittedTab !== requestedTab) setSearchParams({}, { replace: true });
   }, [isEnabled, searchParams, setSearchParams]);
-
-  useEffect(() => {
-    const requested = Number(searchParams.get('patient_profile'));
-    if (!requested || !data) return;
-    const target = data.patient_profiles.find((profile) => Number(profile.id) === requested);
-    if (target && Number(selectedProfile?.id) !== requested && !medicalDirty) setSelectedProfile(target);
-  }, [searchParams, data, selectedProfile?.id, medicalDirty]);
 
   const changeTab = (tab: string) => {
     const requestedTab = profileTab(tab);
@@ -267,31 +259,6 @@ export function ProfilePage() {
     }
   };
 
-  const exportProfile = async (profile: PatientProfile) => {
-    try {
-      const exported = await apiRequest(`/patient/profiles/${profile.id}/export`);
-      const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `patient-profile-${profile.id}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      fail(err, 'Nu am putut exporta datele.');
-    }
-  };
-
-  const deleteProfile = async (profile: PatientProfile) => {
-    if (!(await dialogs.confirm({ title: `Ștergi profilul ${displayName(profile)}?`, description: 'Profilul dispare din listă. Consultațiile deja făcute rămân în istoric.', confirmLabel: 'Șterge profilul', tone: 'danger' }))) return;
-    try {
-      await apiRequest(`/patient/profiles/${profile.id}`, { method: 'DELETE' });
-      notify('Profil șters.');
-      loadProfile();
-    } catch (err) {
-      fail(err, 'Nu am putut șterge profilul.');
-    }
-  };
 
 
 
@@ -299,6 +266,9 @@ export function ProfilePage() {
   const packages = data?.card_packages ?? [];
   const purchases = data?.card_purchases ?? [];
   const availableSlots = purchases.reduce((sum, item) => sum + item.available_slots, 0);
+  const activeCardPurchases = purchases.filter((item) => new Date(item.expires_at).getTime() > Date.now());
+  const totalSlots = activeCardPurchases.reduce((sum, item) => sum + item.profile_slots, 0);
+  const activePurchase = [...activeCardPurchases].sort((a, b) => new Date(b.expires_at).getTime() - new Date(a.expires_at).getTime())[0];
   const hasRequestablePatient = profiles.some((profile) => profile.can_request_consultation);
   // Pachetul e obligatoriu cât timp cartelele și plățile sunt pornite; altfel pacienții se adaugă liber.
   const canBuyPatientPackages = isEnabled('patient_cards') && isEnabled('payments');
@@ -395,96 +365,26 @@ export function ProfilePage() {
           </TabsList>
         )}
 
-        <TabsContent id="patient-profiles" value="patients" className="scroll-mt-24 grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-          <Card className="border-slate-200/70 bg-white shadow-sm">
-            <CardHeader>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <CardTitle>Profiluri pacient</CardTitle>
-                  {canBuyPatientPackages && <CardDescription>Locuri disponibile pentru pacienți: {availableSlots}</CardDescription>}
-                </div>
-                <Button className="rounded-xl" disabled={!canAddPatient} onClick={() => setIsPatientOpen(true)}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Adaugă
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {profiles.length === 0 && canAddPatient && (
-                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm text-slate-600">
-                  <p className="font-semibold text-slate-950">Niciun pacient adăugat</p>
-                  <p className="mt-1">Adaugă persoana pentru care soliciți consultații: tu, un copil sau un părinte.</p>
-                  <Button className="mt-3" onClick={() => setIsPatientOpen(true)}><Plus className="h-4 w-4" />Adaugă pacient</Button>
-                </div>
-              )}
-              {profiles.length === 0 && !canAddPatient && (
-                <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm text-slate-500">Niciun pacient adăugat încă.</p>
-              )}
-              {profiles.length > 0 && !canAddPatient && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                  <p className="font-semibold text-slate-950">Ai folosit toate locurile disponibile.</p>
-                  <p className="mt-1">Pentru încă un pacient trebuie să cumperi un pachet nou. Profilurile existente rămân în istoric.</p>
-                  <Button variant="outline" className="mt-3 rounded-xl border-amber-300 bg-white" onClick={() => changeTab('cards')}>
-                    Cumpără pachet
-                  </Button>
-                </div>
-              )}
-              {profiles.map((profile) => (
-                <button
-                  key={profile.id}
-                  onClick={async () => { if (selectedProfile?.id === profile.id) return; if (!medicalDirty || await dialogs.confirm({ title: 'Renunți la modificări?', description: 'Ai modificări nesalvate în fișa curentă.', confirmLabel: 'Renunță la modificări', cancelLabel: 'Rămân aici', tone: 'danger' })) { setMedicalDirty(false); setSelectedProfile(profile); } }}
-                  className={`w-full rounded-xl border p-4 text-left transition ${selectedProfile?.id === profile.id ? 'border-primary bg-primary/5' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
-                  <div className="flex items-start gap-3">
-                    <div className="grid h-10 w-10 place-items-center rounded-lg bg-slate-100 text-slate-700">
-                      <User className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="flex flex-wrap items-center gap-2 font-semibold text-slate-950">{displayName(profile)}{profile.can_request_consultation ? <ToneBadge tone="success">Activ</ToneBadge> : <ToneBadge tone="warning">Necesită date</ToneBadge>}</p>
-                      <p className="text-sm text-slate-500">{profile.region || 'Regiune neselectată'} • {profile.locality || 'Localitate neselectată'}</p>
-                      <p className="mt-1 text-xs text-slate-400">Activ până la {profile.active_until ? new Date(profile.active_until).toLocaleDateString('ro-RO') : 'nelimitat'}</p>
-                      {profile.request_unavailable_reason && (
-                        <p className="mt-1 text-xs font-medium text-amber-700">{profile.request_unavailable_reason}</p>
-                      )}
-                      {!profile.request_unavailable_reason && profile.needs_data && (
-                        <p className="mt-1 text-xs font-medium text-amber-700">Completează data nașterii și sexul în „Date personale”.</p>
-                      )}
-                      {!profile.request_unavailable_reason && !profile.needs_data && profile.has_complete_address === false && (
-                        <p className="mt-1 text-xs font-medium text-amber-700">Completează adresa (raion, localitate, stradă) pentru consultații cu examinare la domiciliu.</p>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card className="border-slate-200/70 bg-white shadow-sm">
-            <CardHeader>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <CardTitle>{selectedProfile ? displayName(selectedProfile) : 'Fișa pacientului'}</CardTitle>
-                  <CardDescription>Fișă medicală, analize și istoricul consultațiilor.</CardDescription>
-                </div>
-                {selectedProfile && (
-                  <div className="flex flex-wrap gap-2">
-                    {selectedProfile.can_request_consultation && isEnabled('doctors') && (
-                      <Button asChild size="sm"><Link to={`/patient/doctors?patient_profile=${selectedProfile.id}`}><Stethoscope className="h-4 w-4" />Programează</Link></Button>
-                    )}
-                    <Button variant="outline" size="icon-sm" aria-label="Exportă datele pacientului" title="Exportă datele pacientului" onClick={() => exportProfile(selectedProfile)}>
-                      <Download className="h-4 w-4" />
-                    </Button>
-                    <Button variant="outline" size="icon-sm" className="text-red-600" aria-label="Șterge profilul" title="Șterge profilul" onClick={() => deleteProfile(selectedProfile)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {!selectedProfile && <p className="text-sm text-slate-500">Selectează un profil.</p>}
-              {selectedProfile && <PatientMedicalRecord key={selectedProfile.id} profile={selectedProfile} initialSection={searchParams.get('section')} requestedConsultationId={searchParams.get('request')} regions={regionsCatalog} onSaved={loadProfile} onDirtyChange={setMedicalDirty} />}
-            </CardContent>
-          </Card>
+        <TabsContent id="patient-profiles" value="patients" className="scroll-mt-24 space-y-4">
+          {canBuyPatientPackages && activePurchase && (
+            <p className="text-sm text-slate-500">Pachet {activePurchase.profile_slots === 1 ? '1 profil' : `${activePurchase.profile_slots} profiluri`} · activ până la {new Date(activePurchase.expires_at).toLocaleDateString('ro-RO')}</p>
+          )}
+          {profiles.length > 0 && !canAddPatient && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              <p className="font-semibold text-slate-950">Ai folosit toate locurile disponibile.</p>
+              <p className="mt-1">Pentru încă un pacient ai nevoie de un pachet nou.</p>
+              <Button variant="outline" className="mt-3 rounded-xl border-amber-300 bg-white" onClick={() => changeTab('cards')}>Cumpără pachet</Button>
+            </div>
+          )}
+          <ul className="grid gap-3 md:grid-cols-2">
+            {profiles.map((profile) => <PatientCard key={profile.id} profile={profile} />)}
+          </ul>
+          {canAddPatient && (
+            <button type="button" onClick={() => setIsPatientOpen(true)} className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 p-4 text-sm font-semibold text-primary transition hover:border-primary/40 hover:bg-primary/5">
+              <Plus className="h-4 w-4" />Adaugă pacient
+              {canBuyPatientPackages && <span className="font-normal text-slate-500">· {availableSlots} {availableSlots === 1 ? 'loc liber' : 'locuri libere'}{totalSlots ? ` din ${totalSlots}` : ''}</span>}
+            </button>
+          )}
         </TabsContent>
 
         <TabsContent value="cards" className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
@@ -631,5 +531,46 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <Label>{label}</Label>
       {children}
     </div>
+  );
+}
+
+function patientPageLink(profileId: string, section: string | null, request: string | null): string {
+  const base = `/patient/patients/${profileId}`;
+  if (section && MEDICAL_SECTIONS.some((item) => item.key === section)) return `${base}?tab=fisa&section=${section}`;
+  if (section && ['analysis', 'imaging', 'functional', 'investigation'].includes(section)) return `${base}?tab=documente`;
+  if (section && ['consultations', 'chat', 'objective'].includes(section)) return `${base}?tab=consultatii${request ? `&request=${request}` : ''}`;
+  return request ? `${base}?tab=consultatii&request=${request}` : base;
+}
+
+/** Un pacient, cu progresul fișei și un singur buton spre următorul lucru care lipsește. */
+function PatientCard({ profile }: { profile: PatientProfile }) {
+  const progress = recordProgress(profile);
+  const name = displayName(profile);
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('');
+  const ratio = progress.done / progress.total;
+  return (
+    <li className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <Link to={`/patient/patients/${profile.id}`} className="flex items-center gap-3">
+        <span className="relative grid h-12 w-12 shrink-0 place-items-center">
+          <svg viewBox="0 0 36 36" className="absolute inset-0 h-12 w-12 -rotate-90" aria-hidden="true">
+            <circle cx="18" cy="18" r="16" fill="none" stroke="currentColor" strokeWidth="3" className="text-slate-100" />
+            <circle cx="18" cy="18" r="16" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeDasharray={`${ratio * 100.5} 100.5`} className="text-emerald-500" />
+          </svg>
+          <span className="text-sm font-semibold text-slate-700">{initials}</span>
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2 font-semibold text-slate-950">{name}{profile.can_request_consultation ? null : <ToneBadge tone="warning">Necesită date</ToneBadge>}</span>
+          <span className="block truncate text-xs text-slate-500">{profile.birth_date ? `${patientAge(profile.birth_date)} · ` : ''}{profile.patient_code ?? ''}</span>
+          <span className="block text-xs text-slate-500">Fișa: {progress.done} din {progress.total}</span>
+        </span>
+      </Link>
+      {profile.request_unavailable_reason && <p className="mt-2 text-xs font-medium text-amber-700">{profile.request_unavailable_reason}</p>}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {progress.nextKey && (
+          <Button asChild size="sm" variant="outline"><Link to={`/patient/patients/${profile.id}?tab=fisa&section=${progress.nextKey}`}>Completează: {sectionTitle(progress.nextKey)}</Link></Button>
+        )}
+        {profile.can_request_consultation && <Button asChild size="sm" variant="ghost" className="text-primary"><Link to={`/patient/doctors?patient_profile=${profile.id}`}><Stethoscope className="h-4 w-4" />Programează</Link></Button>}
+      </div>
+    </li>
   );
 }

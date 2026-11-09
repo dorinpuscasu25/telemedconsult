@@ -1,4 +1,5 @@
-import { MEDICAL_SECTIONS } from './medical-record';
+import { sectionState } from '../components/patient/record/sectionMeta';
+import { MEDICAL_SECTIONS, type MedicalRecord } from './medical-record';
 import type { PatientConsultation } from './patient-consultations';
 
 /**
@@ -45,21 +46,9 @@ const ACTIVE = ['new', 'accepted', 'rescheduled'];
 const SECTION_TITLES: Record<string, string> = Object.fromEntries(MEDICAL_SECTIONS.map((section) => [section.key, section.title]));
 export const RECORD_SECTION_KEYS = MEDICAL_SECTIONS.map((section) => section.key);
 
-/** O secțiune contează ca făcută dacă are conținut sau e marcată „Nimic de raportat”. */
-export function sectionDone(value: unknown): boolean {
-  if (value === null || value === undefined) return false;
-  if (Array.isArray(value)) return value.length > 0;
-  if (typeof value === 'object') {
-    const record = value as Record<string, unknown>;
-    if (record.nothing_to_report === true) return true;
-    return Object.entries(record).some(([key, item]) => key !== 'nothing_to_report' && (Array.isArray(item) ? item.length > 0 : item !== null && item !== '' && item !== undefined));
-  }
-  return value !== '';
-}
-
 export function recordProgress(profile: HomeProfile): { done: number; total: number; nextKey?: string } {
-  const record = profile.medical_record ?? {};
-  const missing = RECORD_SECTION_KEYS.filter((key) => !sectionDone(record[key]));
+  const record = (profile.medical_record ?? {}) as MedicalRecord;
+  const missing = RECORD_SECTION_KEYS.filter((key) => sectionState(record, key) === 'empty');
   return { done: RECORD_SECTION_KEYS.length - missing.length, total: RECORD_SECTION_KEYS.length, nextKey: missing[0] };
 }
 

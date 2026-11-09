@@ -42,8 +42,10 @@ const STATUS_LABELS: Record<string, string> = { new: 'În așteptarea medicului'
 const PHOTO_LABELS: Record<string, string> = { nasal_left: 'Mucoasă nazală stângă', nasal_right: 'Mucoasă nazală dreaptă', eye_left: 'Conjunctivă ochi stâng', eye_right: 'Conjunctivă ochi drept' };
 const EXAM_LABELS: Record<string, string> = { SKIN_EXAM: 'Dermatoscopie', THROAT_EXAM: 'Orofaringoscopie', RIGHT_EAR_EXAM: 'Otoscopie dreapta', LEFT_EAR_EXAM: 'Otoscopie stânga', HEART_AUSCULTATION_EXAM: 'Auscultația inimii', LUNGS_AUSCULTATION_EXAM: 'Auscultația plămânilor', ABDOMINAL_AUSCULTATION_EXAM: 'Auscultație abdominală', COUGH_EXAM: 'Sunetul tusei' };
 
-export function PatientMedicalRecord({ profile, regions, onSaved, onDirtyChange, initialSection, requestedConsultationId }: {
+export function PatientMedicalRecord({ profile, regions, onSaved, onDirtyChange, initialSection, requestedConsultationId, only }: {
   initialSection?: string | null; requestedConsultationId?: string | null;
+  /** Afișează o singură secțiune (fără navigația fișei), ex. „consultations”. */
+  only?: string;
   profile: MedicalProfile; regions: Region[]; onSaved: () => void; onDirtyChange: (dirty: boolean) => void;
 }) {
   const dialogs = useDialogs();
@@ -55,7 +57,7 @@ export function PatientMedicalRecord({ profile, regions, onSaved, onDirtyChange,
   const [record, setRecord] = useState<MedicalRecord>({});
   const [documents, setDocuments] = useState<RecordDocument[]>([]);
   const [consultations, setConsultations] = useState<ConsultationHistory[]>([]);
-  const [active, setActive] = useState(() => recordSection(initialSection));
+  const [active, setActive] = useState(() => only ?? recordSection(initialSection));
   const [dirty, setDirty] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
@@ -91,10 +93,10 @@ export function PatientMedicalRecord({ profile, regions, onSaved, onDirtyChange,
   }, [profile.id]);
 
   useEffect(() => {
-    if (linkedSection.current === initialSection) return;
+    if (only || linkedSection.current === initialSection) return;
     linkedSection.current = initialSection;
     if (!dirty) setActive(recordSection(initialSection));
-  }, [initialSection, dirty]);
+  }, [initialSection, dirty, only]);
 
   useEffect(() => {
     if (loading || active !== 'consultations' || !requestedConsultationId) return;
@@ -183,11 +185,11 @@ export function PatientMedicalRecord({ profile, regions, onSaved, onDirtyChange,
   const nav = [extraSections[0], ...MEDICAL_SECTIONS.map((item) => [item.key, item.title]), ...extraSections.slice(1)];
 
   return <div data-validation-scope className="space-y-5">
-    <div className="rounded-xl bg-blue-50 p-4 text-sm leading-6 text-blue-900">Completează treptat informațiile cunoscute. Salvează fiecare secțiune separat. Datele vor fi vizibile medicului care se ocupă de consultație.</div>
-    <nav aria-label="Compartimentele fișei" className="space-y-2"><p className="text-sm font-medium">Compartimentele fișei</p>
+    {!only && <div className="rounded-xl bg-blue-50 p-4 text-sm leading-6 text-blue-900">Completează treptat informațiile cunoscute. Salvează fiecare secțiune separat. Datele vor fi vizibile medicului care se ocupă de consultație.</div>}
+    {!only && <nav aria-label="Compartimentele fișei" className="space-y-2"><p className="text-sm font-medium">Compartimentele fișei</p>
       <div className="flex flex-wrap gap-2">{nav.map(([key, title]) =>
         <button key={key} type="button" aria-pressed={active === key} disabled={loading || saving} onClick={() => void changeTab(key)} className={`rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${active === key ? 'border-blue-600 bg-blue-600 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50'}`}>{title}</button>)}</div>
-    </nav>
+    </nav>}
     {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     {message && <p role="status" className="flex gap-2 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700"><Check className="h-4 w-4 shrink-0" />{message}</p>}
     {loading ? <p className="py-8 text-slate-500">Se încarcă fișa medicală...</p> : !loaded ? <Button variant="outline" onClick={() => { setLoading(true); load().then(() => setError('')).catch((err) => setError(errorText(err))).finally(() => setLoading(false)); }}>Reîncearcă încărcarea fișei</Button> : <>

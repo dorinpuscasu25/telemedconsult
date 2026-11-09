@@ -6,6 +6,9 @@ use Illuminate\Validation\Rule;
 
 class MedicalRecordSchema
 {
+    /** Cheia din `medical_record` cu secțiunile marcate „Nimic de raportat”: {secțiune: true}. */
+    public const NOTHING_TO_REPORT = 'nothing_to_report';
+
     public const SECTIONS = ['birth', 'vaccinations', 'surgeries', 'drug_allergies', 'chronic_conditions', 'family_history', 'lifestyle', 'disease_history'];
 
     /** Medicament / aliment / alergen respirator. */

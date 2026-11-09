@@ -18,9 +18,18 @@ class UpdateMedicalRecordSectionRequest extends FormRequest
     public function rules(): array
     {
         $section = (string) $this->input('section');
+        $base = [
+            'section' => ['required', Rule::in(MedicalRecordSchema::SECTIONS)],
+            'nothing_to_report' => ['sometimes', 'boolean'],
+        ];
+
+        // „Nimic de raportat” marchează secțiunea ca răspunsă, fără conținut.
+        if ($this->boolean('nothing_to_report')) {
+            return [...$base, 'data' => ['prohibited']];
+        }
 
         return [
-            'section' => ['required', Rule::in(MedicalRecordSchema::SECTIONS)],
+            ...$base,
             ...(in_array($section, MedicalRecordSchema::SECTIONS, true) ? MedicalRecordSchema::rules($section) : []),
         ];
     }

@@ -301,6 +301,42 @@ class PatientMedicalRecordTest extends TestCase
         $this->postJson('/api/v1/admin/clinical-parameters', $payload)->assertUnprocessable();
     }
 
+    public function test_section_can_be_marked_nothing_to_report_and_unmarked_by_saving_content(): void
+    {
+        [$patient, $profile] = $this->patient();
+        Sanctum::actingAs($patient);
+        $this->patchJson($this->url($profile), ['section' => 'drug_allergies', 'data' => [['name' => 'Penicilină']]])->assertOk();
+
+        $this->patchJson($this->url($profile), ['section' => 'drug_allergies', 'nothing_to_report' => true])
+            ->assertOk()
+            ->assertJsonPath('medical_record.nothing_to_report.drug_allergies', true)
+            ->assertJsonMissingPath('medical_record.drug_allergies');
+        $this->patchJson($this->url($profile), ['section' => 'lifestyle', 'nothing_to_report' => true])->assertOk();
+
+        $this->patchJson($this->url($profile), ['section' => 'drug_allergies', 'data' => [['name' => 'Polen']]])
+            ->assertOk()
+            ->assertJsonPath('medical_record.drug_allergies.0.name', 'Polen')
+            ->assertJsonMissingPath('medical_record.nothing_to_report.drug_allergies')
+            ->assertJsonPath('medical_record.nothing_to_report.lifestyle', true);
+
+        $this->patchJson($this->url($profile), ['section' => 'lifestyle', 'data' => ['smoking' => 'Nu']])
+            ->assertOk()
+            ->assertJsonMissingPath('medical_record.nothing_to_report');
+    }
+
+    public function test_nothing_to_report_cannot_be_sent_together_with_content(): void
+    {
+        [$patient, $profile] = $this->patient();
+        Sanctum::actingAs($patient);
+
+        $this->patchJson($this->url($profile), ['section' => 'surgeries', 'nothing_to_report' => true, 'data' => [['name' => 'Apendicectomie']]])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('data');
+        $this->patchJson($this->url($profile), ['section' => 'nothing_to_report', 'nothing_to_report' => true])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('section');
+    }
+
     private function user(string $role): User
     {
         $user = User::factory()->create(['status' => 'active']);

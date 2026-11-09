@@ -16,8 +16,12 @@ export function MedicalRecordDetails({ record, documents = [] }: { record?: Medi
     }
     return Array.isArray(value) ? value.length > 0 : Object.values(value).some((item) => item !== null && item !== '');
   });
+  // Secțiunile la care pacientul a răspuns explicit „Nimic de raportat”.
+  const nothingFlags = (record?.nothing_to_report ?? {}) as Record<string, unknown>;
+  const nothingToReport = MEDICAL_SECTIONS.filter((section) => nothingFlags[section.key] === true).map((section) => section.title);
   return <div className="space-y-3">
-    {!sections.length && <p className="text-sm text-slate-400">Pacientul nu a completat încă antecedentele structurate.</p>}
+    {!sections.length && !nothingToReport.length && <p className="text-sm text-slate-400">Pacientul nu a completat încă antecedentele structurate.</p>}
+    {nothingToReport.length > 0 && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600"><span className="font-semibold text-slate-800">Nimic de raportat:</span> {nothingToReport.join(', ')}</p>}
     {sections.map((section) => {
       const vaccination = record?.vaccinations as { refusal?: string; items?: RecordEntry[] } | undefined;
       const data = record?.[section.key];

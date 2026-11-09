@@ -251,7 +251,7 @@ function AlertActions({ alert, onChanged, primary = false }: { alert: HomeAlert;
         </>
       );
     case 'record':
-      return <Button asChild size={size} variant={primary ? 'default' : 'ghost'}><Link to={`/patient/profile?patient_profile=${alert.profileId}&section=${alert.sectionKey}`}>Completează</Link></Button>;
+      return <Button asChild size={size} variant={primary ? 'default' : 'ghost'}><Link to={`/patient/patients/${alert.profileId}?tab=fisa&section=${alert.sectionKey}`}>Completează</Link></Button>;
     default:
       return request ? <Button asChild size={size} variant={primary ? 'default' : 'ghost'}><Link to={`/patient/chat?request=${request.id}`}>Vezi detaliile</Link></Button> : null;
   }
@@ -317,7 +317,7 @@ function PatientRow({ profile, canBook }: { profile: HomeProfile; canBook: boole
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('');
   return (
     <li className="flex items-center gap-3">
-      <Link to={`/patient/profile?patient_profile=${profile.id}`} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-1 hover:bg-slate-50">
+      <Link to={`/patient/patients/${profile.id}`} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-1 hover:bg-slate-50">
         <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary/10 text-sm font-semibold text-primary">{initials}</span>
         <span className="min-w-0">
           <span className="block truncate font-semibold text-slate-900">{name}</span>

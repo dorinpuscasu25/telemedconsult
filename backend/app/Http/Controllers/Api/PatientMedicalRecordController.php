@@ -10,6 +10,7 @@ use App\Models\Conversation;
 use App\Models\MedicalDocument;
 use App\Models\PatientInvestigation;
 use App\Models\PatientProfile;
+use App\Services\MedicalRecordSchema;
 use App\Services\ObjectiveDataSchema;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -66,7 +67,23 @@ class PatientMedicalRecordController extends Controller
         DB::transaction(function () use ($patientProfile, $validated) {
             $profile = PatientProfile::lockForUpdate()->findOrFail($patientProfile->id);
             $record = $profile->medical_record ?? [];
-            $record[$validated['section']] = $validated['data'];
+            $section = $validated['section'];
+            $flags = is_array($record[MedicalRecordSchema::NOTHING_TO_REPORT] ?? null) ? $record[MedicalRecordSchema::NOTHING_TO_REPORT] : [];
+
+            if ($validated['nothing_to_report'] ?? false) {
+                unset($record[$section]);
+                $flags[$section] = true;
+            } else {
+                $record[$section] = $validated['data'];
+                unset($flags[$section]);
+            }
+
+            if ($flags === []) {
+                unset($record[MedicalRecordSchema::NOTHING_TO_REPORT]);
+            } else {
+                $record[MedicalRecordSchema::NOTHING_TO_REPORT] = $flags;
+            }
+
             $profile->forceFill(['medical_record' => $record])->save();
         });
 

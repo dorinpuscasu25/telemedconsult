@@ -28,6 +28,7 @@ import { BlogPostPage } from './pages/public/BlogPostPage';
 import { PartnersPage as PublicPartnersPage } from './pages/public/PartnersPage';
 import { PatientHome } from './pages/patient/PatientHome';
 import { StartWizardPage } from './pages/patient/StartWizardPage';
+import { PatientRecordPage } from './pages/patient/PatientRecordPage';
 import { DoctorHome } from './pages/doctor/DoctorHome';
 import { OperatorHome } from './pages/operator/OperatorHome';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
@@ -232,6 +233,7 @@ function AppRoutes() {
         <Route path="chat" element={<ChatPage />} />
         <Route path="complaints" element={<PatientComplaintsPage />} />
         <Route path="profile" element={<ProfilePage />} />
+        <Route path="patients/:profileId" element={<PatientRecordPage />} />
         <Route path="noutati" element={<AppNewsListPage />} />
         <Route path="noutati/:slug" element={<AppNewsPostPage />} />
         <Route path="telegram" element={<TelegramPage />} />
