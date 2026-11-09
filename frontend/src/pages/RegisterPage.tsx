@@ -16,6 +16,7 @@ import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '../components/ui/select';
 import { AccountType, useAuth } from '../contexts/AuthContext';
 import { apiRequest } from '../lib/api';
+import { rememberNext, safePatientPath } from '../lib/onboarding-next';
 
 type RegisterStep = 'details' | 'verify';
 type Specialty = { id: number; name: string };
@@ -58,6 +59,8 @@ export function RegisterPage({ audience = 'patient' }: { audience?: 'patient' | 
   const [searchParams] = useSearchParams();
 
   const normalizedEmail = useMemo(() => email.trim().toLowerCase(), [email]);
+  const nextPath = safePatientPath(searchParams.get('next'));
+  useEffect(() => { rememberNext(nextPath); }, [nextPath]);
   const referralCode = useMemo(() => (searchParams.get('ref') || '').trim().toUpperCase(), [searchParams]);
   const passwordsMatch = isPatientForm || passwordConfirmation.length === 0 || password === passwordConfirmation;
   const isProvider = accountType === 'doctor' || accountType === 'operator';
@@ -363,7 +366,7 @@ export function RegisterPage({ audience = 'patient' }: { audience?: 'patient' | 
                   )}
                   <div className="text-center text-sm text-slate-500">
                     Aveți deja cont?{' '}
-                    <Link to="/login" className="font-semibold text-primary transition-colors hover:text-primary/80">
+                    <Link to={nextPath ? `/login?next=${encodeURIComponent(nextPath)}` : '/login'} className="font-semibold text-primary transition-colors hover:text-primary/80">
                       Autentificați-vă
                     </Link>
                   </div>

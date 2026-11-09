@@ -13,6 +13,7 @@ export const SITE_CONTENT_DEFAULTS = {
   'header.brand_name': 'telemedconsult',
   'header.brand_suffix': '.md',
   'header.nav_home': 'Acasă',
+  'header.nav_doctors': 'Medici',
   'header.nav_news': 'Noutăți',
   'header.nav_partners': 'Parteneri',
   'header.cta_login': 'Autentificare',

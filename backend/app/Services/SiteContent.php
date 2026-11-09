@@ -57,6 +57,13 @@ class SiteContent
                     'value' => 'Acasă',
                     'max' => 40,
                 ],
+                'header.nav_doctors' => [
+                    'label' => 'Meniu · Medici',
+                    'type' => self::TYPE_TEXT,
+                    'value' => 'Medici',
+                    'hint' => 'Catalogul public de medici, cu prețuri și programare.',
+                    'max' => 40,
+                ],
                 'header.nav_news' => [
                     'label' => 'Meniu · Noutăți',
                     'type' => self::TYPE_TEXT,

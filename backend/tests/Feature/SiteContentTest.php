@@ -32,6 +32,7 @@ class SiteContentTest extends TestCase
 
         $this->assertSame($defaults, $data);
         $this->assertSame('Pregătit să începi?', $data['home.cta.title']);
+        $this->assertSame('Medici', $data['header.nav_doctors']);
     }
 
     public function test_admin_can_edit_a_text_and_it_becomes_public(): void

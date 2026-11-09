@@ -39,6 +39,7 @@ function HeaderPreview({ values }: PreviewProps) {
         </div>
         <div className="hidden items-center gap-1 text-[11px] font-medium text-slate-600 sm:flex">
           <span className="rounded bg-primary/10 px-2 py-1 text-primary">{v(values, 'header.nav_home', 'Acasă')}</span>
+          <span className="px-2 py-1">{v(values, 'header.nav_doctors', 'Medici')}</span>
           <span className="px-2 py-1">{v(values, 'header.nav_news', 'Noutăți')}</span>
           <span className="px-2 py-1">{v(values, 'header.nav_partners', 'Parteneri')}</span>
         </div>
@@ -236,6 +237,7 @@ function FooterPreview({ values }: PreviewProps) {
         </span>
         <span className="hidden gap-3 sm:flex">
           <span>{values['header.nav_home']}</span>
+          <span>{values['header.nav_doctors']}</span>
           <span>{values['header.nav_news']}</span>
           <span>{values['header.nav_partners']}</span>
         </span>
