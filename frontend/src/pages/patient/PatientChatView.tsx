@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { CalendarClock, ChevronLeft, FileText, MessageSquare, Paperclip, Phone, Search, Send, Video } from 'lucide-react';
+import { ArrowLeft, Check, ClipboardList, Clock, Folder, Home, Info, MessageSquare, Paperclip, Search, Send, Video } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../../components/ui/sheet';
 import { cn } from '../../components/ui/utils';
-import { ConsultationDocuments } from '../../components/ConsultationDocuments';
-import { StatusBadge } from '../../components/app/StatusBadge';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiRequest } from '../../lib/api';
 import { patientAge } from '../../lib/medical-record';
@@ -35,7 +33,7 @@ type Conversation = {
   created_at: string;
 };
 type Peer = { key: string; role: 'doctor' | 'operator'; id: number; name: string; unread: number; last?: Message; lastAt: number; patients: Array<{ id: number; name: string; unread: number }> };
-type Filter = 'all' | 'unread';
+type Filter = string;
 
 const DIRECT = 'direct';
 
@@ -149,7 +147,22 @@ export function PatientChatView() {
     }
   };
 
-  const visiblePeers = peers.filter((item) => item.name.toLocaleLowerCase('ro').includes(search.toLocaleLowerCase('ro')) && (filter === 'all' || item.unread > 0));
+  const patientFilters = useMemo(() => {
+    const seen = new Map<number, string>();
+    for (const item of conversations) if (item.patient_profile) seen.set(item.patient_profile.id, item.patient_profile.display_name.split(' ')[0]);
+    return [...seen.entries()].map(([id, label]) => ({ id: String(id), label }));
+  }, [conversations]);
+  const specialties = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const item of conversations) {
+      const request = item.consultation_request_id ? requests[String(item.consultation_request_id)] : undefined;
+      if (request?.specialty) map[peerKeyOf(item)] = request.specialty;
+    }
+    return map;
+  }, [conversations, requests]);
+  const needle = search.toLocaleLowerCase('ro');
+  const visiblePeers = peers.filter((item) => (item.name.toLocaleLowerCase('ro').includes(needle) || (item.last?.body ?? '').toLocaleLowerCase('ro').includes(needle))
+    && (filter === 'all' || item.patients.some((patient) => String(patient.id) === filter)));
 
   if (!loading && conversations.length === 0) {
     return (
@@ -162,75 +175,100 @@ export function PatientChatView() {
     );
   }
 
+  const firstName = patientProfile?.display_name.split(' ')[0];
+  const scheduledCall = currentRequest?.status === 'accepted' && currentRequest.consultation_kind !== 'with_exam' && currentRequest.scheduled_at ? timeOf(currentRequest.scheduled_at) : null;
+
   return (
-    <div className="flex h-[calc(100dvh-56px-64px-3.25rem-env(safe-area-inset-bottom))] min-h-[420px] gap-4 lg:h-[calc(100dvh-64px-4.5rem)]">
+    <div className="flex h-[calc(100dvh-56px-64px-3.25rem-env(safe-area-inset-bottom))] min-h-[420px] lg:h-[calc(100dvh-64px-4.5rem)] lg:overflow-hidden lg:rounded-2xl lg:border lg:border-slate-200 lg:bg-white">
       {/* Nivelul 1: medicii */}
-      <aside className={cn('w-full flex-col rounded-2xl border border-slate-200 bg-white lg:flex lg:w-80 lg:shrink-0', mobileChat ? 'hidden' : 'flex')}>
-        <div className="space-y-3 border-b border-slate-100 p-4">
-          <h1 className="text-xl font-bold text-slate-950">Mesaje</h1>
+      <aside className={cn('w-full flex-col lg:flex lg:w-[296px] lg:shrink-0 lg:border-r lg:border-slate-200', mobileChat ? 'hidden' : 'flex')}>
+        <div className="flex flex-col gap-3 pb-3 lg:px-4 lg:pt-5">
+          <h1 className="text-[28px] font-bold tracking-tight text-slate-950 lg:text-lg">Mesaje</h1>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Caută medic" className="h-10 pl-9" aria-label="Caută medic" />
+            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Caută medic sau mesaj" className="h-10 rounded-[10px] bg-white pl-9" aria-label="Caută medic sau mesaj" />
           </div>
-          <div className="flex gap-1" role="radiogroup" aria-label="Filtru">
-            {([['all', 'Toate'], ['unread', 'Necitite']] as const).map(([key, label]) => (
-              <button key={key} type="button" role="radio" aria-checked={filter === key} onClick={() => setFilter(key)} className={cn('h-8 rounded-full border px-3 text-xs font-semibold', filter === key ? 'border-primary bg-primary text-white' : 'border-slate-200 text-slate-600')}>{label}</button>
-            ))}
-          </div>
+          {patientFilters.length > 1 && (
+            <div className="flex gap-1.5 overflow-x-auto [scrollbar-width:none]" role="radiogroup" aria-label="Pacient">
+              {[{ id: 'all', label: 'Toți' }, ...patientFilters].map((item) => (
+                <button key={item.id} type="button" role="radio" aria-checked={filter === item.id} onClick={() => setFilter(item.id)} className={cn('h-8 shrink-0 rounded-full border px-3 text-[13px] font-medium', filter === item.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700')}>{item.label}</button>
+              ))}
+            </div>
+          )}
         </div>
-        <ul className="min-h-0 flex-1 overflow-y-auto">
+        <ul className="-mx-4 min-h-0 flex-1 overflow-y-auto lg:mx-0 lg:px-2">
           {loading && <li className="p-4"><div className="h-14 animate-pulse rounded-xl bg-slate-100" /></li>}
-          {visiblePeers.map((item) => (
-            <li key={item.key}>
-              <button type="button" onClick={() => selectPeer(item)} className={cn('flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-slate-50', peer?.key === item.key && 'bg-primary/5')}>
-                <Initials name={item.name} />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-baseline justify-between gap-2"><span className="truncate font-semibold text-slate-900">{item.name}</span><span className="shrink-0 text-[11px] text-slate-400">{item.last ? shortTime(item.last.created_at) : ''}</span></span>
-                  <span className="mt-0.5 flex flex-wrap gap-1">{item.patients.map((patient) => <span key={patient.id} className={cn('rounded-full px-1.5 text-[10px] font-semibold', patient.unread ? 'bg-primary text-white' : 'bg-slate-100 text-slate-500')}>{initialsOf(patient.name)}</span>)}</span>
-                  <span className="mt-0.5 block truncate text-sm text-slate-500">{item.last?.body || 'Fără mesaje'}</span>
-                </span>
-                {item.unread > 0 && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-white">{item.unread}</span>}
-              </button>
-            </li>
-          ))}
+          {visiblePeers.map((item) => {
+            const active = peer?.key === item.key;
+            const mine = item.last && currentUserId === Number(item.last.sender_id);
+            return (
+              <li key={item.key} className="border-b border-slate-100 lg:border-0">
+                <button type="button" onClick={() => selectPeer(item)} className={cn('flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-slate-50 lg:rounded-xl lg:px-2.5', active && 'lg:bg-blue-50 lg:hover:bg-blue-50')}>
+                  <Initials name={item.name} />
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="flex items-baseline justify-between gap-2"><span className="truncate text-sm font-semibold text-slate-950">{item.name}</span><span className="shrink-0 text-[11px] text-slate-400">{item.last ? listTime(item.last.created_at) : ''}</span></span>
+                    <span className="flex items-center gap-1.5 text-xs text-slate-500">
+                      {specialties[item.key] ?? (item.role === 'operator' ? 'Operator' : 'Medic')}
+                      {item.patients.map((patient) => <span key={patient.id} title={patient.name} className="grid h-4 min-w-4 place-items-center rounded-full bg-blue-50 px-1 text-[9px] font-bold text-blue-700">{patient.name[0]?.toUpperCase()}</span>)}
+                    </span>
+                    <span className="flex items-center justify-between gap-2">
+                      <span className={cn('truncate text-[13px]', item.unread > 0 ? 'font-medium text-slate-950' : 'text-slate-500')}>{item.last ? `${mine ? 'Tu: ' : ''}${previewOf(item.last)}` : 'Fără mesaje'}</span>
+                      {item.unread > 0 && <span className="grid h-[18px] min-w-[18px] shrink-0 place-items-center rounded-full bg-blue-600 px-1.5 text-[11px] font-semibold text-white">{item.unread}</span>}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       </aside>
 
       {/* Nivelul 2: conversația cu medicul */}
-      <section className={cn('min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white lg:flex', mobileChat ? 'flex' : 'hidden')}>
+      <section className={cn('-mx-4 min-w-0 flex-1 flex-col overflow-hidden bg-white lg:mx-0 lg:flex', mobileChat ? 'flex' : 'hidden')}>
         {peer && (
           <>
-            <header className="flex items-center gap-3 border-b border-slate-100 px-3 py-3 sm:px-5">
-              <Button variant="ghost" size="icon-sm" className="lg:hidden" aria-label="Înapoi la conversații" onClick={() => setMobileChat(false)}><ChevronLeft className="h-5 w-5" /></Button>
+            <header className="flex items-center gap-3 px-3 pb-2 pt-3 sm:px-5 lg:border-b lg:border-slate-100 lg:py-3.5">
+              <Button variant="ghost" size="icon-sm" className="lg:hidden" aria-label="Înapoi la conversații" onClick={() => setMobileChat(false)}><ArrowLeft className="h-5 w-5" /></Button>
               <Initials name={peer.name} />
               <div className="min-w-0 flex-1">
-                <p className="truncate font-semibold text-slate-950">{peer.name}</p>
-                <p className="truncate text-xs text-slate-500">{activeTab === DIRECT ? 'Discuție directă' : patientProfile ? `pentru ${patientProfile.display_name}${patientProfile.patient_code ? ` · Cod ${patientProfile.patient_code.replace(/(\d{3})(?=\d)/g, '$1 ')}` : ''}` : ''}</p>
+                <p className="truncate text-[15px] font-semibold text-slate-950">{peer.name}</p>
+                <p className="truncate text-xs text-slate-500">{activeTab === DIRECT ? 'Discuție directă' : patientProfile ? `pentru ${firstName}${patientProfile.patient_code ? ` · Cod ${patientProfile.patient_code.replace(/(\d{3})(?=\d)/g, '$1 ')}` : ''}` : ''}</p>
               </div>
               {patientProfile && activeTab !== DIRECT && (
-                <Button variant="outline" size="sm" onClick={() => setRecordOpen(true)} aria-label="Fișa pacientului" className="shrink-0 max-sm:h-9 max-sm:w-9 max-sm:p-0">
-                  <FileText className="h-4 w-4" /><span className="max-sm:sr-only">Fișa pacientului</span>
-                </Button>
+                <>
+                  <Button variant="outline" size="sm" onClick={() => setRecordOpen(true)} aria-label="Fișa pacientului" className="shrink-0 rounded-[10px] max-lg:h-9 max-lg:w-9 max-lg:border-0 max-lg:p-0"><ClipboardList className="h-4 w-4" /><span className="max-lg:sr-only">Fișa pacientului</span></Button>
+                  <Button asChild variant="outline" size="sm" className="hidden rounded-[10px] lg:inline-flex"><Link to={`/patient/patients/${patientProfile.id}?tab=documente`}><Folder className="h-4 w-4" />Documente</Link></Button>
+                </>
               )}
-              {patientProfile && activeTab !== DIRECT && <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex"><Link to={`/patient/patients/${patientProfile.id}?tab=documente`}>Documente</Link></Button>}
+              {/* Apelul îl pornește medicul; butonul arată doar de când. */}
+              <span title="Medicul te sună" className="flex h-9 shrink-0 items-center gap-1.5 rounded-[10px] text-sm text-slate-400 max-lg:w-9 max-lg:justify-center lg:border lg:border-slate-200 lg:px-3"><Video className="h-4 w-4" /><span className="max-lg:sr-only">Apel video{scheduledCall ? ` · de la ${scheduledCall}` : ''}</span></span>
             </header>
 
-            <nav className="flex gap-2 overflow-x-auto border-b border-slate-100 px-3 py-2 [scrollbar-width:none] sm:px-5" aria-label="Pacienți">
+            {/* Telefon: chips sub antet. Desktop: taburi subliniate. */}
+            <nav className="flex gap-1.5 overflow-x-auto border-b border-slate-100 px-3 pb-2.5 [scrollbar-width:none] sm:px-5 lg:hidden" aria-label="Pacienți">
               {tabs.map((item) => (
                 <button key={item.key} type="button" onClick={() => (item.key === DIRECT && !item.exists ? void openDirect() : selectTab(item.key))} aria-current={activeTab === item.key ? 'page' : undefined}
-                  className={cn('inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-medium', activeTab === item.key ? 'border-primary bg-primary text-white' : 'border-slate-200 text-slate-600 hover:border-slate-300')}>
-                  {item.label}{item.unread > 0 && <span className={cn('rounded-full px-1.5 text-[10px] font-semibold', activeTab === item.key ? 'bg-white text-primary' : 'bg-primary text-white')}>{item.unread}</span>}
+                  className={cn('inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium', activeTab === item.key ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700')}>
+                  {item.label}{item.unread > 0 && <span className="rounded-full bg-blue-600 px-1.5 text-[10px] font-semibold text-white">{item.unread}</span>}
+                </button>
+              ))}
+            </nav>
+            <nav className="hidden gap-1 border-b border-slate-200 px-4 lg:flex" aria-label="Pacienți">
+              {tabs.map((item) => (
+                <button key={item.key} type="button" onClick={() => (item.key === DIRECT && !item.exists ? void openDirect() : selectTab(item.key))} aria-current={activeTab === item.key ? 'page' : undefined}
+                  className={cn('-mb-px inline-flex h-10 items-center gap-1.5 border-b-2 px-2.5 text-sm', activeTab === item.key ? 'border-blue-600 font-semibold text-slate-950' : 'border-transparent text-slate-500 hover:text-slate-800')}>
+                  {item.label}{item.unread > 0 && <span className="rounded-full bg-blue-600 px-1.5 text-[10px] font-semibold text-white">{item.unread}</span>}
                 </button>
               ))}
             </nav>
 
             {error && <p role="alert" className="mx-4 mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
-            {currentRequest && activeTab !== DIRECT && <EpisodeHeader request={currentRequest} onChanged={() => void load()} />}
+            {currentRequest && activeTab !== DIRECT && <EpisodeHeader request={currentRequest} />}
 
-            <Timeline episodes={episodes} requests={requests} currentUserId={currentUserId} />
+            <Timeline episodes={episodes} requests={requests} currentUserId={currentUserId} onChanged={() => void load()} />
 
-            <Composer conversation={current} request={currentRequest} isDirect={activeTab === DIRECT} patientProfileId={patientProfile?.id} doctorId={peer.role === 'doctor' ? peer.id : undefined} onChanged={() => void load()} />
+            <Composer conversation={current} request={currentRequest} isDirect={activeTab === DIRECT} patientName={firstName} patientProfileId={patientProfile?.id} doctorId={peer.role === 'doctor' ? peer.id : undefined} onChanged={() => void load()} />
           </>
         )}
       </section>
@@ -245,87 +283,122 @@ export function PatientChatView() {
   );
 }
 
-/** Capul episodului curent: ora consultației și faptul că medicul sună; sau propunerea de oră. */
-function EpisodeHeader({ request, onChanged }: { request: PatientConsultation; onChanged: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const accept = async () => {
-    setBusy(true);
-    try { await apiRequest(`/requests/${request.id}/accept-proposed-time`, { method: 'POST' }); onChanged(); }
-    finally { setBusy(false); }
+/** V1: capul episodului curent, fixat deasupra mesajelor. Pacientul nu are buton de apel. */
+function EpisodeHeader({ request }: { request: PatientConsultation }) {
+  const video = request.consultation_kind !== 'with_exam';
+  const [devices, setDevices] = useState<'granted' | 'unknown' | 'denied'>('unknown');
+
+  useEffect(() => {
+    if (!video || !navigator.permissions) return;
+    Promise.all([navigator.permissions.query({ name: 'camera' as PermissionName }), navigator.permissions.query({ name: 'microphone' as PermissionName })])
+      .then(([camera, mic]) => setDevices(camera.state === 'granted' && mic.state === 'granted' ? 'granted' : camera.state === 'denied' || mic.state === 'denied' ? 'denied' : 'unknown'))
+      .catch(() => undefined);
+  }, [video]);
+
+  const checkDevices = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      setDevices('granted');
+    } catch { setDevices('denied'); }
   };
 
-  if (request.status === 'rescheduled' && request.proposed_scheduled_at) {
-    return (
-      <div className="flex flex-wrap items-center gap-3 border-b border-orange-100 bg-orange-50 px-4 py-3 text-sm sm:px-5">
-        <CalendarClock className="h-5 w-5 shrink-0 text-orange-600" />
-        <p className="min-w-0 flex-1"><span className="font-semibold text-orange-950">Medicul propune altă oră:</span> {longWhen(request.proposed_scheduled_at)}</p>
-        <Button size="sm" disabled={busy} onClick={() => void accept()}>{busy ? 'Se confirmă…' : 'Accept'}</Button>
-        <Button size="sm" variant="outline" className="bg-white" onClick={() => document.getElementById('patient-chat-message')?.focus()}>Altă oră</Button>
-      </div>
-    );
-  }
+  if (!video || request.status !== 'accepted' || !request.scheduled_at) return null;
+  const live = Boolean(request.doctor_started_at);
+  const scheduled = new Date(request.scheduled_at);
+  const today = scheduled.toLocaleDateString('en-CA', { timeZone: TZ }) === new Date().toLocaleDateString('en-CA', { timeZone: TZ });
 
-  if (request.status === 'accepted' && request.doctor_started_at && request.consultation_kind !== 'with_exam') {
-    return (
-      <div className="flex items-center gap-3 border-b border-emerald-100 bg-emerald-50 px-4 py-3 text-sm sm:px-5">
-        <Phone className="h-5 w-5 shrink-0 text-emerald-700" />
-        <p className="min-w-0 flex-1 text-emerald-900"><span className="font-semibold">Consultația a început.</span> Medicul te sună; răspunde din fereastra de apel.</p>
+  return (
+    <div className="shrink-0 bg-slate-50 px-3 pt-3 sm:px-5">
+      <div className={cn('flex flex-col gap-3 rounded-2xl border bg-white p-4', live ? 'border-green-200' : 'border-blue-200')}>
+        <div className="flex items-center gap-3">
+          <span className={cn('grid h-11 w-11 shrink-0 place-items-center rounded-xl', live ? 'bg-green-50 text-green-600' : 'bg-blue-50 text-blue-600')}>{live ? <Video className="h-5 w-5" /> : <Clock className="h-5 w-5" />}</span>
+          <div className="min-w-0">
+            <p className="text-[17px] font-bold tracking-tight text-slate-950">{live ? 'Consultația a început' : `Consultația începe la ${timeOf(request.scheduled_at)}`}</p>
+            <p className="text-[13px] text-slate-500">{live ? 'Medicul te sună. Răspunzi din fereastra de apel.' : `${today ? 'Azi' : capitalize(scheduled.toLocaleDateString('ro-RO', { weekday: 'long', day: 'numeric', month: 'long', timeZone: TZ }))} · video. Medicul te va suna. Poate întârzia 5–15 minute, în funcție de consultațiile anterioare.`}</p>
+          </div>
+        </div>
+        {!live && (devices === 'granted'
+          ? <p className="flex items-center gap-2 rounded-[10px] bg-slate-50 px-3 py-2 text-[13px] text-slate-700"><Check className="h-4 w-4" />Camera și microfonul au acces</p>
+          : <button type="button" onClick={() => void checkDevices()} className={cn('flex items-center gap-2 rounded-[10px] px-3 py-2 text-left text-[13px]', devices === 'denied' ? 'bg-amber-50 text-amber-800' : 'bg-slate-50 text-blue-700 hover:bg-slate-100')}>
+            <Video className="h-4 w-4 shrink-0" />{devices === 'denied' ? 'Browserul a blocat camera sau microfonul. Permite-le din setările site-ului.' : 'Verifică acum camera și microfonul'}
+          </button>)}
       </div>
-    );
-  }
-
-  if (request.status === 'accepted' && request.scheduled_at && request.consultation_kind !== 'with_exam') {
-    return (
-      <div className="flex items-start gap-3 border-b border-blue-100 bg-blue-50 px-4 py-3 text-sm sm:px-5">
-        <Video className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />
-        <p className="min-w-0 flex-1 text-blue-950"><span className="font-semibold">Consultația începe la {timeOf(request.scheduled_at)}</span> · {longWhen(request.scheduled_at)}<span className="block text-blue-900/80">Medicul te va suna. Poate întârzia 5–15 minute, în funcție de consultațiile anterioare.</span></p>
-      </div>
-    );
-  }
-
-  return null;
+    </div>
+  );
 }
 
-function Timeline({ episodes, requests, currentUserId }: { episodes: Conversation[]; requests: Record<string, PatientConsultation>; currentUserId: number | null }) {
+const EPISODE_STATE: Record<string, { label: string; className: string }> = {
+  new: { label: 'Așteaptă medicul', className: 'bg-amber-100 text-amber-800' },
+  rescheduled: { label: 'Așteaptă răspunsul tău', className: 'bg-blue-50 text-blue-700' },
+  accepted: { label: 'Confirmată', className: 'bg-green-50 text-green-700' },
+  completed: { label: 'Finalizată', className: 'bg-slate-100 text-slate-500' }
+};
+
+function Timeline({ episodes, requests, currentUserId, onChanged }: { episodes: Conversation[]; requests: Record<string, PatientConsultation>; currentUserId: number | null; onChanged: () => void }) {
   const end = useRef<HTMLDivElement>(null);
   const total = episodes.reduce((sum, item) => sum + item.messages.length, 0);
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [total, episodes.length]);
+  let lastDay = '';
+  const dayDivider = (value: string, key: string) => {
+    const day = new Date(value).toLocaleDateString('en-CA', { timeZone: TZ });
+    if (day === lastDay) return null;
+    lastDay = day;
+    return <div key={`day-${key}`} className="my-4 flex items-center gap-3 text-xs text-slate-500"><span className="h-px flex-1 bg-slate-200" />{dayLabel(value)}<span className="h-px flex-1 bg-slate-200" /></div>;
+  };
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/60 px-3 py-4 sm:px-6">
+    <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-3 py-4 sm:px-6">
       {episodes.length === 0 && <p className="py-10 text-center text-sm text-slate-500">Niciun mesaj încă.</p>}
       {episodes.map((episode, index) => {
         const request = episode.consultation_request_id ? requests[String(episode.consultation_request_id)] : undefined;
+        const isCurrent = index === episodes.length - 1;
+        const state = request ? EPISODE_STATE[request.status] ?? { label: 'Anulată', className: 'bg-slate-100 text-slate-500' } : null;
         return (
           <div key={episode.id}>
+            {dayDivider(episode.created_at, `e${episode.id}`)}
             {!episode.is_direct && (
-              <div className="my-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="font-semibold text-slate-900">Consultația #{index + 1} · {request?.consultation_kind === 'with_exam' ? 'Cu examinare' : 'Video'} · {shortDate(request?.scheduled_at ?? episode.created_at)}</p>
-                  {request && <StatusBadge request={request} perspective="patient" />}
+              <div className={cn('my-3 flex items-center justify-between gap-3 rounded-xl border bg-white px-3.5 py-2.5', isCurrent && request?.status !== 'completed' ? 'border-blue-200' : 'border-slate-200 opacity-70')}>
+                <div className="min-w-0">
+                  <p className="text-[13px] font-semibold text-slate-900">Consultația #{index + 1} · {request?.consultation_kind === 'with_exam' ? 'Cu examinare' : 'Video'}{request?.status === 'completed' ? ` · ${shortDate(request.scheduled_at ?? episode.created_at)}` : ''}</p>
+                  <p className="text-xs text-slate-500">{request?.status === 'completed' ? 'Concluzie PDF' : `Cerută ${dayLabel(episode.created_at).toLocaleLowerCase('ro')}, ${shortTime(episode.created_at)}`}</p>
                 </div>
-                {request?.status === 'completed' && <div className="mt-2"><ConsultationDocuments requestId={request.id} /></div>}
+                {state && <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold', state.className)}>{state.label}</span>}
               </div>
             )}
             {episode.messages.map((message, position) => {
               const previous = episode.messages[position - 1];
+              const next = episode.messages[position + 1];
               const mine = currentUserId === Number(message.sender_id);
-              const firstOfGroup = !previous || previous.sender_id !== message.sender_id || previous.type === 'system';
-              if (message.type === 'system') return <p key={message.id} className="mx-auto my-2 w-fit max-w-md rounded-full bg-slate-100 px-3 py-1 text-center text-xs text-slate-600">{message.body} · {shortTime(message.created_at)}</p>;
+              const divider = dayDivider(message.created_at, `m${message.id}`);
+              if (message.type === 'system') {
+                const good = /confirm|accept|început/i.test(message.body);
+                return <div key={message.id}>{divider}<p className="mx-auto my-3 flex w-fit max-w-md items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-center text-xs text-slate-700"><span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', good ? 'bg-green-600' : 'bg-slate-400')} />{message.body}<span className="text-slate-400">{shortTime(message.created_at)}</span></p></div>;
+              }
+              const firstOfGroup = Boolean(divider) || !previous || previous.sender_id !== message.sender_id || previous.type === 'system';
+              const lastOfGroup = !next || next.sender_id !== message.sender_id || next.type === 'system';
               return (
-                <div key={message.id} className={cn('flex flex-col', mine ? 'items-end' : 'items-start', firstOfGroup ? 'mt-3' : 'mt-0.5')}>
-                  {firstOfGroup && !mine && message.sender?.name && <span className="mb-1 px-1 text-xs font-medium text-slate-500">{message.sender.name}</span>}
-                  <div className={cn('max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-[15px] leading-relaxed shadow-sm sm:max-w-[70%]', mine ? 'bg-primary text-white' : 'border border-slate-200 bg-white text-slate-800')}>
+                <div key={message.id}>
+                  {divider}
+                  <div className={cn('flex flex-col', mine ? 'items-end' : 'items-start', firstOfGroup ? 'mt-3' : 'mt-1')}>
+                    {firstOfGroup && !mine && message.sender?.name && <span className="mb-1 px-1 text-xs text-slate-500">{message.sender.name}</span>}
                     {message.type === 'image' && message.metadata?.url ? (
-                      <a href={message.metadata.url} target="_blank" rel="noreferrer"><img src={message.metadata.url} alt={message.metadata.file_name || 'imagine'} className="max-h-64 rounded-xl object-cover" /></a>
+                      <a href={message.metadata.url} target="_blank" rel="noreferrer"><img src={message.metadata.url} alt={message.metadata.file_name || 'imagine'} className="max-h-60 max-w-[240px] rounded-[14px] object-cover" /></a>
                     ) : message.type === 'file' && message.metadata?.url ? (
-                      <a href={message.metadata.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:underline"><FileText className="h-5 w-5 shrink-0" />{message.metadata.file_name || message.body}</a>
-                    ) : message.body}
+                      <a href={message.metadata.url} target="_blank" rel="noreferrer" className={cn('flex max-w-[85%] items-center gap-2.5 rounded-[14px] px-3 py-2.5 sm:max-w-[60%]', mine ? 'bg-blue-700 text-white' : 'border border-slate-200 bg-white text-slate-900')}>
+                        <span className={cn('grid h-8 w-8 shrink-0 place-items-center rounded-md text-[9px] font-bold', mine ? 'bg-white/15' : 'bg-red-50 text-red-600')}>{fileExt(message.metadata.file_name)}</span>
+                        <span className="min-w-0 truncate text-[13px] font-semibold">{message.metadata.file_name || message.body}</span>
+                      </a>
+                    ) : (
+                      <div className={cn('max-w-[85%] whitespace-pre-wrap break-words rounded-[14px] px-3 py-2.5 text-sm leading-[1.45] sm:max-w-[62%]', mine ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-900')}>{message.body}</div>
+                    )}
+                    {lastOfGroup && <span className="mt-1 px-1 text-[11px] text-slate-400">{shortTime(message.created_at)}</span>}
                   </div>
-                  <span className="mt-1 px-1 text-[11px] text-slate-400">{shortTime(message.created_at)}</span>
                 </div>
               );
             })}
+            {request?.status === 'completed' && <ConclusionCard requestId={request.id} />}
+            {isCurrent && request?.status === 'rescheduled' && request.proposed_scheduled_at && <ProposalCard request={request} onChanged={onChanged} />}
           </div>
         );
       })}
@@ -334,11 +407,57 @@ function Timeline({ episodes, requests, currentUserId }: { episodes: Conversatio
   );
 }
 
+/** Propunerea de oră a medicului, în cronologie, cu răspunsul pe loc (C3b). */
+function ProposalCard({ request, onChanged }: { request: PatientConsultation; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const accept = async () => {
+    setBusy(true);
+    setError('');
+    try { await apiRequest(`/requests/${request.id}/accept-proposed-time`, { method: 'POST' }); onChanged(); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Nu am putut accepta ora.'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="my-3 flex max-w-md flex-col gap-1 rounded-[14px] border border-slate-200 bg-white p-3.5">
+      <span className="text-xs text-slate-500">Medicul propune altă oră</span>
+      <span className="text-[17px] font-bold tracking-tight text-slate-950">{capitalize(longWhen(request.proposed_scheduled_at!))}</span>
+      {request.scheduled_at && <span className="text-[13px] text-slate-500">Ora cerută de tine ({timeOf(request.scheduled_at)}) nu mai e liberă.</span>}
+      {error && <span role="alert" className="text-[13px] text-red-700">{error}</span>}
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <Button disabled={busy} onClick={() => void accept()} className="h-11 rounded-[10px]">{busy ? 'Se confirmă…' : 'Accept'}</Button>
+        <Button variant="outline" className="h-11 rounded-[10px] bg-white" onClick={() => document.getElementById('patient-chat-message')?.focus()}>Altă oră</Button>
+      </div>
+    </div>
+  );
+}
+
+/** C2c: concluzia publicată, ca un card în cronologie. */
+function ConclusionCard({ requestId }: { requestId: string }) {
+  const [docs, setDocs] = useState<Array<{ id: number; title: string; url?: string | null; prescription_url?: string | null }>>([]);
+  useEffect(() => {
+    apiRequest<{ documents: Array<{ id: number; title: string; url?: string | null; prescription_url?: string | null }> }>(`/requests/${requestId}/documents`)
+      .then((response) => setDocs(response.documents ?? []))
+      .catch(() => setDocs([]));
+  }, [requestId]);
+  return (
+    <>
+      {docs.filter((doc) => doc.url).map((doc) => (
+        <div key={doc.id} className="mx-auto my-3 flex max-w-md items-center gap-3 rounded-[14px] border border-slate-200 bg-white p-3.5">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-red-50 text-[10px] font-bold text-red-600">PDF</span>
+          <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-slate-950">Concluzia a fost publicată</span><span className="block truncate text-xs text-slate-500">{doc.title}{doc.prescription_url ? ' · rețetă inclusă' : ''}</span></span>
+          <a href={doc.url!} target="_blank" rel="noreferrer" className="shrink-0 text-sm font-medium text-blue-600 hover:underline">Deschide</a>
+        </div>
+      ))}
+    </>
+  );
+}
+
 /**
  * Zona de scriere ocupă mereu același loc. Când chatul nu e disponibil, locul ei
- * îl ia motivul și, dacă se poate face ceva, butonul care îl redeschide.
+ * îl ia motivul și, dacă se poate face ceva, butonul care îl redeschide (C2 a–e).
  */
-function Composer({ conversation, request, isDirect, patientProfileId, doctorId, onChanged }: { conversation?: Conversation; request?: PatientConsultation; isDirect: boolean; patientProfileId?: number; doctorId?: number; onChanged: () => void }) {
+function Composer({ conversation, request, isDirect, patientName, patientProfileId, doctorId, onChanged }: { conversation?: Conversation; request?: PatientConsultation; isDirect: boolean; patientName?: string; patientProfileId?: number; doctorId?: number; onChanged: () => void }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
@@ -382,36 +501,46 @@ function Composer({ conversation, request, isDirect, patientProfileId, doctorId,
   const bookLink = `/patient/doctors?${new URLSearchParams({ ...(patientProfileId ? { patient_profile: String(patientProfileId) } : {}), ...(doctorId ? { doctor: String(doctorId) } : {}) }).toString()}`;
 
   return (
-    <div className="shrink-0 border-t border-slate-100 bg-white p-3 sm:p-4">
-      {error && <p role="alert" className="mb-2 text-sm text-red-700">{error}</p>}
+    <div className="shrink-0 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)]">
+      {error && <p role="alert" className="px-4 pt-2 text-sm text-red-700">{error}</p>}
       {chat.can_write ? (
         <>
-          {isDirect && <p className="mb-2 text-xs text-slate-500">Discuție fără pacient: mesajele nu intră în nicio fișă medicală.</p>}
-          {freeDaysLeft > 0 && <p className="mb-2 text-xs text-slate-500">Chat gratuit încă {freeDaysLeft} {freeDaysLeft === 1 ? 'zi' : 'zile'}. Întreabă medicul orice despre concluzie.</p>}
-          <form onSubmit={send} className="flex items-end gap-2">
-            <Button type="button" variant="ghost" size="icon" aria-label="Atașează un fișier" disabled={sending} onClick={() => fileInput.current?.click()}><Paperclip className="h-5 w-5" /></Button>
+          {isDirect && <p className="flex items-center gap-2 bg-slate-50 px-4 py-2 text-[13px] text-slate-600"><Info className="h-4 w-4 shrink-0" />Discuție fără pacient: mesajele nu intră în nicio fișă medicală.</p>}
+          {freeDaysLeft > 0 && <p className="flex items-center gap-2 bg-blue-50 px-4 py-2.5 text-[13px] text-blue-700"><Clock className="h-4 w-4 shrink-0" />Chat gratuit încă {freeDaysLeft} {freeDaysLeft === 1 ? 'zi' : 'zile'}. Întreabă medicul orice despre concluzie.</p>}
+          <form onSubmit={send} className="flex items-end gap-2 px-3 py-3 sm:px-4">
+            <button type="button" aria-label="Atașează un fișier" disabled={sending} onClick={() => fileInput.current?.click()} className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50"><Paperclip className="h-[18px] w-[18px]" /></button>
             <input ref={fileInput} type="file" accept="image/*,.pdf,.doc,.docx" className="hidden" onChange={attach} />
             <label htmlFor="patient-chat-message" className="sr-only">Mesaj</label>
             <textarea id="patient-chat-message" rows={1} value={text} onChange={(event) => setText(event.target.value)}
               onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}
-              placeholder="Scrie medicului…" className="max-h-40 min-h-10 flex-1 resize-none rounded-xl border border-slate-200 px-3.5 py-2.5 text-[15px] outline-none focus-visible:border-primary/50 focus-visible:ring-[3px] focus-visible:ring-primary/15" />
-            <Button type="submit" size="icon" aria-label="Trimite mesajul" disabled={sending || !text.trim()}><Send className="h-5 w-5" /></Button>
+              placeholder={!isDirect && patientName ? `Scrie despre ${patientName}…` : 'Scrie medicului…'} className="max-h-40 min-h-10 flex-1 resize-none rounded-[10px] border border-slate-200 px-3 py-2 text-[15px] leading-6 outline-none focus-visible:border-blue-600 focus-visible:ring-[3px] focus-visible:ring-blue-600/15" />
+            <button type="submit" aria-label="Trimite mesajul" disabled={sending || !text.trim()} className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"><Send className="h-[18px] w-[18px]" /></button>
           </form>
         </>
       ) : chat.state === 'pending' ? (
-        <div className="text-sm">
-          {request?.scheduled_at && <p className="font-semibold text-slate-900">Ora confirmată: {longWhen(request.scheduled_at)}</p>}
-          <p className="text-slate-600">{chat.message ?? 'Chatul se deschide după ce operatorul termină examinarea.'}</p>
+        <div className="flex items-center gap-3 px-4 py-3.5">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-slate-200 text-slate-600">{request?.consultation_kind === 'with_exam' ? <Home className="h-4 w-4" /> : <Clock className="h-4 w-4" />}</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-slate-950">{chat.message ?? 'Chatul se deschide după ce operatorul termină examinarea.'}</p>
+            {request?.scheduled_at && <p className="text-[13px] text-slate-500">{request.consultation_kind === 'with_exam' ? 'Operatorul vine' : 'Consultația e'} {longWhen(request.scheduled_at)}.</p>}
+          </div>
+          {request && <Link to="/patient/consultations" className="hidden shrink-0 text-sm font-medium text-blue-600 hover:underline sm:block">Detaliile vizitei</Link>}
         </div>
       ) : chat.can_reactivate ? (
-        <div className="flex flex-col gap-3 text-sm sm:flex-row sm:items-center">
-          <p className="min-w-0 flex-1 text-slate-600">{chat.message ?? 'Chatul gratuit s-a încheiat.'}{chat.reactivate_until ? ` Îl poți redeschide până pe ${shortDate(chat.reactivate_until)}. Plătești din portofel.` : ''}</p>
-          <Button disabled={sending} onClick={() => void reactivate()}>Redeschide chatul pentru {chat.reactivation_hours ?? 24} h{chat.reactivation_price ? ` · ${chat.reactivation_price} MDL` : ''}</Button>
+        <div className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-slate-950">{freeUntil ? `Chatul gratuit s-a încheiat pe ${dayMonth(freeUntil)}` : (chat.message ?? 'Chatul gratuit s-a încheiat')}</p>
+            <p className="text-[13px] text-slate-500">{chat.reactivate_until ? `Îl poți redeschide până pe ${dayMonth(chat.reactivate_until)}. ` : ''}Plătești din portofel.</p>
+          </div>
+          <Button disabled={sending} onClick={() => void reactivate()} className="h-10 rounded-[10px]">Redeschide chatul pentru {chat.reactivation_hours ?? 24} h{chat.reactivation_price ? ` · ${chat.reactivation_price} MDL` : ''}</Button>
         </div>
       ) : (
-        <div className="flex flex-col gap-3 text-sm sm:flex-row sm:items-center">
-          <p className="min-w-0 flex-1 text-slate-600"><span className="font-semibold text-slate-900">Pentru întrebări noi, programează o consultație.</span> {chat.message ?? 'Istoricul rămâne aici și îl vede și medicul.'}</p>
-          <Button asChild><Link to={bookLink}>Programează</Link></Button>
+        <div className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-slate-950">Pentru întrebări noi, programează o consultație</p>
+            <p className="text-[13px] text-slate-500">Istoricul rămâne aici și îl vede și medicul.</p>
+          </div>
+          <Button asChild className="h-10 rounded-[10px]"><Link to={bookLink}>Programează</Link></Button>
         </div>
       )}
     </div>
@@ -441,7 +570,7 @@ function RecordSummary({ profile }: { profile: NonNullable<Conversation['patient
 }
 
 function Initials({ name }: { name: string }) {
-  return <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary/10 text-sm font-semibold text-primary">{initialsOf(name)}</span>;
+  return <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-200 text-[13px] font-semibold text-slate-700">{initialsOf(name)}</span>;
 }
 
 function buildPeers(conversations: Conversation[]): Peer[] {
@@ -490,5 +619,31 @@ function initialsOf(name: string): string {
 const TZ = 'Europe/Chisinau';
 function shortTime(value: string): string { return new Date(value).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit', timeZone: TZ }); }
 function timeOf(value: string): string { return shortTime(value); }
+function dayMonth(value: string): string { return new Date(value).toLocaleDateString('ro-RO', { day: 'numeric', month: 'long', timeZone: TZ }); }
+function capitalize(value: string): string { return value.charAt(0).toUpperCase() + value.slice(1); }
+function dayKey(date: Date): string { return date.toLocaleDateString('en-CA', { timeZone: TZ }); }
+/** „Azi”, „Ieri” sau „Joi, 5 noiembrie”. */
+function dayLabel(value: string): string {
+  const date = new Date(value);
+  const today = new Date();
+  if (dayKey(date) === dayKey(today)) return 'Azi';
+  if (dayKey(date) === dayKey(new Date(today.getTime() - 86400000))) return 'Ieri';
+  return capitalize(date.toLocaleDateString('ro-RO', { weekday: 'long', day: 'numeric', month: 'long', timeZone: TZ }));
+}
+/** În listă: ora pentru azi, „Ieri”, ziua săptămânii în ultima săptămână, altfel data. */
+function listTime(value: string): string {
+  const date = new Date(value);
+  const days = (Date.now() - date.getTime()) / 86400000;
+  if (dayKey(date) === dayKey(new Date())) return shortTime(value);
+  if (dayLabel(value) === 'Ieri') return 'Ieri';
+  if (days < 7) return capitalize(date.toLocaleDateString('ro-RO', { weekday: 'short', timeZone: TZ }).replace('.', ''));
+  return shortDate(value);
+}
+function previewOf(message: Message): string {
+  if (message.type === 'image') return 'Imagine';
+  if (message.type === 'file') return message.metadata?.file_name || 'Fișier';
+  return message.body;
+}
+function fileExt(name?: string): string { return (name?.split('.').pop() || 'FIȘ').slice(0, 4).toUpperCase(); }
 function shortDate(value: string): string { return new Date(value).toLocaleDateString('ro-RO', { day: 'numeric', month: 'short', timeZone: TZ }); }
 function longWhen(value: string): string { return `${new Date(value).toLocaleDateString('ro-RO', { weekday: 'long', day: 'numeric', month: 'long', timeZone: TZ })}, ${shortTime(value)}`; }
