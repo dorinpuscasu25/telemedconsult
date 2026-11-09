@@ -97,8 +97,8 @@ export function PatientHome() {
     <div className="space-y-6 pb-20 lg:pb-0">
       <PageHeader title={`Bună, ${firstName}`} documentTitle="Acasă" />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="space-y-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="min-w-0 space-y-6">
           {isLoading ? <Skeleton className="h-44 w-full rounded-2xl" /> : current ? (
             <NowCard alert={current} now={now} onChanged={load} onDismiss={dismiss} />
           ) : (
@@ -201,14 +201,14 @@ function TodoRow({ alert, onChanged, onDismiss }: { alert: HomeAlert; onChanged:
 
   return (
     <li className="px-3 py-3">
-      <div className="flex items-start gap-3">
+      <div className="flex flex-wrap items-start gap-3 sm:flex-nowrap">
         <AlertIcon alert={alert} />
         <div className="min-w-0 flex-1">
           <p className="font-semibold text-slate-900">{alert.title}</p>
           <p className="text-sm text-slate-500">{alert.sub}</p>
           {alert.kind === 'review' && alert.reviewId && rating && <InlineReview requestId={alert.reviewId} onDone={onChanged} className="mt-3" />}
         </div>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="ml-12 flex shrink-0 items-center gap-1 sm:ml-0">
           {alert.kind === 'review' ? (
             !rating && <Button size="sm" variant="outline" onClick={() => setRating(true)}><Star className="h-4 w-4" />Evaluează</Button>
           ) : <AlertActions alert={alert} onChanged={onChanged} />}
@@ -320,11 +320,15 @@ function PatientRow({ profile, canBook }: { profile: HomeProfile; canBook: boole
       <Link to={`/patient/patients/${profile.id}`} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-1 hover:bg-slate-50">
         <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary/10 text-sm font-semibold text-primary">{initials}</span>
         <span className="min-w-0">
-          <span className="block truncate font-semibold text-slate-900">{name}</span>
+          <span className="block font-semibold leading-5 text-slate-900">{name}</span>
           <span className="block truncate text-xs text-slate-500">{profile.birth_date ? `${patientAge(profile.birth_date)} · ` : ''}Fișa {progress.done}/{progress.total}</span>
         </span>
       </Link>
-      {canBook && profile.can_request_consultation && <Button asChild size="sm" variant="ghost" className="text-primary"><Link to={`/patient/doctors?patient_profile=${profile.id}`}>Programează</Link></Button>}
+      {canBook && profile.can_request_consultation && (
+        <Button asChild size="icon-sm" variant="ghost" className="text-primary" aria-label={`Programează pentru ${name}`} title="Programează">
+          <Link to={`/patient/doctors?patient_profile=${profile.id}`}><CalendarClock className="h-4 w-4" /></Link>
+        </Button>
+      )}
     </li>
   );
 }

@@ -105,6 +105,7 @@ export function PatientRecordPage() {
           <p className="text-sm text-slate-500">{profile.birth_date ? `${patientAge(profile.birth_date)} · ` : ''}Cod pacient {formatCode(profile.patient_code)}</p>
         </div>
         {profile.can_request_consultation && isEnabled('doctors') && <Button asChild className="hidden sm:inline-flex"><Link to={`/patient/doctors?patient_profile=${profile.id}`}><Stethoscope className="h-4 w-4" />Programează</Link></Button>}
+        {profile.can_request_consultation && isEnabled('doctors') && <Button asChild size="icon" className="sm:hidden" aria-label="Programează"><Link to={`/patient/doctors?patient_profile=${profile.id}`}><Stethoscope className="h-4 w-4" /></Link></Button>}
         <MoreMenu items={[{ label: 'Exportă datele', onSelect: () => void exportProfile() }, { label: 'Șterge profilul', onSelect: () => void deleteProfile(), danger: true }]} />
       </header>
 

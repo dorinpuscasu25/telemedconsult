@@ -560,7 +560,7 @@ function PatientCard({ profile }: { profile: PatientProfile }) {
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2 font-semibold text-slate-950">{name}{profile.can_request_consultation ? null : <ToneBadge tone="warning">Necesită date</ToneBadge>}</span>
-          <span className="block truncate text-xs text-slate-500">{profile.birth_date ? `${patientAge(profile.birth_date)} · ` : ''}{profile.patient_code ?? ''}</span>
+          <span className="block truncate text-xs text-slate-500">{profile.birth_date ? `${patientAge(profile.birth_date)} · ` : ''}{formatPatientCode(profile.patient_code)}</span>
           <span className="block text-xs text-slate-500">Fișa: {progress.done} din {progress.total}</span>
         </span>
       </Link>
@@ -573,4 +573,9 @@ function PatientCard({ profile }: { profile: PatientProfile }) {
       </div>
     </li>
   );
+}
+
+/** Codul pacientului (15 cifre), grupat câte trei pentru citire: 151 013 289 123 411. */
+function formatPatientCode(code?: string | null): string {
+  return code ? code.replace(/(\d{3})(?=\d)/g, '$1 ') : '';
 }

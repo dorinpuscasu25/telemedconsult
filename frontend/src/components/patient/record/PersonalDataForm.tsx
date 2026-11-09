@@ -115,7 +115,7 @@ export function PersonalDataForm({ profile, regions, onSaved }: { profile: Perso
               {form.birth_date && <span className="shrink-0 text-sm text-slate-500">{patientAge(form.birth_date)}</span>}
             </div>
           </div>
-          <ChipGroup label="Sex" value={form.gender} options={[['M', 'M'], ['F', 'F']]} onChange={(value) => update({ gender: value }, true)} />
+          <ChipGroup label="Sex" value={form.gender} options={[['M', 'Masculin'], ['F', 'Feminin']]} onChange={(value) => update({ gender: value }, true)} />
           <ChipGroup label="Mediul de trai" value={form.residential_environment} options={[['urban', 'Urban'], ['rural', 'Rural']]} onChange={(value) => update({ residential_environment: value }, true)} />
         </div>
       </Block>

@@ -671,7 +671,7 @@ export function DoctorsList() {
 
                 {step === 2 && (
                   <>
-                    <ConsultationComplaintFields history={illnessHistory} symptoms={symptoms} onHistoryChange={setIllnessHistory} onSymptomsChange={setSymptoms} />
+                    <ConsultationComplaintFields symptomsFirst history={illnessHistory} symptoms={symptoms} onHistoryChange={setIllnessHistory} onSymptomsChange={setSymptoms} />
                     <SlotPicker doctorId={String(selectedDoctor.id)} value={scheduledAt} onChange={setScheduledAt} />
                     {effectiveKind === 'with_exam' && optionalInvestigations.length > 0 && (
                       <fieldset>

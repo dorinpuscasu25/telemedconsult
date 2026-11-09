@@ -58,6 +58,8 @@ export function PatientChatView() {
   const [mobileChat, setMobileChat] = useState(() => Boolean(searchParams.get('conversation') || searchParams.get('request') || searchParams.get('doctor')));
   const [recordOpen, setRecordOpen] = useState(false);
 
+  useEffect(() => { document.title = 'Mesaje · telemedconsult.md'; }, []);
+
   const load = useCallback(async () => {
     try {
       const [conversationResponse, requestResponse] = await Promise.all([
@@ -203,9 +205,13 @@ export function PatientChatView() {
               <Initials name={peer.name} />
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold text-slate-950">{peer.name}</p>
-                <p className="truncate text-xs text-slate-500">{activeTab === DIRECT ? 'Discuție directă' : patientProfile ? `pentru ${patientProfile.display_name}${patientProfile.patient_code ? ` · Cod ${patientProfile.patient_code}` : ''}` : ''}</p>
+                <p className="truncate text-xs text-slate-500">{activeTab === DIRECT ? 'Discuție directă' : patientProfile ? `pentru ${patientProfile.display_name}${patientProfile.patient_code ? ` · Cod ${patientProfile.patient_code.replace(/(\d{3})(?=\d)/g, '$1 ')}` : ''}` : ''}</p>
               </div>
-              {patientProfile && activeTab !== DIRECT && <Button variant="outline" size="sm" onClick={() => setRecordOpen(true)}>Fișa pacientului</Button>}
+              {patientProfile && activeTab !== DIRECT && (
+                <Button variant="outline" size="sm" onClick={() => setRecordOpen(true)} aria-label="Fișa pacientului" className="shrink-0 max-sm:h-9 max-sm:w-9 max-sm:p-0">
+                  <FileText className="h-4 w-4" /><span className="max-sm:sr-only">Fișa pacientului</span>
+                </Button>
+              )}
               {patientProfile && activeTab !== DIRECT && <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex"><Link to={`/patient/patients/${patientProfile.id}?tab=documente`}>Documente</Link></Button>}
             </header>
 
