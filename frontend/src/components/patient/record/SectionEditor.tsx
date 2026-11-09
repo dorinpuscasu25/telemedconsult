@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, Minus, Plus, Trash2 } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
@@ -15,13 +15,15 @@ type Answer = 'yes' | 'no' | 'unknown';
  * Editorul unei secțiuni din fișă: o singură secțiune, completată din butoane,
  * salvată automat la scurt timp după fiecare schimbare.
  */
-export function SectionEditor({ profileId, sectionKey, record, patientName, birthDate, onRecordChange }: {
+export function SectionEditor({ profileId, sectionKey, record, patientName, birthDate, onRecordChange, footer }: {
   profileId: number;
   sectionKey: string;
   record: MedicalRecord;
   patientName: string;
   birthDate?: string | null;
   onRecordChange: (record: MedicalRecord) => void;
+  /** Acțiunea de jos a panoului (ex. „Gata”), fixată sub conținut. */
+  footer?: ReactNode;
 }) {
   const section = sectionByKey(sectionKey);
   const [saveState, setSaveState] = useState<SaveState>('idle');
@@ -52,19 +54,24 @@ export function SectionEditor({ profileId, sectionKey, record, patientName, birt
 
   if (!section) return null;
 
+  // Panou: antet fix (secțiunea, pacientul, starea salvării), conținut care se derulează, acțiune jos.
   return (
-    <div className="space-y-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-lg font-semibold text-slate-950">{section.title}</h3>
-          <p className="text-sm text-slate-500">{patientName}{ageInYears(birthDate) !== null ? ` · ${ageInYears(birthDate)} ani` : ''}</p>
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="flex shrink-0 items-start gap-3 border-b border-slate-100 py-4 pl-5 pr-16 sm:pl-6">
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-lg font-semibold text-slate-950">{section.title}</h3>
+          <p className="truncate text-sm text-slate-500">{patientName}{ageInYears(birthDate) !== null ? ` · ${ageInYears(birthDate)} ani` : ''}</p>
         </div>
         <SaveIndicator state={saveState} />
+      </header>
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
+        {section.description && <p className="text-sm leading-6 text-slate-500">{section.description}</p>}
+        {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+        {section.repeated
+          ? <ListEditor sectionKey={sectionKey} record={record} patientName={patientName} saveNow={send} saveSoon={saveSoon} />
+          : <ObjectEditor sectionKey={sectionKey} record={record} birthDate={birthDate} saveNow={send} saveSoon={saveSoon} />}
       </div>
-      {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-      {section.repeated
-        ? <ListEditor sectionKey={sectionKey} record={record} patientName={patientName} saveNow={send} saveSoon={saveSoon} />
-        : <ObjectEditor sectionKey={sectionKey} record={record} birthDate={birthDate} saveNow={send} saveSoon={saveSoon} />}
+      {footer && <footer className="shrink-0 border-t border-slate-100 bg-white px-5 py-4 sm:px-6">{footer}</footer>}
     </div>
   );
 }

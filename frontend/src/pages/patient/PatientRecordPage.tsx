@@ -155,14 +155,12 @@ export function PatientRecordPage() {
       </section>
 
       <Sheet open={sectionOpen} onOpenChange={(open) => { if (!open) setParam({ section: null }); }}>
-        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
+        <SheetContent side="right" className="w-full gap-0 overflow-hidden p-0 sm:max-w-xl">
           <SheetTitle className="sr-only">{MEDICAL_SECTIONS.find((section) => section.key === openSection)?.title ?? 'Secțiune'}</SheetTitle>
           <SheetDescription className="sr-only">Se salvează automat.</SheetDescription>
           {sectionOpen && openSection && (
-            <div className="space-y-6 pt-2">
-              <SectionEditor key={openSection} profileId={profile.id} sectionKey={openSection} record={record} patientName={name} birthDate={profile.birth_date} onRecordChange={setRecord} />
-              <Button className="w-full" onClick={() => setParam({ section: null })}>Gata</Button>
-            </div>
+            <SectionEditor key={openSection} profileId={profile.id} sectionKey={openSection} record={record} patientName={name} birthDate={profile.birth_date} onRecordChange={setRecord}
+              footer={<Button className="w-full" onClick={() => setParam({ section: null })}>Gata</Button>} />
           )}
         </SheetContent>
       </Sheet>

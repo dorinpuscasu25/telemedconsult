@@ -233,8 +233,8 @@ export function WalletPage() {
       )}
 
       <Sheet open={selectedRow !== null} onOpenChange={(open) => !open && setSelectedRow(null)}>
-        <SheetContent side="bottom" className="mx-auto max-w-lg rounded-t-2xl">
-          {selectedRow && <HistoryDetail row={selectedRow} />}
+        <SheetContent side="bottom" className="mx-auto max-w-lg gap-0 rounded-t-2xl">
+          {selectedRow && <div className="px-5 pb-6 pt-1"><HistoryDetail row={selectedRow} /></div>}
         </SheetContent>
       </Sheet>
 
@@ -361,7 +361,7 @@ function HistoryDetail({ row }: { row: HistoryRow }) {
 
   return (
     <div className="space-y-4">
-      <SheetHeader className="text-left">
+      <SheetHeader className="p-0 pr-12 pt-4 text-left">
         <SheetDescription>{row.pocket === 'money' ? 'Bani' : 'Bonusuri'} · {new Date(row.date).toLocaleString('ro-RO', { dateStyle: 'medium', timeStyle: 'short' })}</SheetDescription>
         <SheetTitle className={cn('text-3xl tabular-nums', positive ? 'text-emerald-600' : 'text-slate-950')}>{positive ? '+' : '−'}{mdl(Math.abs(row.amount))} {row.pocket === 'money' ? 'MDL' : 'bonusuri'}</SheetTitle>
         <p className="text-sm font-medium text-slate-900">{row.title}</p>

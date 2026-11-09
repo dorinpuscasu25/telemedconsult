@@ -230,9 +230,9 @@ export function PatientChatView() {
       </section>
 
       <Sheet open={recordOpen} onOpenChange={setRecordOpen}>
-        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
-          <SheetHeader><SheetTitle>Fișa pacientului</SheetTitle><SheetDescription>Ce vede medicul despre {patientProfile?.display_name}.</SheetDescription></SheetHeader>
-          {patientProfile && <RecordSummary profile={patientProfile} />}
+        <SheetContent side="right" className="w-full gap-0 sm:max-w-md">
+          <SheetHeader className="border-b border-slate-100 pr-16"><SheetTitle>Fișa pacientului</SheetTitle><SheetDescription>Ce vede medicul despre {patientProfile?.display_name}.</SheetDescription></SheetHeader>
+          {patientProfile && <div className="px-5 pb-6"><RecordSummary profile={patientProfile} /></div>}
         </SheetContent>
       </Sheet>
     </div>
