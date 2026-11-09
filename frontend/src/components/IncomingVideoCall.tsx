@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Phone, PhoneOff, Volume2 } from 'lucide-react';
 import { apiRequest } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { usePatientCall } from '../contexts/PatientCallContext';
 import { useRingtone } from '../lib/use-ringtone';
 import { CALL_UPDATED_EVENT, type CallInvitation } from '../lib/video-calls';
 import { Button } from './ui/button';
@@ -18,7 +19,10 @@ export function IncomingVideoCall() {
   const dismissed = useRef(new Set<number>());
   const navigate = useNavigate();
   const location = useLocation();
-  const { enabled, enable } = useRingtone(!!call);
+  const patientCall = usePatientCall();
+  // Pacientul deja în apelul acestei consultații nu mai primește fereastra de apel.
+  const visibleCall = call && !(role === 'patient' && patientCall.session?.requestId === String(call.request_id)) ? call : null;
+  const { enabled, enable } = useRingtone(!!visibleCall);
   useEffect(() => {
     setCall(null); dismissed.current.clear();
     if (!userId || !['patient', 'doctor', 'operator'].includes(role || '')) { setCall(null); return; }
@@ -54,6 +58,23 @@ export function IncomingVideoCall() {
     } catch (err) { setError(err instanceof Error ? err.message : 'Apelul nu a putut fi preluat.'); }
     finally { setBusy(false); }
   };
+  if (role === 'patient') {
+    return <Dialog open={!!visibleCall} onOpenChange={() => undefined}><DialogContent className="flex max-w-sm flex-col justify-center gap-6 rounded-3xl text-center max-sm:h-dvh max-sm:max-h-dvh max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-0 [&>button:last-child]:hidden" onOpenAutoFocus={(event) => { event.preventDefault(); answerButton.current?.focus(); }} onEscapeKeyDown={(event) => event.preventDefault()} onPointerDownOutside={(event) => event.preventDefault()}>
+      <DialogHeader className="items-center sm:text-center">
+        <span className="my-3 grid h-24 w-24 place-items-center rounded-full bg-primary/10 text-2xl font-semibold text-primary motion-safe:animate-pulse">{initialsOf(visibleCall?.caller_name ?? '')}</span>
+        <DialogTitle className="text-2xl">{visibleCall?.caller_name} te sună</DialogTitle>
+        <DialogDescription>Consultație video{visibleCall?.patient_name ? ` pentru ${visibleCall.patient_name}` : ''}</DialogDescription>
+      </DialogHeader>
+      {!enabled && <Button variant="outline" onClick={() => void enable()}><Volume2 className="mr-2 h-4 w-4" />Activează sunetul apelului</Button>}
+      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      <div className="grid grid-cols-2 gap-3">
+        <Button variant="outline" className="h-14 border-red-200 text-red-700" disabled={busy} onClick={() => void respond(false)}><PhoneOff className="mr-2 h-5 w-5" />Respinge</Button>
+        <Button ref={answerButton} className="h-14 bg-emerald-600 text-white hover:bg-emerald-700" disabled={busy} onClick={() => void respond(true)}><Phone className="mr-2 h-5 w-5" />{busy ? 'Se preia…' : 'Răspunde'}</Button>
+      </div>
+      <p className="text-xs text-slate-500">Dacă respingi, medicul te poate suna din nou. Camera și microfonul pornesc oprite.</p>
+    </DialogContent></Dialog>;
+  }
+
   return <Dialog open={!!call} onOpenChange={() => undefined}><DialogContent className="max-w-sm rounded-3xl text-center [&>button:last-child]:hidden" onOpenAutoFocus={(event) => { event.preventDefault(); answerButton.current?.focus(); }} onEscapeKeyDown={(event) => event.preventDefault()} onPointerDownOutside={(event) => event.preventDefault()}>
     <DialogHeader className="items-center sm:text-center"><span className="my-3 grid h-20 w-20 place-items-center rounded-full bg-emerald-100 text-emerald-700 motion-safe:animate-pulse"><Phone className="h-9 w-9" /></span><DialogTitle>Apel video primit</DialogTitle><DialogDescription><strong className="block text-lg text-slate-900">{call?.caller_name}</strong><span className="mt-1 block">{call?.patient_name ? `Pentru pacientul ${call.patient_name}` : 'Consultație medicală'}</span></DialogDescription></DialogHeader>
     <p className="text-sm text-slate-600">Apasă „Răspunde” pentru a intra. Camera și microfonul vor fi oprite; le poți porni din apel.</p>
@@ -61,4 +82,8 @@ export function IncomingVideoCall() {
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
     <div className="grid grid-cols-2 gap-3"><Button variant="outline" className="h-14 border-red-200 text-red-700" disabled={busy} onClick={() => void respond(false)}><PhoneOff className="mr-2 h-5 w-5" />Refuză</Button><Button ref={answerButton} className="h-14 bg-emerald-600 text-white hover:bg-emerald-700 motion-safe:animate-pulse" disabled={busy} onClick={() => void respond(true)}><Phone className="mr-2 h-5 w-5" />{busy ? 'Se preia…' : 'Răspunde'}</Button></div>
   </DialogContent></Dialog>;
+}
+
+function initialsOf(name: string): string {
+  return name.replace(/^dr\.?\s*/i, '').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('');
 }

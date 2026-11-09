@@ -1,5 +1,5 @@
-import { ChatView } from '../shared/ChatView';
+import { PatientChatView } from './PatientChatView';
 
 export function ChatPage() {
-  return <ChatView emptyTitle="Nu ai conversații încă" />;
+  return <PatientChatView />;
 }

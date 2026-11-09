@@ -173,7 +173,7 @@ function ConsultationCard({ request, accepting, onAcceptProposal, cancelling, on
             {accepting ? 'Se confirmă…' : 'Acceptă ora propusă'}
           </Button>
         )}
-        {request.status === 'accepted' && <ConsultationVideoButton requestId={request.id} />}
+        {request.status === 'accepted' && <ConsultationVideoButton requestId={request.id} label="Intră în apel" onlyWhenStarted />}
         {!closed && (
           <Button asChild size="sm" variant="outline">
             <Link to={`/patient/chat?request=${request.id}`}><MessageSquare className="h-4 w-4" />Mesaje</Link>

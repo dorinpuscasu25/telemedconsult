@@ -29,6 +29,7 @@ import { PartnersPage as PublicPartnersPage } from './pages/public/PartnersPage'
 import { PatientHome } from './pages/patient/PatientHome';
 import { StartWizardPage } from './pages/patient/StartWizardPage';
 import { PatientRecordPage } from './pages/patient/PatientRecordPage';
+import { PatientCallProvider } from './contexts/PatientCallContext';
 import { DoctorHome } from './pages/doctor/DoctorHome';
 import { OperatorHome } from './pages/operator/OperatorHome';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
@@ -324,10 +325,12 @@ export function App() {
         <FeatureFlagsProvider>
           <SiteContentProvider>
             <DialogProvider>
-              <IncomingVideoCall />
-              <ValidationFeedback />
-              <Toaster position="top-center" richColors closeButton />
-              <AppRoutes />
+              <PatientCallProvider>
+                <IncomingVideoCall />
+                <ValidationFeedback />
+                <Toaster position="top-center" richColors closeButton />
+                <AppRoutes />
+              </PatientCallProvider>
             </DialogProvider>
           </SiteContentProvider>
         </FeatureFlagsProvider>

@@ -5,6 +5,7 @@ import { Link, useLocation, useParams } from 'react-router-dom';
 import type { LocalUserChoices } from '@livekit/components-react';
 import { ArrowLeft, Video, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { usePatientCall } from '../../contexts/PatientCallContext';
 import { apiRequest, type ApiError } from '../../lib/api';
 import { ConsultationChatNavigation } from '../../components/ConsultationChatNavigation';
 import { Button } from '../../components/ui/button';
@@ -27,6 +28,10 @@ export function VideoConsultationPage() {
   const joiningRef = useRef(false);
   const attempt = useRef(0);
   const answered = useRef<number | null>(null);
+  const patientCall = usePatientCall();
+  const isPatient = role === 'patient';
+  const patientInThisCall = isPatient && patientCall.session?.requestId === String(requestId);
+  const [durationMinutes, setDurationMinutes] = useState(10);
   const onDeviceError = useCallback(() => setError('Permite accesul la cameră și microfon. Poți intra și cu acestea oprite.'), []);
   const onDisconnected = useCallback(() => {
     if (connection?.attemptId !== attempt.current) return;
@@ -75,6 +80,18 @@ export function VideoConsultationPage() {
     return () => { cancelled = true; attempt.current += 1; window.clearInterval(interval); };
   }, [requestId]);
 
+  // Durata consultației video a medicului, pentru timerul apelului.
+  const doctorId = status?.consultation?.participants.find((person) => person.role === 'doctor')?.id;
+  useEffect(() => {
+    if (!isPatient || !doctorId) return;
+    apiRequest<{ data: Array<{ id: string | number; video_duration_minutes?: number | null }> }>('/catalog/doctors', { auth: false })
+      .then((response) => {
+        const minutes = response.data.find((item) => Number(item.id) === Number(doctorId))?.video_duration_minutes;
+        if (minutes) setDurationMinutes(minutes);
+      })
+      .catch(() => undefined);
+  }, [isPatient, doctorId]);
+
   const join = async (choices: LocalUserChoices) => {
     if (joiningRef.current) return;
     joiningRef.current = true;
@@ -92,7 +109,20 @@ export function VideoConsultationPage() {
       } else if (!location.state?.answerCallId) {
         try { await inviteVideoCall(requestId || ''); } catch { setNotice('Ai intrat în pagina apelului, dar invitația nu a fost trimisă. Folosește „Sună prin video” pentru a încerca din nou.'); }
       }
-      if (attempt.current === currentAttempt) setConnection({ ...token, choices: { ...choices, username: token.participant.name }, attemptId: currentAttempt });
+      if (attempt.current !== currentAttempt) return;
+      if (isPatient) {
+        // Pacientul: apelul rămâne deschis între pagini (ecran întreg sau minimizat).
+        const doctor = status?.consultation?.participants.find((person) => person.role === 'doctor');
+        patientCall.start({
+          requestId: String(requestId),
+          connection: { ...token, choices: { ...choices, username: token.participant.name } },
+          doctorName: doctor?.name ?? 'Medicul',
+          patientName: status?.consultation?.patient_profile?.display_name ?? null,
+          durationMinutes
+        });
+        return;
+      }
+      setConnection({ ...token, choices: { ...choices, username: token.participant.name }, attemptId: currentAttempt });
     } catch (err) {
       if (attempt.current === currentAttempt) setError(err instanceof Error ? err.message : 'Nu am putut deschide apelul.');
     } finally { if (attempt.current === currentAttempt) { setJoining(false); joiningRef.current = false; } }
@@ -118,7 +148,7 @@ export function VideoConsultationPage() {
     {status?.consultation && <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
       {status.consultation.patient_profile && <strong className="w-full text-slate-900">Pacient: {status.consultation.patient_profile.display_name} · {status.consultation.patient_profile.patient_code}</strong>}
       {status.consultation.conversation_id && <Link className="font-medium text-primary underline" to={`/${role}/chat?request=${requestId}`}>Deschide chatul consultației</Link>}
-      {status.consultation.patient_profile && role === 'patient' && <Link className="font-medium text-primary underline" to={`/patient/profile?patient_profile=${status.consultation.patient_profile.id}&section=consultations&request=${requestId}`}>Fișa pacientului</Link>}
+      {status.consultation.patient_profile && role === 'patient' && <Link className="font-medium text-primary underline" to={`/patient/patients/${status.consultation.patient_profile.id}?tab=consultatii&request=${requestId}`}>Fișa pacientului</Link>}
       {role === 'doctor' && <Link className="font-medium text-primary underline" to={`/doctor/consultations?request=${requestId}&chart=1`}>Fișa pacientului</Link>}
       {status.consultation.participants.map((person) => <span key={person.id} className="min-w-0 break-words"><span className="text-slate-400">{person.role_label}: </span><strong className="font-semibold text-slate-900">{person.name}</strong></span>)}
       {status.consultation.specialty && <span>{status.consultation.specialty}</span>}
@@ -132,6 +162,7 @@ export function VideoConsultationPage() {
       {!status ? <p className="p-12 text-center text-slate-500">Se verifică disponibilitatea apelului...</p>
         : !status.available ? <div className="space-y-4 p-6 sm:p-12 text-center"><h2 className="text-xl font-semibold">{status.status === 'completed' ? 'Consultația a fost finalizată' : status.status === 'cancelled' ? 'Consultația a fost anulată' : 'Apelul nu este disponibil'}</h2><p className="text-slate-500">{status.status === 'completed' ? 'Poți consulta istoricul și recomandările în platformă.' : 'Consultația trebuie să fie acceptată și activă pentru a intra în apel.'}</p><Button asChild variant="outline"><Link to={returnTo}>Înapoi</Link></Button></div>
         : !status.configured ? <p className="p-12 text-center text-slate-600">Apelurile video nu sunt încă configurate. Contactează administratorul.</p>
+        : patientInThisCall ? <div className="space-y-4 p-6 text-center sm:p-12"><h2 className="text-xl font-semibold">Ești în apel</h2><p className="text-slate-500">Apelul continuă pe orice pagină, minimizat în colțul ecranului.</p><Button onClick={() => patientCall.setExpanded(true)}>Revino în apel</Button></div>
         : <Suspense fallback={<p className="p-12 text-center text-slate-500">Se încarcă interfața video...</p>}>
           {status.participant && status.consultation && <VideoCallPanel connection={connection} joining={joining} onJoin={join} participant={status.participant} context={status.consultation} rejoining={rejoining}
             onDisconnected={onDisconnected} onConnectionError={onConnectionError} onDeviceError={onDeviceError} />
