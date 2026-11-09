@@ -52,6 +52,7 @@ Route::prefix('v1')->group(function () {
     Route::get('/catalog/specialties', [CatalogController::class, 'specialties']);
     Route::get('/catalog/doctors', [CatalogController::class, 'doctors']);
     Route::get('/catalog/doctors/{doctor}/reviews', [PatientEngagementController::class, 'doctorReviews']);
+    Route::get('/catalog/doctors/{doctor}/slots', [CatalogController::class, 'doctorSlots']);
     Route::post('/catalog/doctors/{doctor}/view', [PatientEngagementController::class, 'storeDoctorProfileView']);
     Route::get('/catalog/operators', [CatalogController::class, 'operators']);
     Route::get('/catalog/pricing', [CatalogController::class, 'pricing']);

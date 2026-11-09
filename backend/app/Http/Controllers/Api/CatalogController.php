@@ -13,9 +13,12 @@ use App\Models\Partner;
 use App\Models\PlatformSetting;
 use App\Models\Region;
 use App\Models\Specialty;
+use App\Models\User;
+use App\Services\DoctorSchedule;
 use App\Services\FeatureFlags;
 use App\Services\ObjectiveDataSchema;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class CatalogController extends Controller
 {
@@ -243,5 +246,16 @@ class CatalogController extends Controller
         $setting = PlatformSetting::where('key', $key)->first();
 
         return (int) ($setting?->value ?? $default);
+    }
+
+    /**
+     * Orele libere ale unui medic pe următoarele zile (implicit 7), după programul lui.
+     */
+    public function doctorSlots(Request $request, User $doctor): JsonResponse
+    {
+        abort_unless($doctor->doctorProfile()->where('is_approved', true)->exists(), 404);
+        $days = min(14, max(1, $request->integer('days', 7)));
+
+        return response()->json(app(DoctorSchedule::class)->freeSlots($doctor, $days));
     }
 }

@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { toast } from 'sonner';
 import { Award, Check, CheckCircle2, ChevronLeft, ChevronRight, Home, Lock, Search, Star, Stethoscope, UserRound, Video } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
@@ -16,13 +15,12 @@ import {
 import { Input } from '../../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '../../components/ui/select';
 import { Label } from '../../components/ui/label';
-import { Switch } from '../../components/ui/switch';
 import { ListSkeleton } from '../../components/ui/skeleton';
 import { cn } from '../../components/ui/utils';
 import { PageHeader } from '../../components/app/PageHeader';
 import { EmptyState } from '../../components/app/EmptyState';
 import { ConsultationComplaintFields } from '../../components/ConsultationComplaintFields';
-import { money } from '../../lib/format';
+import { BonusSlider, PrepareDoctorCard, ShortfallNotice, SlotPicker, longDateTime, mdl } from '../../components/patient/BookingParts';
 import { apiRequest } from '../../lib/api';
 import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 
@@ -74,6 +72,7 @@ interface CostPreview {
     max_points_percent: number;
     promo_max_payment_percent: number;
   };
+  wallet?: { balance: number; points_balance: number; promo_balance: number; shortfall: number };
   cost?: {
     doctor_base: number;
     investigations: CostLine[];
@@ -95,11 +94,28 @@ interface PatientProfile {
   patient_code?: string | null;
   region?: string | null;
   locality?: string | null;
+  region_id?: number | null;
+  locality_id?: number | null;
+  address?: string | null;
+  has_complete_address?: boolean;
   status?: string | null;
   active_until?: string | null;
   can_request_consultation?: boolean;
   request_unavailable_reason?: string | null;
 }
+
+type BookingDraft = {
+  doctorId: string;
+  patientProfileId: string;
+  kind: 'with_exam' | 'video';
+  symptoms: string;
+  illnessHistory: string;
+  scheduledAt: string;
+  selectedOptionalIds: number[];
+  pointsPercent: number;
+};
+
+const DRAFT_KEY = 'booking_draft';
 
 interface DoctorReview {
   id: number;
@@ -110,7 +126,7 @@ interface DoctorReview {
 
 export function DoctorsList() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const requestedProfileId = searchParams.get('patient_profile');
   const { isEnabled, isLoading: featuresLoading } = useFeatureFlags();
   const withExamEnabled = !featuresLoading && isEnabled('with_exam_consultations') && isEnabled('operators');
@@ -141,6 +157,16 @@ export function DoctorsList() {
   const [pointsPercent, setPointsPercent] = useState(0);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [isLoading, setIsLoading] = useState(true);
+  const [profilesLoaded, setProfilesLoaded] = useState(false);
+  const [account, setAccount] = useState<{ name: string; phone: string }>({ name: '', phone: '' });
+  const [street, setStreet] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [savingAddress, setSavingAddress] = useState(false);
+  const [previewVersion, setPreviewVersion] = useState(0);
+  const [isToppingUp, setIsToppingUp] = useState(false);
+  const [autoSubmit, setAutoSubmit] = useState(false);
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const resumeHandled = useRef(false);
 
   useEffect(() => {
     apiRequest<{data: Doctor[]}>('/catalog/doctors', { auth: false })
@@ -150,16 +176,24 @@ export function DoctorsList() {
     apiRequest<{data: Specialty[]}>('/catalog/specialties', { auth: false })
       .then((response) => setSpecialties(response.data ?? []))
       .catch(() => setSpecialties([]));
-    apiRequest<{patient_profiles: PatientProfile[]}>('/patient/profile')
-      .then((response) => {
-        const profiles = response.patient_profiles ?? [];
+    loadProfiles()
+      .then((profiles) => {
         const requestableProfiles = profiles.filter(canRequestConsultation);
-        setPatientProfiles(profiles);
         const requestedProfile = profiles.find((profile) => String(profile.id) === requestedProfileId && profile.can_request_consultation);
         setPatientProfileId(requestedProfile ? String(requestedProfile.id) : requestableProfiles[0]?.id ? String(requestableProfiles[0].id) : '');
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => setProfilesLoaded(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedProfileId]);
+
+  const loadProfiles = useCallback(async () => {
+    const response = await apiRequest<{ patient_profiles: PatientProfile[]; user?: { name?: string; phone?: string | null } }>('/patient/profile');
+    const profiles = response.patient_profiles ?? [];
+    setPatientProfiles(profiles);
+    setAccount({ name: response.user?.name ?? '', phone: response.user?.phone ?? '' });
+    return profiles;
+  }, []);
 
   useEffect(() => {
     if (!detailDoctor || !isDetailOpen) return;
@@ -204,6 +238,10 @@ export function DoctorsList() {
     setPatientProfileId(requested ? String(requested.id) : requestableProfiles[0]?.id ? String(requestableProfiles[0].id) : '');
     setStep(1);
     setPendingReview(null);
+    setConversationId(null);
+    setAutoSubmit(false);
+    setStreet('');
+    setContactPhone(account.phone);
     setIsRequestOpen(true);
     // Evaluarea restantă blochează cererea: o arătăm de la început, nu la trimitere.
     apiRequest<{ data: Array<{ id: string; doctor_name?: string | null }> }>('/patient/reviewable-requests')
@@ -235,15 +273,19 @@ export function DoctorsList() {
       .finally(() => { if (!cancelled) setPreviewLoading(false); });
 
     return () => { cancelled = true; };
-  }, [isRequestOpen, selectedDoctor, patientProfileId, effectiveKind, selectedOptionalIds, pointsPercent]);
+  }, [isRequestOpen, selectedDoctor, patientProfileId, effectiveKind, selectedOptionalIds, pointsPercent, previewVersion]);
 
   const toggleOptional = (id: number) => {
     setSelectedOptionalIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   };
 
-  const handleRequest = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const handleRequest = async (event?: React.FormEvent) => {
+    event?.preventDefault();
     if (!selectedDoctor || !effectiveKind) return;
+    if ((preview?.wallet?.shortfall ?? 0) > 0) {
+      await topUpAndResume();
+      return;
+    }
     if (!patientProfileId) {
       setError('Alege un profil de pacient activ înainte de confirmare.');
       return;
@@ -268,16 +310,56 @@ export function DoctorsList() {
         })
       });
 
-      if (response.conversation?.id) {
-        toast.success(`Cererea a fost trimisă către ${selectedDoctor.name}.`, { description: 'Te anunțăm când medicul confirmă ora.' });
-        navigate(`/patient/chat?conversation=${response.conversation.id}`);
-        return;
-      }
+      clearDraft();
+      setConversationId(response.conversation?.id ?? null);
       setIsSuccess(true);
     } catch (err) {
+      if (apiErrorCode(err) === 'insufficient_wallet_balance') setPreviewVersion((version) => version + 1);
       setError(err instanceof Error ? err.message : 'Nu am putut trimite solicitarea.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Banii lipsă se alimentează din programare; după plată, MAIB întoarce aici și cererea pleacă singură.
+  const topUpAndResume = async () => {
+    const shortfall = preview?.wallet?.shortfall ?? 0;
+    if (!selectedDoctor || !effectiveKind || shortfall <= 0) return;
+    setError('');
+    setIsToppingUp(true);
+    try {
+      saveDraft({ doctorId: String(selectedDoctor.id), patientProfileId, kind: effectiveKind, symptoms, illnessHistory, scheduledAt, selectedOptionalIds, pointsPercent });
+      const response = await apiRequest<{ pay?: { payUrl?: string } }>('/wallet/top-up', {
+        method: 'POST',
+        body: JSON.stringify({ amount: Math.max(10, Math.ceil(shortfall)), return_to: '/patient/doctors?resume=booking' })
+      });
+      if (!response.pay?.payUrl) throw new Error('Nu am primit linkul de plată.');
+      window.location.href = response.pay.payUrl;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nu am putut iniția plata.');
+      setIsToppingUp(false);
+    }
+  };
+
+  // Strada și telefonul se cer doar pentru examinarea la domiciliu și se salvează în profil.
+  const saveAddressAndContinue = async () => {
+    if (!selectedProfile) return;
+    if (!street.trim()) { setError('Completează strada și numărul.'); return; }
+    if (!contactPhone.trim()) { setError('Completează telefonul de contact.'); return; }
+    setError('');
+    setSavingAddress(true);
+    try {
+      await apiRequest(`/patient/profiles/${selectedProfile.id}`, { method: 'PUT', body: JSON.stringify({ address: street.trim() }) });
+      if (contactPhone.trim() !== account.phone) {
+        await apiRequest('/patient/profile', { method: 'PUT', body: JSON.stringify({ name: account.name, phone: contactPhone.trim() }) });
+      }
+      await loadProfiles();
+      setPreviewVersion((version) => version + 1);
+      setStep(2);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nu am putut salva adresa.');
+    } finally {
+      setSavingAddress(false);
     }
   };
 
@@ -294,13 +376,60 @@ export function DoctorsList() {
   const fromWizard = searchParams.get('from') === 'start';
   const optionalInvestigations = selectedDoctor?.investigation_requirements?.optional ?? [];
   const canContinueStep1 = Boolean(patientProfileId && effectiveKind);
+  const needsAddress = effectiveKind === 'with_exam' && Boolean(selectedProfile) && selectedProfile?.has_complete_address === false;
+  const missingRegion = needsAddress && (!selectedProfile?.region_id || !selectedProfile?.locality_id);
+  const shortfall = preview?.wallet?.shortfall ?? 0;
   const canContinueStep2 = Boolean(symptoms.trim() && scheduledAt);
   const maxPointsPercent = preview?.payment?.max_points_percent ?? 100;
+
+  // Întoarcerea de la MAIB: redeschide programarea la confirmare, cu datele completate.
+  useEffect(() => {
+    if (resumeHandled.current || isLoading || !profilesLoaded) return;
+    const resume = searchParams.get('resume') === 'booking';
+    const doctorParam = searchParams.get('doctor');
+    if (!resume && !doctorParam) return;
+    resumeHandled.current = true;
+    const nextParams = new URLSearchParams(searchParams);
+    ['resume', 'payment', 'doctor'].forEach((key) => nextParams.delete(key));
+    setSearchParams(nextParams, { replace: true });
+
+    if (!resume) {
+      const doctor = doctors.find((item) => String(item.id) === doctorParam);
+      if (doctor) openRequestDialog(doctor, videoEnabled ? 'video' : 'with_exam');
+      return;
+    }
+
+    const draft = readDraft();
+    const doctor = draft ? doctors.find((item) => String(item.id) === draft.doctorId) : undefined;
+    if (!draft || !doctor) return;
+    const payment = searchParams.get('payment');
+    openRequestDialog(doctor, draft.kind);
+    setPatientProfileId(draft.patientProfileId);
+    setSymptoms(draft.symptoms);
+    setIllnessHistory(draft.illnessHistory);
+    setScheduledAt(draft.scheduledAt);
+    setSelectedOptionalIds(draft.selectedOptionalIds);
+    setPointsPercent(draft.pointsPercent);
+    setStep(3);
+    if (payment === 'ok') setAutoSubmit(true);
+    else if (payment === 'fail') setError('Plata nu a trecut. De pe card nu s-a retras nimic. Poți încerca din nou.');
+    else if (payment === 'pending') setError('Banca încă confirmă plata. Apasă din nou peste câteva secunde.');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, profilesLoaded, doctors, searchParams]);
+
+  useEffect(() => {
+    if (!autoSubmit || previewLoading || !preview || pendingReview) return;
+    setAutoSubmit(false);
+    if (preview.eligible && (preview.wallet?.shortfall ?? 0) === 0) void handleRequest();
+    else if ((preview.wallet?.shortfall ?? 0) > 0) setError('Banca încă confirmă plata. Apasă din nou peste câteva secunde.');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSubmit, preview, previewLoading, pendingReview]);
 
   const goNext = () => {
     setError('');
     if (pendingReview) { setError('Evaluează mai întâi consultația anterioară.'); return; }
     if (step === 1 && !canContinueStep1) { setError('Alege pacientul și tipul consultației.'); return; }
+    if (step === 1 && needsAddress) { void saveAddressAndContinue(); return; }
     if (step === 2 && !canContinueStep2) { setError('Descrie acuzele și alege data și ora dorită.'); return; }
     setStep((current) => (current < 3 ? (current + 1) as 1 | 2 | 3 : current));
   };
@@ -451,12 +580,12 @@ export function DoctorsList() {
 
       {/* Programarea, în trei pași */}
       <Dialog open={isRequestOpen} onOpenChange={(open) => !open && !isSubmitting && closeRequest()}>
-        <DialogContent className="flex max-h-[min(92dvh,860px)] flex-col gap-0 p-0 sm:max-w-[600px] sm:p-0">
+        <DialogContent className="flex flex-col gap-0 p-0 max-sm:h-dvh max-sm:max-h-dvh max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-0 sm:max-h-[min(92dvh,860px)] sm:max-w-[600px] sm:p-0">
           {selectedDoctor && !isSuccess && (
             <form onSubmit={(event) => { if (step < 3) { event.preventDefault(); goNext(); return; } void handleRequest(event); }} className="flex min-h-0 flex-1 flex-col">
               <DialogHeader className="shrink-0 border-b border-slate-100 px-5 pb-4 pt-5 sm:px-6">
-                <DialogTitle>Programează o consultație</DialogTitle>
-                <DialogDescription>{selectedDoctor.name} · {selectedDoctor.specialty || 'Medic'}</DialogDescription>
+                <DialogTitle>{['Pacient și tip', 'Ce te deranjează și când', 'Confirmă cererea'][step - 1]}</DialogTitle>
+                <DialogDescription>Pasul {step} din 3 · {selectedDoctor.name}</DialogDescription>
                 <Stepper step={step} />
               </DialogHeader>
 
@@ -515,17 +644,35 @@ export function DoctorsList() {
                         </div>
                       )}
                     </fieldset>
+
+                    {needsAddress && selectedProfile && (
+                      <fieldset className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <legend className="sr-only">Adresa pentru operator</legend>
+                        <p className="text-sm font-semibold text-slate-900">Unde vine operatorul?{selectedProfile.locality ? <span className="font-normal text-slate-500"> · {[selectedProfile.locality, selectedProfile.region].filter(Boolean).join(', ')}</span> : null}</p>
+                        {missingRegion ? (
+                          <p className="text-sm text-amber-800">Profilul nu are raionul și localitatea. <Link to={`/patient/profile?patient_profile=${selectedProfile.id}`} className="font-semibold underline">Completează-le în fișă</Link>, apoi revino.</p>
+                        ) : (
+                          <>
+                            <div className="space-y-2">
+                              <Label htmlFor="booking-street">Strada și numărul</Label>
+                              <Input id="booking-street" autoComplete="street-address" placeholder="str. Cartușa 12, ap. 4" value={street} onChange={(event) => setStreet(event.target.value)} />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="booking-phone">Telefon</Label>
+                              <Input id="booking-phone" type="tel" autoComplete="tel" placeholder="+373 __ ___ ___" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} />
+                              <p className="text-xs text-slate-500">Se salvează în profil, ca să nu le completezi data viitoare.</p>
+                            </div>
+                          </>
+                        )}
+                      </fieldset>
+                    )}
                   </>
                 )}
 
                 {step === 2 && (
                   <>
                     <ConsultationComplaintFields history={illnessHistory} symptoms={symptoms} onHistoryChange={setIllnessHistory} onSymptomsChange={setSymptoms} />
-                    <div className="space-y-2">
-                      <Label htmlFor="consultation-requested-time">Data și ora dorită</Label>
-                      <Input id="consultation-requested-time" type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} required />
-                      <p className="text-xs text-slate-500">Medicul confirmă ora sau îți propune alta. Consultația începe când medicul o deschide la ora stabilită.</p>
-                    </div>
+                    <SlotPicker doctorId={String(selectedDoctor.id)} value={scheduledAt} onChange={setScheduledAt} />
                     {effectiveKind === 'with_exam' && optionalInvestigations.length > 0 && (
                       <fieldset>
                         <legend className="mb-2 text-sm font-semibold text-slate-900">Investigații opționale</legend>
@@ -548,7 +695,7 @@ export function DoctorsList() {
                     <dl className="divide-y divide-slate-100 rounded-xl border border-slate-200 text-sm">
                       <SummaryRow label="Pacient" value={selectedProfile ? patientProfileName(selectedProfile) : '—'} onEdit={() => setStep(1)} />
                       <SummaryRow label="Tip" value={effectiveKind === 'with_exam' ? 'Cu examinare la domiciliu' : 'Consultație video'} onEdit={() => setStep(1)} />
-                      <SummaryRow label="Data dorită" value={scheduledAt ? new Date(scheduledAt).toLocaleString('ro-RO', { dateStyle: 'medium', timeStyle: 'short' }) : '—'} onEdit={() => setStep(2)} />
+                      <SummaryRow label="Data dorită" value={scheduledAt ? longDateTime(scheduledAt) : '—'} onEdit={() => setStep(2)} />
                       <SummaryRow label="Acuze" value={<span className="line-clamp-2">{symptoms}</span>} onEdit={() => setStep(2)} />
                     </dl>
 
@@ -572,22 +719,8 @@ export function DoctorsList() {
                       {!previewLoading && preview && !preview.eligible && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-amber-900">{preview.message || 'Verifică datele solicitării înainte de confirmare.'}</p>}
                     </section>
 
-                    {selectedDoctor.accepts_points && (
-                      <section className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-sm">
-                        <label className="flex items-center justify-between gap-4">
-                          <span>
-                            <span className="block font-semibold text-amber-950">Folosește bonusurile</span>
-                            <span className="block text-xs text-amber-800">Până la {maxPointsPercent}% din consultație, în limita soldului.</span>
-                          </span>
-                          <Switch checked={pointsPercent > 0} onCheckedChange={(checked: boolean) => setPointsPercent(checked ? maxPointsPercent : 0)} aria-label="Folosește bonusurile" />
-                        </label>
-                        {pointsPercent > 0 && (
-                          <label className="mt-3 flex items-center justify-between gap-3 border-t border-amber-200 pt-3 text-amber-900">
-                            <span>Procent achitat din bonusuri</span>
-                            <span className="flex items-center gap-1"><input aria-label="Procent din bonusuri" type="number" min={0} max={maxPointsPercent} value={pointsPercent} onChange={(event) => setPointsPercent(Math.min(maxPointsPercent, Math.max(0, Number(event.target.value) || 0)))} className="w-16 rounded-lg border border-amber-300 bg-white px-2 py-1 text-right" />%</span>
-                          </label>
-                        )}
-                      </section>
+                    {selectedDoctor.accepts_points && preview?.eligible && preview.payment && (
+                      <BonusSlider total={preview.payment.total} maxPercent={maxPointsPercent} pointsBalance={preview.wallet?.points_balance ?? 0} percent={pointsPercent} onPercentChange={setPointsPercent} />
                     )}
 
                     {preview?.eligible && preview.payment && (
@@ -596,9 +729,11 @@ export function DoctorsList() {
                         <Row label="Din portofelul de bază" value={preview.payment.real_amount} />
                         {preview.payment.points_amount > 0 && <Row label="Din bonusuri" value={preview.payment.points_amount} />}
                         {preview.payment.promo_amount > 0 && <><Row label="Bonus promoțional (automat)" value={preview.payment.promo_amount} /><p className="text-xs text-blue-800">Maximum 50% din tariful medicului eligibil. Examinările și deplasarea se achită separat.</p></>}
-                        <p className="pt-1 text-xs text-blue-800">Suma se rezervă acum și se achită doar după consultație. Dacă medicul refuză, banii revin în portofel.</p>
+                        <p className="pt-1 text-xs text-blue-800">Rezervăm suma din portofel până confirmă medicul și o plătim doar după consultație. Dacă medicul refuză, banii revin în portofel.{preview.wallet && shortfall === 0 ? ` Rămân ${mdl(Math.max(0, preview.wallet.balance - preview.payment.real_amount))} MDL.` : ''}</p>
                       </section>
                     )}
+
+                    {preview?.eligible && preview.wallet && shortfall > 0 && <ShortfallNotice balance={preview.wallet.balance} shortfall={shortfall} />}
                   </>
                 )}
               </div>
@@ -610,23 +745,40 @@ export function DoctorsList() {
                   <Button type="button" variant="ghost" onClick={closeRequest}>Renunță</Button>
                 )}
                 {step < 3 ? (
-                  <Button type="submit" disabled={step === 1 ? !canContinueStep1 : !canContinueStep2}>Continuă<ChevronRight className="h-4 w-4" /></Button>
+                  <Button type="submit" disabled={step === 1 ? !canContinueStep1 || savingAddress || missingRegion : !canContinueStep2}>{savingAddress ? 'Se salvează…' : 'Continuă'}<ChevronRight className="h-4 w-4" /></Button>
                 ) : (
-                  <Button type="submit" disabled={isSubmitting || !effectiveKind || !patientProfileId || previewLoading || !preview?.eligible}>
-                    {isSubmitting ? 'Se trimite…' : preview?.payment ? `Confirmă și rezervă ${money(preview.payment.real_amount)} MDL` : 'Confirmă cererea'}
+                  <Button type="submit" disabled={isSubmitting || isToppingUp || autoSubmit || !effectiveKind || !patientProfileId || previewLoading || !preview?.eligible}>
+                    {isSubmitting || autoSubmit ? 'Se trimite…' : isToppingUp ? 'Se deschide plata…' : shortfall > 0 ? `Alimentează ${mdl(Math.ceil(shortfall))} MDL și trimite cererea` : 'Trimite cererea'}
                   </Button>
                 )}
               </DialogFooter>
             </form>
           )}
           {selectedDoctor && isSuccess && (
-            <div className="px-6 py-10 text-center">
-              <span className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full bg-emerald-50 text-emerald-600"><CheckCircle2 className="h-9 w-9" /></span>
-              <h2 className="text-2xl font-bold text-slate-950">Cerere trimisă</h2>
-              <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500">{selectedDoctor.name} confirmă ora sau îți propune alta. Te anunțăm imediat ce răspunde.</p>
-              <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
-                <Button variant="outline" onClick={() => navigate('/patient/consultations')}>Vezi consultațiile mele</Button>
-                <Button onClick={() => navigate('/patient/chat')}>Deschide mesajele</Button>
+            <div className="space-y-5 overflow-y-auto px-5 py-8 sm:px-6">
+              <div className="text-center">
+                <span className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-emerald-50 text-emerald-600"><CheckCircle2 className="h-8 w-8" /></span>
+                <h2 className="text-2xl font-bold text-slate-950">Cererea a fost trimisă</h2>
+                <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">Te anunțăm când {selectedDoctor.name} confirmă.</p>
+              </div>
+              <div className="flex items-center gap-3 rounded-xl border border-slate-200 p-4 text-sm">
+                <Avatar className="h-11 w-11"><AvatarFallback className="bg-primary/10 font-semibold text-primary">{initialsOf(selectedDoctor.name)}</AvatarFallback></Avatar>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-slate-950">{selectedDoctor.name}</p>
+                  <p className="text-slate-500">{selectedDoctor.specialty || 'Medic'}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-medium text-slate-900">{scheduledAt ? longDateTime(scheduledAt) : 'Cât mai curând'}</p>
+                  <p className="text-slate-500">{effectiveKind === 'with_exam' ? 'Cu examinare' : 'Video'}{selectedProfile?.first_name ? ` · pentru ${selectedProfile.first_name}` : ''}</p>
+                </div>
+              </div>
+              {patientProfileId && <PrepareDoctorCard patientProfileId={patientProfileId} />}
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-between">
+                {isEnabled('telegram_notifications') ? <Button asChild variant="ghost"><Link to="/patient/telegram">Primește notificări pe Telegram</Link></Button> : <span />}
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  {conversationId && <Button variant="outline" onClick={() => navigate(`/patient/chat?conversation=${conversationId}`)}>Deschide mesajele</Button>}
+                  <Button onClick={() => navigate('/patient')}>Mergi la Acasă</Button>
+                </div>
               </div>
             </div>
           )}
@@ -765,4 +917,29 @@ function canRequestConsultation(profile: PatientProfile) {
   if (profile.active_until && new Date(profile.active_until).getTime() <= Date.now()) return false;
 
   return Boolean(profile.first_name && profile.last_name);
+}
+
+function saveDraft(draft: BookingDraft) {
+  try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch { /* fără stocare: programarea se reia de la început */ }
+}
+
+function readDraft(): BookingDraft | null {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    return raw ? (JSON.parse(raw) as BookingDraft) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearDraft() {
+  try { sessionStorage.removeItem(DRAFT_KEY); } catch { /* opțional */ }
+}
+
+function apiErrorCode(err: unknown): string | undefined {
+  if (err && typeof err === 'object' && 'data' in err) {
+    const data = (err as { data?: { code?: unknown } }).data;
+    return typeof data?.code === 'string' ? data.code : undefined;
+  }
+  return undefined;
 }

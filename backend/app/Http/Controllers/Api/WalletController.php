@@ -61,6 +61,8 @@ class WalletController extends Controller
         $validated = $request->validate([
             'amount' => ['required', 'numeric', 'min:10', 'max:50000'],
             'affiliate_code' => ['nullable', 'string', 'max:100'],
+            // Doar căi interne ale pacientului: după plată se revine la programare.
+            'return_to' => ['nullable', 'string', 'max:255', 'regex:#^/patient/[A-Za-z0-9/_\-]*(\?[A-Za-z0-9_\-=&%.]*)?$#'],
         ]);
 
         $user = $request->user();
@@ -76,7 +78,11 @@ class WalletController extends Controller
             'purpose' => 'wallet_top_up',
             'status' => 'pending',
             'provider' => 'maib',
-            'metadata' => ['source' => 'patient_wallet', 'affiliate_code' => $validated['affiliate_code'] ?? null],
+            'metadata' => array_filter([
+                'source' => 'patient_wallet',
+                'affiliate_code' => $validated['affiliate_code'] ?? null,
+                'return_to' => $validated['return_to'] ?? null,
+            ], fn ($value) => $value !== null),
         ]);
 
         $pay = app(MaibCheckout::class)->start($payment, $user, 'Alimentare portofel telemedconsult.md', $request->ip());
@@ -127,7 +133,7 @@ class WalletController extends Controller
             }
         }
 
-        return redirect()->away($this->returnPage($payment).'?payment='.($payment?->fresh()->status === 'paid' ? 'ok' : 'pending'));
+        return redirect()->away($this->returnUrl($payment, $payment?->fresh()->status === 'paid' ? 'ok' : 'pending'));
     }
 
     public function fail(Request $request): RedirectResponse
@@ -139,7 +145,7 @@ class WalletController extends Controller
             $payment->update(['status' => 'failed']);
         }
 
-        return redirect()->away($this->returnPage($payment).'?payment=fail');
+        return redirect()->away($this->returnUrl($payment, 'fail'));
     }
 
     private function markPaymentPaid(Payment $payment): void
@@ -254,13 +260,19 @@ class WalletController extends Controller
     }
 
     /**
-     * Unde se întoarce utilizatorul de la MAIB: asistentul de pornire pentru checkout-ul de pachet, altfel portofelul.
+     * Unde se întoarce utilizatorul de la MAIB: asistentul de pornire pentru checkout-ul de pachet,
+     * pagina cerută la alimentare (`return_to`, validată la creare), altfel portofelul.
      */
-    private function returnPage(?Payment $payment): string
+    private function returnUrl(?Payment $payment, string $status): string
     {
-        $path = filled($payment?->metadata['buy_package_id'] ?? null) ? '/patient/start' : '/patient/wallet';
+        $metadata = $payment?->metadata ?? [];
+        $path = match (true) {
+            filled($metadata['buy_package_id'] ?? null) => '/patient/start',
+            is_string($metadata['return_to'] ?? null) && str_starts_with($metadata['return_to'], '/patient/') => $metadata['return_to'],
+            default => '/patient/wallet',
+        };
 
-        return rtrim((string) config('services.frontend_url'), '/').$path;
+        return rtrim((string) config('services.frontend_url'), '/').$path.(str_contains($path, '?') ? '&' : '?').'payment='.$status;
     }
 
     private function walletFor(User $user, string $type = WalletLedger::REAL): Wallet

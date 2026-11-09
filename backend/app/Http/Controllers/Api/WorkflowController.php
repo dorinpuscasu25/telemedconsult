@@ -22,6 +22,7 @@ use App\Models\WalletTransaction;
 use App\Notifications\AppEventNotification;
 use App\Services\ConsultationCostEstimator;
 use App\Services\ConsultationStateMachine;
+use App\Services\DoctorSchedule;
 use App\Services\FeatureFlags;
 use App\Services\FinancialBreakdown;
 use App\Services\FirstTopupPromotion;
@@ -32,6 +33,7 @@ use App\Services\OperatorAssignmentService;
 use App\Services\PlatformConfig;
 use App\Services\WalletLedger;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -118,10 +120,13 @@ class WorkflowController extends Controller
             $doctor = ! empty($validated['doctor_id']) ? User::with('doctorProfile')->find($validated['doctor_id']) : null;
             $base = $this->priceForRequest([...$validated, 'type' => $kind === 'video' ? 'video' : 'doctor']);
 
+            $payment = app(FirstTopupPromotion::class)->split($request->user()->id, $doctor, $base * 100, $base * 100, $validated['points_percent'] ?? 0);
+
             return response()->json([
                 'eligible' => true,
                 'consultation_kind' => $kind,
-                'payment' => app(FirstTopupPromotion::class)->split($request->user()->id, $doctor, $base * 100, $base * 100, $validated['points_percent'] ?? 0),
+                'payment' => $payment,
+                'wallet' => $this->previewWallet($request->user(), $payment),
                 'cost' => ['doctor_base' => $base, 'investigations' => [], 'investigations_total' => 0, 'travel_fee' => 0, 'total' => $base],
             ]);
         }
@@ -163,8 +168,30 @@ class WorkflowController extends Controller
                 'region' => $operator?->operatorProfile?->region,
             ],
             'cost' => $cost,
-            'payment' => app(FirstTopupPromotion::class)->split($request->user()->id, $doctor, $cost['total'] * 100, $cost['doctor_base'] * 100, $validated['points_percent'] ?? 0),
+            'payment' => $payment = app(FirstTopupPromotion::class)->split($request->user()->id, $doctor, $cost['total'] * 100, $cost['doctor_base'] * 100, $validated['points_percent'] ?? 0),
+            'wallet' => $this->previewWallet($request->user(), $payment),
         ]);
+    }
+
+    /**
+     * Soldurile pacientului și cât îi lipsește din banii reali pentru această cerere.
+     * Doar citire: rezervarea reală se face la `storeRequest`.
+     *
+     * @param  array{real_amount: float|int}  $payment
+     * @return array{balance: float, points_balance: float, promo_balance: float, shortfall: float}
+     */
+    private function previewWallet(User $patient, array $payment): array
+    {
+        $balances = Wallet::where('user_id', $patient->id)->pluck('balance_minor', 'type');
+        $realMinor = (int) ($balances[WalletLedger::REAL] ?? 0);
+        $requiredMinor = (int) round(((float) $payment['real_amount']) * 100);
+
+        return [
+            'balance' => $realMinor / 100,
+            'points_balance' => ((int) ($balances[WalletLedger::POINTS] ?? 0)) / 100,
+            'promo_balance' => ((int) ($balances[WalletLedger::PROMO] ?? 0)) / 100,
+            'shortfall' => max(0, $requiredMinor - $realMinor) / 100,
+        ];
     }
 
     public function storeRequest(Request $request): JsonResponse
@@ -1753,7 +1780,6 @@ class WorkflowController extends Controller
     private function ensureSchedulable(array $validated, ?int $ignoreRequestId = null): void
     {
         $scheduledAt = CarbonImmutable::parse($validated['scheduled_at'])->setTimezone(config('app.timezone', 'UTC'));
-        $localScheduledAt = $scheduledAt->setTimezone('Europe/Chisinau');
         abort_if($scheduledAt->isPast(), 422, 'Alegeți o dată/oră din viitor.');
 
         $providerId = $validated['doctor_id'] ?? $validated['operator_id'] ?? null;
@@ -1765,45 +1791,17 @@ class WorkflowController extends Controller
         // Check the availability of whichever provider was actually resolved above.
         $isDoctor = ! empty($validated['doctor_id']);
 
+        $schedule = app(DoctorSchedule::class);
+
         if ($isDoctor) {
-            abort_unless($provider->doctorProfile?->is_available, 422, 'Medicul nu este disponibil pentru consultații.');
+            $reason = $schedule->unavailableReason($provider, $scheduledAt, $ignoreRequestId);
+            abort_if($reason !== null, 422, $reason ?? '');
 
-            $onVacation = $provider->doctorVacations()
-                ->whereDate('starts_on', '<=', $localScheduledAt->toDateString())
-                ->whereDate('ends_on', '>=', $localScheduledAt->toDateString())
-                ->exists();
-            abort_if($onVacation, 422, 'Medicul este în concediu în această perioadă.');
-
-            // Programul săptămânal e o restricție opțională, nu o condiție de
-            // existență: un medic care nu și-a configurat niciun interval rămâne
-            // programabil oricând. Comutatorul explicit e `is_available`, deja
-            // verificat mai sus — altfel am avea două semnale care se contrazic.
-            $hasSchedule = $provider->doctorAvailabilities()->where('is_active', true)->exists();
-
-            if ($hasSchedule) {
-                $fitsSchedule = $provider->doctorAvailabilities()
-                    ->where('weekday', $localScheduledAt->dayOfWeek)
-                    ->where('is_active', true)
-                    ->whereTime('starts_at', '<=', $localScheduledAt->format('H:i:s'))
-                    ->whereTime('ends_at', '>=', $localScheduledAt->addMinutes(30)->format('H:i:s'))
-                    ->exists();
-
-                abort_unless($fitsSchedule, 422, 'Medicul nu are program disponibil în acest interval.');
-            }
-        } else {
-            abort_unless($provider->operatorProfile?->is_available, 422, 'Operatorul nu este disponibil în acest moment.');
+            return;
         }
 
-        $slotEnd = $scheduledAt->addMinutes(30);
-        $conflict = ConsultationRequest::query()
-            ->when($ignoreRequestId, fn ($query) => $query->where('id', '!=', $ignoreRequestId))
-            ->whereIn('status', ['new', 'accepted', 'rescheduled'])
-            ->where($isDoctor ? 'doctor_id' : 'operator_id', $providerId)
-            ->whereNotNull('scheduled_at')
-            ->whereBetween('scheduled_at', [$scheduledAt->subMinutes(29), $slotEnd->subMinute()])
-            ->exists();
-
-        abort_if($conflict, 422, 'Acest interval este deja ocupat.');
+        abort_unless($provider->operatorProfile?->is_available, 422, 'Operatorul nu este disponibil în acest moment.');
+        abort_if($schedule->hasConflict('operator_id', (int) $providerId, $scheduledAt, $ignoreRequestId), 422, 'Acest interval este deja ocupat.');
     }
 
     public function cancel(Request $request, ConsultationRequest $consultationRequest): JsonResponse
@@ -1909,7 +1907,15 @@ class WorkflowController extends Controller
         $promoWallet = $ledger->locked($patient, WalletLedger::PROMO);
         $realAmount = $this->realAmountForRequest($consultationRequest);
         $pointsAmount = (int) $consultationRequest->points_amount_minor;
-        abort_if($wallet->balance_minor < $realAmount, 422, 'Balanță insuficientă în portofelul de bani reali.');
+        if ($wallet->balance_minor < $realAmount) {
+            throw new HttpResponseException(response()->json([
+                'message' => 'Balanță insuficientă în portofelul de bani reali.',
+                'code' => 'insufficient_wallet_balance',
+                'required_amount' => $realAmount / 100,
+                'current_balance' => $wallet->balance_minor / 100,
+                'missing_amount' => ($realAmount - $wallet->balance_minor) / 100,
+            ], 422));
+        }
         abort_if($pointsWallet->balance_minor < $pointsAmount, 422, 'Nu ai suficiente puncte pentru această plată.');
         abort_if($promoWallet->balance_minor < $consultationRequest->promo_amount_minor, 422, 'Sold promoțional insuficient. Reîncarcă oferta.');
 
