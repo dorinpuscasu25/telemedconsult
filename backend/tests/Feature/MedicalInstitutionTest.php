@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\Consultation;
 use App\Models\ConsultationRequest;
 use App\Models\DoctorProfile;
 use App\Models\InstitutionEarning;
@@ -17,6 +16,7 @@ use App\Notifications\InstitutionInvitationNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
@@ -57,6 +57,26 @@ class MedicalInstitutionTest extends TestCase
             ->assertOk()
             ->assertJsonPath('institution.name', 'Clinica Sănătatea')
             ->assertJsonPath('summary.doctors_count', 0);
+    }
+
+    public function test_full_form_creates_the_institution_and_a_taken_manager_email_says_so(): void
+    {
+        Sanctum::actingAs($this->userWithRole('admin'));
+        $payload = [
+            'name' => 'CLINICA PEDIATRU', 'legal_name' => 'Dios Magico SRL', 'fiscal_code' => '1015600038170',
+            'iban' => 'MD78M02224ASV94046507100', 'bank_name' => 'OTP Bank', 'email' => 'receptieclinicapediatru@gmail.com',
+            'phone' => '060551102', 'address' => 'Republica Moldova, mun. Chișinău, bd. Renașterii Naționale 6, of. 79.',
+            'doctor_share_percent' => 70, 'manager_name' => 'Manager', 'manager_email' => 'receptieclinicapediatru@gmail.com', 'manager_phone' => '060551102',
+        ];
+
+        $this->postJson('/api/v1/admin/institutions', $payload)->assertCreated()->assertJsonPath('institution.managers.0.email', 'receptieclinicapediatru@gmail.com');
+        $this->postJson('/api/v1/admin/institutions', $payload)->assertUnprocessable()
+            ->assertJsonPath('errors.manager_email.0', 'Există deja un cont cu acest email. Alege alt email pentru manager.');
+    }
+
+    public function test_invitation_index_name_fits_mysql_limits(): void
+    {
+        $this->assertTrue(Schema::hasIndex('medical_institution_invitations', 'institution_invitations_status_index'));
     }
 
     public function test_only_institution_managers_reach_the_institution_panel(): void

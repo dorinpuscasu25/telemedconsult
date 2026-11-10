@@ -45,6 +45,8 @@ class AdminInstitutionController extends Controller
             'manager_email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
             'manager_phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber],
             'manager_password' => ['nullable', 'string', 'min:8', 'max:255'],
+        ], [
+            'manager_email.unique' => 'Există deja un cont cu acest email. Alege alt email pentru manager.',
         ]);
 
         $generatedPassword = empty($validated['manager_password']) ? Str::password(12, symbols: false) : null;
@@ -91,6 +93,8 @@ class AdminInstitutionController extends Controller
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
             'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber],
             'password' => ['nullable', 'string', 'min:8', 'max:255'],
+        ], [
+            'email.unique' => 'Există deja un cont cu acest email. Alege alt email pentru manager.',
         ]);
         $generatedPassword = empty($validated['password']) ? Str::password(12, symbols: false) : null;
         $this->createManager($institution, [...$validated, 'password' => $validated['password'] ?? $generatedPassword]);
