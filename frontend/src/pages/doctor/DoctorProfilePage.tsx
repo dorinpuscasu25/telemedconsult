@@ -1,628 +1,557 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { PageHeader } from '../../components/app/PageHeader';
-import { useDialogs } from '../../components/app/DialogProvider';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { CalendarDays, Plus, Trash2, Video } from 'lucide-react';
-import { Button } from '../../components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from '../../components/ui/dialog';
-import { Input } from '../../components/ui/input';
-import { Label } from '../../components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '../../components/ui/select';
-import { Switch } from '../../components/ui/switch';
-import { Textarea } from '../../components/ui/textarea';
-import { DoctorSignature } from '../../components/DoctorSignature';
+import { toast } from 'sonner';
+import { ArrowLeft, Building2, Check, ChevronRight, Eye, GripVertical, Lock, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../components/ui/dropdown-menu';
+import { cn } from '../../components/ui/utils';
+import { useDialogs } from '../../components/app/DialogProvider';
+import { NotificationBell } from '../../components/NotificationBell';
+import { ServiceEditor, Toggle, type CatalogInvestigation } from '../../components/doctor/ServiceEditor';
+import { ServiceIcon } from '../../components/doctor/ServiceIcon';
+import { PublicDoctorHeader, ServiceChoices } from '../../components/doctor/DoctorPublicProfile';
+import { useAuth } from '../../contexts/AuthContext';
 import { apiRequest } from '../../lib/api';
+import { investigationsText, mdl, serviceMeta, type DoctorServiceItem } from '../../lib/doctor';
+import { usePageTitle } from '../../lib/use-page-title';
 
-interface Specialty {
-  id: number;
-  name: string;
-}
+interface Specialty { id: number; name: string }
+interface Vacation { id: number; starts_on: string; ends_on: string; reason?: string | null }
+interface Slot { id?: number; weekday: number; starts_at: string; ends_at: string; is_active: boolean }
 
-interface Platform {
-  name: string;
-  value: string;
-}
-
-interface DoctorProfileResponse {
-  user: {
-    name: string;
-    email: string;
-    phone?: string | null;
-  };
+interface ProfileResponse {
+  user: { name: string; email: string; phone?: string | null };
   profile?: {
-    clinic_name?: string | null;
-    clinic_details?: string | null;
-    accepts_points?: boolean;
-    specialty_id?: number | null;
-    license_number?: string | null;
-    bio?: string | null;
-    experience_years?: number | null;
-    consultation_price?: number | null;
-    video_price?: number | null;
-    video_duration_minutes?: number | null;
-    google_meet_account?: string | null;
-    service_catalog?: Array<{ name: string } | string> | null;
-    required_investigations?: Array<{ name: string }> | null;
-    required_investigation_ids?: number[] | null;
-    optional_investigation_ids?: number[] | null;
-    platforms?: Array<Platform | string> | null;
-    is_available?: boolean;
+    clinic_name?: string | null; clinic_details?: string | null; accepts_points?: boolean; specialty_id?: number | null; license_number?: string | null;
+    bio?: string | null; experience_years?: number | null; is_available?: boolean; rating?: string | number | null; reviews_count?: number | null;
   } | null;
   vacations: Vacation[];
-  availability: AvailabilitySlot[];
+  availability: Slot[];
   specialties: Specialty[];
+  services?: DoctorServiceItem[];
+  institution?: { name: string; address?: string | null } | null;
+  has_signature?: boolean;
+  has_clinic_logo?: boolean;
 }
 
-interface CatalogInvestigation {
-  id: number;
-  name: string;
-  default_price: number;
-  requires_device: boolean;
-}
+type Section = 'pub' | 'inst' | 'serv' | 'prog' | 'conc' | 'pdf' | 'pay';
+const SECTIONS: Array<[Section, string]> = [['pub', 'Informații publice'], ['inst', 'Instituție'], ['serv', 'Servicii și prețuri'], ['prog', 'Program'], ['conc', 'Concedii'], ['pdf', 'Documente PDF'], ['pay', 'Plăți']];
+const DAYS: Array<[number, string]> = [[1, 'Luni'], [2, 'Marți'], [3, 'Miercuri'], [4, 'Joi'], [5, 'Vineri'], [6, 'Sâmbătă'], [0, 'Duminică']];
+const MONTHS = ['ian', 'feb', 'mar', 'apr', 'mai', 'iun', 'iul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const shortDate = (value: string) => { const date = new Date(`${value.slice(0, 10)}T12:00:00`); return `${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`; };
+const card = 'flex flex-col rounded-2xl border border-slate-200 bg-white p-6 max-lg:rounded-none max-lg:border-0 max-lg:p-4';
+const field = 'h-10 w-full rounded-[10px] border border-slate-200 px-3 text-sm text-slate-950 outline-none focus:border-blue-600 focus:ring-[3px] focus:ring-blue-600/15';
 
-interface Vacation {
-  id: number;
-  starts_on: string;
-  ends_on: string;
-  reason?: string | null;
-}
-
-interface AvailabilitySlot {
-  id?: number;
-  weekday: number;
-  starts_at: string;
-  ends_at: string;
-  is_active: boolean;
-}
-
-const weekdays = ['Duminică', 'Luni', 'Marți', 'Miercuri', 'Joi', 'Vineri', 'Sâmbătă'];
-const defaultAvailability: AvailabilitySlot[] = [1, 2, 3, 4, 5].map((weekday) => ({
-  weekday,
-  starts_at: '09:00',
-  ends_at: '18:00',
-  is_active: true
-}));
-
+/**
+ * P1/P2: profilul medicului pe secțiuni. Pe desktop, o pagină cu navigare care
+ * se aprinde la derulare; pe telefon, o listă de secțiuni care se deschid pe rând.
+ */
 export function DoctorProfilePage() {
+  usePageTitle('Profil');
   const dialogs = useDialogs();
-  const [searchParams] = useSearchParams();
-  const vacationsCardRef = useRef<HTMLDivElement | null>(null);
-  const [specialties, setSpecialties] = useState<Specialty[]>([]);
-  const [form, setForm] = useState({
-    clinic_name: '',
-    clinic_details: '',
-    accepts_points: false,
-    name: '',
-    email: '',
-    phone: '',
-    specialty_id: '',
-    license_number: '',
-    bio: '',
-    experience_years: 0,
-    consultation_price: 0,
-    video_price: 500,
-    video_duration_minutes: 10,
-    google_meet_account: '',
-    service_catalog_text: '',
-    required_investigation_ids: [] as number[],
-    optional_investigation_ids: [] as number[],
-    is_available: true
-  });
-  const [platforms, setPlatforms] = useState<Array<Platform | string>>([]);
-  const [investigationsCatalog, setInvestigationsCatalog] = useState<CatalogInvestigation[]>([]);
-  const [vacations, setVacations] = useState<Vacation[]>([]);
-  const [availability, setAvailability] = useState<AvailabilitySlot[]>(defaultAvailability);
-  const [vacationForm, setVacationForm] = useState({
-    starts_on: '',
-    ends_on: '',
-    reason: ''
-  });
-  const [isPlatformModalOpen, setIsPlatformModalOpen] = useState(false);
-  const [newPlatform, setNewPlatform] = useState<Platform>({ name: '', value: '' });
-  const [isSaving, setIsSaving] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const { user, refreshUser } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [data, setData] = useState<ProfileResponse | null>(null);
+  const [form, setForm] = useState({ name: '', phone: '', specialty_id: '', license_number: '', experience_years: '0', bio: '', clinic_name: '', clinic_details: '', accepts_points: false, is_available: true });
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [catalog, setCatalog] = useState<CatalogInvestigation[]>([]);
+  const [services, setServices] = useState<DoctorServiceItem[]>([]);
+  const [editing, setEditing] = useState<DoctorServiceItem | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [preview, setPreview] = useState(false);
+  const [slots, setSlots] = useState<Slot[]>([]);
+  const [vacationOpen, setVacationOpen] = useState(false);
+  const [active, setActive] = useState<Section>('pub');
+  const scroller = useRef<HTMLDivElement | null>(null);
+  const mobileSection = searchParams.get('section') as Section | null;
 
-  const loadProfile = () => {
-    return apiRequest<DoctorProfileResponse>('/doctor/profile').then((response) => {
-      setSpecialties(response.specialties);
-      setForm({
-        clinic_name: response.profile?.clinic_name || '',
-        clinic_details: response.profile?.clinic_details || '',
-        accepts_points: response.profile?.accepts_points ?? false,
-        name: response.user.name || '',
-        email: response.user.email || '',
-        phone: response.user.phone || '',
-        specialty_id: response.profile?.specialty_id ? String(response.profile.specialty_id) : '',
-        license_number: response.profile?.license_number || '',
-        bio: response.profile?.bio || '',
-        experience_years: response.profile?.experience_years ?? 0,
-        consultation_price: response.profile?.consultation_price ?? 0,
-        video_price: response.profile?.video_price ?? 500,
-        video_duration_minutes: response.profile?.video_duration_minutes ?? 10,
-        google_meet_account: response.profile?.google_meet_account ?? '',
-        service_catalog_text: (response.profile?.service_catalog ?? []).map((item) => typeof item === 'string' ? item : item.name).join('\n'),
-        required_investigation_ids: response.profile?.required_investigation_ids ?? [],
-        optional_investigation_ids: response.profile?.optional_investigation_ids ?? [],
-        is_available: response.profile?.is_available ?? true
-      });
-      setPlatforms(response.profile?.platforms ?? []);
-      setVacations(response.vacations ?? []);
-      setAvailability((response.availability?.length ? response.availability : defaultAvailability).map((slot) => ({
-        ...slot,
-        starts_at: slot.starts_at.slice(0, 5),
-        ends_at: slot.ends_at.slice(0, 5)
-      })));
-    }).catch((err) => setError(err instanceof Error ? err.message : 'Profilul nu a putut fi încărcat.')).finally(() => setIsLoading(false));
-  };
-
-  useEffect(() => {
-    loadProfile();
-    apiRequest<{ data: CatalogInvestigation[] }>('/catalog/investigations', { auth: false })
-      .then((response) => setInvestigationsCatalog(response.data ?? []))
-      .catch(() => setInvestigationsCatalog([]));
+  const load = useCallback(async () => {
+    const response = await apiRequest<ProfileResponse>('/doctor/profile');
+    setData(response);
+    setServices(response.services ?? []);
+    setSlots((response.availability ?? []).map((slot) => ({ ...slot, starts_at: slot.starts_at.slice(0, 5), ends_at: slot.ends_at.slice(0, 5) })));
+    setForm({
+      name: response.user.name ?? '', phone: response.user.phone ?? '', specialty_id: response.profile?.specialty_id ? String(response.profile.specialty_id) : '',
+      license_number: response.profile?.license_number ?? '', experience_years: String(response.profile?.experience_years ?? 0), bio: response.profile?.bio ?? '',
+      clinic_name: response.profile?.clinic_name ?? '', clinic_details: response.profile?.clinic_details ?? '', accepts_points: Boolean(response.profile?.accepts_points), is_available: response.profile?.is_available ?? true
+    });
+    setDirty(false);
   }, []);
 
-  const investigationState = (id: number): 'none' | 'required' | 'optional' =>
-    form.required_investigation_ids.includes(id)
-      ? 'required'
-      : form.optional_investigation_ids.includes(id)
-        ? 'optional'
-        : 'none';
+  useEffect(() => {
+    load().catch((err) => toast.error(err instanceof Error ? err.message : 'Profilul nu a putut fi încărcat.'));
+    apiRequest<{ data: CatalogInvestigation[] }>('/catalog/investigations', { auth: false }).then((response) => setCatalog(response.data ?? [])).catch(() => undefined);
+  }, [load]);
 
-  const setInvestigationState = (id: number, state: 'none' | 'required' | 'optional') => {
-    setForm((current) => ({
-      ...current,
-      required_investigation_ids: state === 'required'
-        ? Array.from(new Set([...current.required_investigation_ids, id]))
-        : current.required_investigation_ids.filter((item) => item !== id),
-      optional_investigation_ids: state === 'optional'
-        ? Array.from(new Set([...current.optional_investigation_ids, id]))
-        : current.optional_investigation_ids.filter((item) => item !== id)
-    }));
+  // Linkurile vechi (?vacations=1) și ancorele (#pdf) duc la secțiunea potrivită.
+  useEffect(() => {
+    if (!data) return;
+    const target = searchParams.get('vacations') === '1' ? 'conc' : window.location.hash.slice(1);
+    if (SECTIONS.some(([key]) => key === target)) window.setTimeout(() => go(target as Section), 120);
+  }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const set = (patch: Partial<typeof form>) => { setForm((current) => ({ ...current, ...patch })); setDirty(true); };
+
+  const save = async (patch: Partial<typeof form> = {}) => {
+    const next = { ...form, ...patch };
+    setSaving(true);
+    try {
+      await apiRequest('/doctor/profile', { method: 'PUT', body: JSON.stringify({
+        name: next.name, phone: next.phone || null, specialty_id: next.specialty_id ? Number(next.specialty_id) : null, license_number: next.license_number || null,
+        experience_years: Number(next.experience_years) || 0, bio: next.bio || null, clinic_name: next.clinic_name || null, clinic_details: next.clinic_details || null,
+        accepts_points: next.accepts_points, is_available: next.is_available
+      }) });
+      setForm(next);
+      setDirty(false);
+      void refreshUser();
+      toast.success('Profilul a fost salvat.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Nu am putut salva profilul.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleAvailable = () => void save({ is_available: !form.is_available });
+
+  const toggleService = async (service: DoctorServiceItem) => {
+    setServices((current) => current.map((item) => item.id === service.id ? { ...item, is_active: !item.is_active } : item));
+    try {
+      await apiRequest(`/doctor/services/${service.id}`, { method: 'PUT', body: JSON.stringify({ is_active: !service.is_active }) });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Nu am putut schimba serviciul.');
+      void load();
+    }
+  };
+
+  const reorder = async (from: number, to: number) => {
+    if (from === to) return;
+    const next = [...services];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setServices(next);
+    try { await apiRequest('/doctor/services/order', { method: 'PUT', body: JSON.stringify({ ids: next.map((item) => Number(item.id)) }) }); } catch { void load(); }
+  };
+
+  const saveSlots = async (next: Slot[]) => {
+    setSlots(next);
+    try {
+      await apiRequest('/doctor/availability', { method: 'PUT', body: JSON.stringify({ slots: next.length ? next : [{ weekday: 1, starts_at: '09:00', ends_at: '18:00', is_active: false }] }) });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Nu am putut salva programul.');
+    }
+  };
+
+  const removeVacation = async (vacation: Vacation) => {
+    if (!(await dialogs.confirm({ title: 'Ștergi acest concediu?', description: 'Pacienții te vor putea programa din nou în acest interval.', confirmLabel: 'Șterge concediul', tone: 'danger' }))) return;
+    await apiRequest(`/doctor/vacations/${vacation.id}`, { method: 'DELETE' }).catch(() => undefined);
+    void load();
+  };
+
+  const upload = async (kind: 'signature' | 'logo', file: File) => {
+    if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 2 * 1024 * 1024) { toast.error('Încarcă o imagine JPG sau PNG, maximum 2 MB.'); return; }
+    const body = new FormData();
+    body.append(kind === 'logo' ? 'logo' : 'signature', file);
+    try {
+      await apiRequest(kind === 'logo' ? '/doctor/clinic-logo' : '/doctor/signature', { method: 'POST', body });
+      toast.success(kind === 'logo' ? 'Sigla a fost salvată.' : 'Parafa a fost salvată.');
+      void load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Nu am putut încărca imaginea.');
+    }
+  };
+
+  const go = (key: Section) => {
+    const node = scroller.current?.querySelector<HTMLElement>(`[data-sec="${key}"]`);
+    if (node) window.scrollTo({ top: node.getBoundingClientRect().top + window.scrollY - 80, behavior: 'smooth' });
+    setActive(key);
   };
 
   useEffect(() => {
-    if (searchParams.get('vacations') !== '1') return;
+    const onScroll = () => {
+      let current: Section = 'pub';
+      scroller.current?.querySelectorAll<HTMLElement>('[data-sec]').forEach((node) => { if (node.getBoundingClientRect().top - 140 <= 0) current = node.dataset.sec as Section; });
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) current = 'pay';
+      setActive(current);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
-    const today = new Date().toISOString().slice(0, 10);
-    setVacationForm((current) => ({
-      ...current,
-      starts_on: current.starts_on || today,
-      ends_on: current.ends_on || today
-    }));
+  const activeServices = services.filter((item) => item.is_active);
+  const specialtyName = data?.specialties.find((item) => String(item.id) === form.specialty_id)?.name;
+  const minPrice = activeServices.length ? Math.min(...activeServices.map((item) => item.price)) : null;
+  const scheduleSummary = useMemo(() => {
+    const on = slots.filter((slot) => slot.is_active);
+    if (!on.length) return 'Fără program';
+    const days = DAYS.filter(([day]) => on.some((slot) => slot.weekday === day)).map(([, label]) => label);
+    const first = on[0];
+    return `${days.length > 2 ? `${days[0]}–${days[days.length - 1]}` : days.join(', ')}, ${first.starts_at}–${first.ends_at}`;
+  }, [slots]);
 
-    window.setTimeout(() => {
-      vacationsCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 80);
-  }, [searchParams]);
+  if (!data) return <p className="p-6 text-sm text-slate-500">Se încarcă profilul…</p>;
 
-  const saveProfile = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (isSaving || isLoading) return;
-    setIsSaving(true);
-    setError('');
-    setMessage('');
+  const publicDoctor = { name: form.name, specialty: specialtyName, experience_years: Number(form.experience_years), rating: data.profile?.rating, reviews_count: data.profile?.reviews_count, institution: data.institution, bio: form.bio, services: activeServices };
 
-    try {
-      await apiRequest('/doctor/profile', {
-        method: 'PUT',
-        body: JSON.stringify({
-          ...form,
-          specialty_id: form.specialty_id ? Number(form.specialty_id) : null,
-          experience_years: Number(form.experience_years),
-          consultation_price: Number(form.consultation_price),
-          video_price: Number(form.video_price),
-          video_duration_minutes: Number(form.video_duration_minutes),
-          google_meet_account: form.google_meet_account || null,
-          service_catalog: textToItems(form.service_catalog_text),
-          required_investigation_ids: form.required_investigation_ids,
-          optional_investigation_ids: form.optional_investigation_ids,
-          platforms
-        })
-      });
-      setMessage('Profilul medicului a fost salvat.');
-      await loadProfile();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nu am putut salva profilul.');
-    } finally { setIsSaving(false); }
+  const sectionContent: Record<Section, { title: string; description: string; action?: ReactNode; body: ReactNode; lock?: boolean }> = {
+    pub: {
+      title: 'Informații publice',
+      description: 'Apar în catalog și în profilul tău.',
+      body: (
+        <>
+          <span className="grid h-16 w-16 place-items-center rounded-full bg-blue-100 text-xl font-semibold text-blue-700">{form.name.split(' ').map((part) => part.charAt(0)).slice(0, 2).join('').toUpperCase()}</span>
+          <div className="grid gap-x-4 gap-y-3.5 sm:grid-cols-2">
+            <Field label="Nume complet"><input value={form.name} onChange={(event) => set({ name: event.target.value })} className={field} /></Field>
+            <Field label="Specializare">
+              <select value={form.specialty_id} onChange={(event) => set({ specialty_id: event.target.value })} className={cn(field, 'bg-white')}>
+                <option value="">Alege specializarea</option>
+                {data.specialties.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Experiență (ani)"><input value={form.experience_years} inputMode="numeric" onChange={(event) => set({ experience_years: event.target.value.replace(/\D/g, '') })} className={field} /></Field>
+            <Field label="Număr licență"><input value={form.license_number} onChange={(event) => set({ license_number: event.target.value })} className={field} /></Field>
+            <Field label={<>Telefon <span className="font-normal text-slate-400">· nu se arată pacienților</span></>}><input value={form.phone} onChange={(event) => set({ phone: event.target.value })} className={field} /></Field>
+            <Field label="Email"><input value={data.user.email} readOnly className={cn(field, 'bg-slate-50 text-slate-500')} /></Field>
+            <div className="sm:col-span-2"><Field label="Despre tine și ce probleme tratezi"><textarea value={form.bio} rows={3} onChange={(event) => set({ bio: event.target.value })} className={cn(field, 'h-auto min-h-[72px] resize-y py-2.5 leading-normal')} /></Field></div>
+          </div>
+        </>
+      )
+    },
+    inst: {
+      title: 'Instituția medicală',
+      description: 'Apare în profilul tău public, sub nume.',
+      lock: true,
+      action: <span className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600"><Lock className="h-3 w-3" />Atribuită de administrator</span>,
+      body: data.institution ? (
+        <>
+          <div className="flex items-center gap-3.5 rounded-xl border border-slate-100 bg-slate-50 p-4">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] border border-slate-200 bg-white text-slate-600"><Building2 className="h-5 w-5" /></span>
+            <div className="flex flex-col gap-[3px]"><span className="text-[15px] font-semibold text-slate-950">{data.institution.name}</span>{data.institution.address && <span className="text-[13px] text-slate-500">{data.institution.address}</span>}</div>
+          </div>
+          <span className="text-[13px] text-slate-500">Lucrezi în altă instituție? Scrie administratorului și o schimbă el.</span>
+        </>
+      ) : <span className="text-sm text-slate-500">Nu ești atribuit unei instituții. Administratorul o adaugă dacă lucrezi printr-una.</span>
+    },
+    serv: {
+      title: 'Servicii și prețuri',
+      description: 'Pacientul alege unul dintre serviciile active când te programează.',
+      action: <button type="button" onClick={() => { setEditing(null); setEditorOpen(true); }} className="hidden h-[38px] items-center gap-2 whitespace-nowrap rounded-[10px] bg-blue-600 px-3.5 text-sm font-semibold text-white hover:bg-blue-700 lg:flex"><Plus className="h-4 w-4" />Adaugă serviciu</button>,
+      body: (
+        <>
+          <ServiceRows services={services} onToggle={(service) => void toggleService(service)} onEdit={(service) => { setEditing(service); setEditorOpen(true); }} onMove={(from, to) => void reorder(from, to)} />
+          <button type="button" onClick={() => { setEditing(null); setEditorOpen(true); }} className="flex h-12 items-center justify-center gap-2 rounded-xl border border-dashed border-blue-300 bg-blue-50 text-[15px] font-semibold text-blue-700 lg:hidden"><Plus className="h-4 w-4" />Adaugă serviciu</button>
+          <span className="text-[13px] text-slate-500 max-lg:hidden">Trage de rânduri ca să schimbi ordinea din profilul public. Un serviciu oprit nu se mai poate programa, dar consultațiile deja confirmate rămân.</span>
+        </>
+      )
+    },
+    prog: {
+      title: 'Program săptămânal',
+      description: 'Pacienții pot alege ore doar în aceste intervale. Se aplică tuturor serviciilor.',
+      action: (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild><button type="button" className="flex h-9 items-center gap-1.5 whitespace-nowrap rounded-[10px] border border-slate-200 bg-white px-3 text-[13px] font-medium hover:bg-slate-50"><Plus className="h-4 w-4" />Adaugă interval</button></DropdownMenuTrigger>
+          <DropdownMenuContent align="end">{DAYS.map(([day, label]) => <DropdownMenuItem key={day} onSelect={() => void saveSlots([...slots, { weekday: day, starts_at: '13:00', ends_at: '17:00', is_active: true }])}>{label}</DropdownMenuItem>)}</DropdownMenuContent>
+        </DropdownMenu>
+      ),
+      body: <WeekSchedule slots={slots} onChange={(next) => void saveSlots(next)} />
+    },
+    conc: {
+      title: 'Concedii',
+      description: 'În aceste zile nu apari disponibil, oricare ar fi serviciul.',
+      action: <button type="button" onClick={() => setVacationOpen(true)} className="flex h-9 items-center gap-1.5 whitespace-nowrap rounded-[10px] border border-slate-200 bg-white px-3 text-[13px] font-medium hover:bg-slate-50"><Plus className="h-4 w-4" />Adaugă concediu</button>,
+      body: data.vacations.length === 0 ? <div className="rounded-xl border border-dashed border-slate-300 p-[18px] text-center text-sm text-slate-500">Nu ai concedii planificate.</div> : (
+        <div className="overflow-hidden rounded-xl border border-slate-200">
+          {data.vacations.map((vacation, index) => (
+            <div key={vacation.id} className={cn('flex items-center gap-3 px-4 py-3', index > 0 && 'border-t border-slate-100')}>
+              <span className="flex flex-1 flex-col gap-0.5"><span className="text-sm font-medium text-slate-950">{shortDate(vacation.starts_on)} – {shortDate(vacation.ends_on)}</span>{vacation.reason && <span className="text-xs text-slate-500">{vacation.reason}</span>}</span>
+              <button type="button" aria-label="Șterge concediul" onClick={() => void removeVacation(vacation)} className="grid h-8 w-8 place-items-center text-slate-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+            </div>
+          ))}
+        </div>
+      )
+    },
+    pdf: {
+      title: 'Documente PDF',
+      description: 'Se pun automat pe concluziile publicate. Sunt ale tale, nu ale instituției.',
+      body: (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <UploadCard title="Parafă și semnătură" missing={!data.has_signature} status={data.has_signature ? 'Încărcată' : 'Lipsește'} text={data.has_signature ? 'Apare pe fiecare concluzie. Poți încărca alta oricând.' : 'Fără parafă nu poți publica concluzii. JPG sau PNG, maximum 2 MB.'} button={data.has_signature ? 'Înlocuiește imaginea' : 'Încarcă imaginea'} onFile={(file) => void upload('signature', file)} />
+          <UploadCard title="Sigla pentru antet" status={data.has_clinic_logo ? 'Încărcată' : 'Opțional'} text="Apare sus pe PDF, lângă datele de mai jos. JPG sau PNG, maximum 2 MB." button={data.has_clinic_logo ? 'Înlocuiește sigla' : 'Încarcă sigla'} onFile={(file) => void upload('logo', file)} />
+          <Field label="Denumirea din antet"><input value={form.clinic_name} onChange={(event) => set({ clinic_name: event.target.value })} placeholder="Ex: Cabinet Dr. Ana Ciobanu" className={field} /></Field>
+          <Field label="Date de contact din antet"><input value={form.clinic_details} onChange={(event) => set({ clinic_details: event.target.value })} placeholder="Adresă, telefon, IDNO" className={field} /></Field>
+        </div>
+      )
+    },
+    pay: {
+      title: 'Plăți',
+      description: 'Se aplică la toate serviciile.',
+      body: (
+        <button type="button" onClick={() => void save({ accepts_points: !form.accepts_points })} className="flex items-start gap-3 text-left">
+          <span className={cn('mt-px grid h-5 w-5 shrink-0 place-items-center rounded-md border text-white', form.accepts_points ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-white')}>{form.accepts_points && <Check className="h-3.5 w-3.5" strokeWidth={3} />}</span>
+          <span className="flex flex-col gap-[3px]"><span className="text-sm font-medium text-slate-950">Accept plăți parțiale din bonusuri</span><span className="text-[13px] text-slate-500">Pacientul poate achita o parte din preț cu bonusuri. Tu primești suma întreagă.</span></span>
+        </button>
+      )
+    }
   };
 
-  const addPlatform = (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!newPlatform.name || !newPlatform.value) return;
-    setPlatforms([...platforms, newPlatform]);
-    setNewPlatform({ name: '', value: '' });
-    setIsPlatformModalOpen(false);
+  const mobileSubs: Record<Section, [string, boolean]> = {
+    pub: [form.bio && form.specialty_id && form.license_number ? 'Complet' : 'Incomplet', !(form.bio && form.specialty_id && form.license_number)],
+    inst: [data.institution ? `${data.institution.name} · atribuită de administrator` : 'Neatribuită', false],
+    serv: [activeServices.length ? `${activeServices.length} active${services.length - activeServices.length ? ` · ${services.length - activeServices.length} oprit` : ''} · de la ${minPrice} MDL` : 'Niciun serviciu activ', !activeServices.length],
+    prog: [scheduleSummary, !slots.some((slot) => slot.is_active)],
+    conc: [data.vacations.length ? `${data.vacations.length} planificate` : 'Niciun concediu planificat', false],
+    pdf: [data.has_signature ? 'Parafa e încărcată' : 'Lipsește parafa', !data.has_signature],
+    pay: [form.accepts_points ? 'Accepți bonusuri' : 'Fără bonusuri', false]
   };
 
-  const addVacation = async () => {
-    setError('');
-    setMessage('');
+  const renderSection = (key: Section) => {
+    const section = sectionContent[key];
+    return (
+      <section key={key} data-sec={key} className={cn(card, 'gap-4')}>
+        <div className="flex items-start justify-between gap-3 max-lg:hidden">
+          <div className="flex flex-col gap-1"><span className="text-[17px] font-semibold text-slate-950">{section.title}</span><span className="text-[13px] text-slate-500">{section.description}</span></div>
+          {section.action}
+        </div>
+        <span className="text-[13px] leading-normal text-slate-500 lg:hidden">{section.description}</span>
+        {section.body}
+      </section>
+    );
+  };
 
+  const availability = (
+    <button type="button" onClick={toggleAvailable} disabled={saving} className="flex h-10 items-center gap-2.5 rounded-[10px] border border-slate-200 bg-white pl-3.5 pr-3 text-sm font-medium text-slate-950 max-lg:h-auto max-lg:w-full max-lg:justify-between max-lg:border-0 max-lg:bg-slate-50 max-lg:px-3.5 max-lg:py-3">
+      {form.is_available ? 'Disponibil pentru consultații' : 'Indisponibil'}<Toggle on={form.is_available} />
+    </button>
+  );
+
+  return (
+    <>
+      {/* Telefon · P2a sau o secțiune deschisă (P2b) */}
+      <div className="-mx-4 -mt-5 min-h-[calc(100dvh-72px)] bg-slate-50 lg:hidden">
+        {mobileSection && sectionContent[mobileSection] ? (
+          <>
+            <div className="flex items-center gap-1 px-2 pb-2.5 pt-[max(12px,env(safe-area-inset-top))]">
+              <button type="button" aria-label="Înapoi" onClick={() => setSearchParams({})} className="grid h-10 w-10 place-items-center text-slate-700"><ArrowLeft className="h-[22px] w-[22px]" /></button>
+              <span className="flex-1 text-lg font-semibold text-slate-950">{sectionContent[mobileSection].title.replace('Instituția medicală', 'Instituție').replace('Program săptămânal', 'Program')}</span>
+              {mobileSection !== 'serv' && <div className="mr-2 [&_button]:h-9">{sectionContent[mobileSection].action}</div>}
+            </div>
+            <div className="flex flex-col gap-3 px-4 pb-6">
+              {mobileSection === 'serv' ? (
+                <>
+                  <span className="text-[13px] leading-normal text-slate-500">Pacientul alege unul dintre serviciile active când te programează.</span>
+                  <MobileServiceRows services={services} onToggle={(service) => void toggleService(service)} onEdit={(service) => { setEditing(service); setEditorOpen(true); }} />
+                  <button type="button" onClick={() => { setEditing(null); setEditorOpen(true); }} className="flex h-12 items-center justify-center gap-2 rounded-xl border border-dashed border-blue-300 bg-blue-50 text-[15px] font-semibold text-blue-700"><Plus className="h-4 w-4" />Adaugă serviciu</button>
+                </>
+              ) : <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">{renderSection(mobileSection)}</div>}
+              {dirty && <SaveBar saving={saving} onSave={() => void save()} />}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center justify-between px-4 pb-2.5 pt-[max(16px,env(safe-area-inset-top))]"><h1 className="text-2xl font-bold tracking-[-.02em] text-slate-950">Profil</h1><NotificationBell bare /></div>
+            <div className="flex flex-col gap-3.5 px-4 pb-4 pt-1">
+              <div className="flex flex-col gap-3.5 rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex items-center gap-3">
+                  <span className="grid h-[52px] w-[52px] place-items-center rounded-full bg-blue-100 text-[17px] font-semibold text-blue-700">{(user?.name ?? '').split(' ').map((part) => part.charAt(0)).slice(0, 2).join('').toUpperCase()}</span>
+                  <div className="flex flex-1 flex-col gap-0.5"><span className="text-[17px] font-semibold text-slate-950">Dr. {form.name}</span><span className="text-[13px] text-slate-500">{[specialtyName, Number(form.experience_years) ? `${form.experience_years} ani` : null].filter(Boolean).join(' · ')}</span></div>
+                </div>
+                {availability}
+              </div>
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                {SECTIONS.map(([key, label], index) => (
+                  <button key={key} type="button" onClick={() => setSearchParams({ section: key })} className={cn('flex w-full items-center gap-3.5 px-4 py-3.5 text-left', index > 0 && 'border-t border-slate-100')}>
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="flex items-center gap-1.5 text-[15px] font-medium text-slate-950">{label}{key === 'inst' && <Lock className="h-3 w-3 text-slate-400" />}</span>
+                      <span className={cn('truncate text-[13px]', mobileSubs[key][1] ? 'font-semibold text-amber-700' : 'text-slate-500')}>{mobileSubs[key][0]}</span>
+                    </span>
+                    <ChevronRight className="h-[18px] w-[18px] text-slate-400" />
+                  </button>
+                ))}
+              </div>
+              <button type="button" onClick={() => setPreview(true)} className="flex h-11 items-center justify-center gap-2 rounded-[10px] border border-slate-200 bg-white text-sm font-medium text-slate-950"><Eye className="h-4 w-4" />Cum te văd pacienții</button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Desktop · P1a */}
+      <div className="hidden lg:block">
+        <div className="flex items-end justify-between gap-4 pb-4">
+          <div className="flex flex-col gap-1.5"><h1 className="text-[28px] font-bold tracking-[-.02em] text-slate-950">Profilul meu</h1><span className="text-sm text-slate-500">Ce văd pacienții despre tine, serviciile, programul și documentele PDF.</span></div>
+          <div className="flex items-center gap-2.5">
+            <button type="button" onClick={() => setPreview(true)} className="flex h-10 items-center gap-2 rounded-[10px] border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-950 hover:bg-slate-50"><Eye className="h-4 w-4" />Cum te văd pacienții</button>
+            {availability}
+          </div>
+        </div>
+        <div className="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-7 pb-8">
+          <nav className="sticky top-20 flex flex-col gap-0.5">
+            {SECTIONS.map(([key, label]) => (
+              <button key={key} type="button" onClick={() => go(key)} className={cn('flex h-9 items-center justify-between rounded-lg px-3 text-left text-sm', active === key ? 'bg-blue-50 font-semibold text-blue-700' : 'font-medium text-slate-700 hover:bg-slate-50')}>
+                {label}
+                {key === 'inst' && <Lock className="h-3 w-3 text-slate-400" />}
+                {key === 'serv' && <span className="text-xs font-medium text-slate-500">{activeServices.length}</span>}
+              </button>
+            ))}
+          </nav>
+          <div ref={scroller} className="flex min-w-0 flex-col gap-5">
+            {SECTIONS.map(([key]) => renderSection(key))}
+          </div>
+        </div>
+        {dirty && <div className="sticky bottom-4 flex justify-end"><SaveBar saving={saving} onSave={() => void save()} /></div>}
+      </div>
+
+      <ServiceEditor service={editing} open={editorOpen} catalog={catalog} onOpenChange={setEditorOpen} onSaved={() => { toast.success('Serviciul a fost salvat.'); void load(); }} />
+      <VacationDialog open={vacationOpen} onOpenChange={setVacationOpen} onSaved={() => void load()} />
+      <Dialog open={preview} onOpenChange={setPreview}>
+        <DialogContent className="max-h-[92dvh] w-[calc(100%-1rem)] overflow-y-auto bg-slate-50 sm:max-w-2xl">
+          <DialogTitle>Cum te văd pacienții</DialogTitle>
+          <DialogDescription>Profilul public, cu serviciile active în ordinea ta.</DialogDescription>
+          <PublicDoctorHeader doctor={publicDoctor} />
+          <span className="text-lg font-semibold text-slate-950">Alege serviciul</span>
+          <ServiceChoices services={activeServices} selectedId={activeServices[0]?.id ?? null} onSelect={() => undefined} />
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
+  return <label className="flex flex-col gap-1.5"><span className="text-[13px] font-medium text-slate-700">{label}</span>{children}</label>;
+}
+
+function SaveBar({ saving, onSave }: { saving: boolean; onSave: () => void }) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-[0_10px_30px_rgba(15,23,42,.12)]">
+      <span className="flex-1 text-sm text-slate-600">Ai modificări nesalvate.</span>
+      <button type="button" onClick={onSave} disabled={saving} className="h-9 rounded-[10px] bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">{saving ? 'Se salvează…' : 'Salvează'}</button>
+    </div>
+  );
+}
+
+function ServiceRows({ services, onToggle, onEdit, onMove }: { services: DoctorServiceItem[]; onToggle: (service: DoctorServiceItem) => void; onEdit: (service: DoctorServiceItem) => void; onMove: (from: number, to: number) => void }) {
+  const dragFrom = useRef<number | null>(null);
+  if (!services.length) return <div className="rounded-xl border border-dashed border-slate-300 p-[18px] text-center text-sm text-slate-500 max-lg:hidden">Nu ai încă servicii. Adaugă primul serviciu ca pacienții să te poată programa.</div>;
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 max-lg:hidden">
+      {services.map((service, index) => (
+        <div key={service.id} draggable onDragStart={() => { dragFrom.current = index; }} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (dragFrom.current !== null) onMove(dragFrom.current, index); dragFrom.current = null; }}
+          className={cn('flex items-center gap-3.5 bg-white px-4 py-3.5', index > 0 && 'border-t border-slate-100')}>
+          <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-slate-300" />
+          <span className={cn('grid h-[38px] w-[38px] shrink-0 place-items-center rounded-[10px] bg-slate-100 text-slate-700', !service.is_active && 'opacity-50')}><ServiceIcon type={service.type} className="h-[18px] w-[18px]" /></span>
+          <div className={cn('flex min-w-0 flex-1 flex-col gap-[3px]', !service.is_active && 'opacity-50')}>
+            <span className="text-[15px] font-semibold text-slate-950">{service.name}</span>
+            <span className="text-[13px] text-slate-500">{serviceMeta(service)}</span>
+            {service.type === 'home' && <span className="text-xs text-slate-600">{investigationsText(service.investigations)}</span>}
+          </div>
+          <span className={cn('whitespace-nowrap text-[15px] font-bold text-slate-950', !service.is_active && 'opacity-50')}>{mdl(service.price)}</span>
+          <button type="button" onClick={() => onToggle(service)} title="Activ / oprit" className="flex w-[84px] items-center justify-end gap-2 p-1 text-xs text-slate-500">{service.is_active ? 'Activ' : 'Oprit'}<Toggle on={service.is_active} /></button>
+          <button type="button" aria-label="Editează serviciul" onClick={() => onEdit(service)} className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"><Pencil className="h-4 w-4" /></button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MobileServiceRows({ services, onToggle, onEdit }: { services: DoctorServiceItem[]; onToggle: (service: DoctorServiceItem) => void; onEdit: (service: DoctorServiceItem) => void }) {
+  if (!services.length) return null;
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      {services.map((service, index) => (
+        <div key={service.id} className={cn('flex items-center gap-3 py-3.5 pl-4 pr-3.5', index > 0 && 'border-t border-slate-100')}>
+          <button type="button" onClick={() => onEdit(service)} className={cn('flex min-w-0 flex-1 flex-col gap-[3px] text-left', !service.is_active && 'opacity-50')}>
+            <span className="text-[15px] font-semibold text-slate-950">{service.name}</span>
+            <span className="text-[13px] text-slate-500">{serviceMeta(service)}</span>
+            <span className="mt-0.5 text-sm font-bold text-slate-950">{mdl(service.price)}</span>
+          </button>
+          <button type="button" aria-label={service.is_active ? 'Oprește serviciul' : 'Pornește serviciul'} onClick={() => onToggle(service)} className="px-1 py-2.5"><Toggle on={service.is_active} large /></button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function WeekSchedule({ slots, onChange }: { slots: Slot[]; onChange: (slots: Slot[]) => void }) {
+  return (
+    <div className="flex flex-col">
+      {DAYS.map(([day, label], index) => {
+        const daySlots = slots.map((slot, position) => ({ slot, position })).filter(({ slot }) => slot.weekday === day);
+        const on = daySlots.some(({ slot }) => slot.is_active);
+        const toggle = () => {
+          if (daySlots.length) onChange(slots.map((slot) => slot.weekday === day ? { ...slot, is_active: !on } : slot));
+          else onChange([...slots, { weekday: day, starts_at: '09:00', ends_at: '18:00', is_active: true }]);
+        };
+        return (
+          <div key={day} className={cn('grid grid-cols-[88px_1fr_44px] items-center gap-3 py-2 sm:grid-cols-[120px_1fr_56px]', index > 0 && 'border-t border-slate-100')}>
+            <span className={cn('text-sm font-medium', on ? 'text-slate-950' : 'text-slate-400')}>{label}</span>
+            {on ? (
+              <div className="flex flex-col gap-1.5">
+                {daySlots.filter(({ slot }) => slot.is_active).map(({ slot, position }) => (
+                  <div key={position} className="flex items-center gap-2 text-sm">
+                    <TimeInput value={slot.starts_at} onChange={(value) => onChange(slots.map((item, i) => i === position ? { ...item, starts_at: value } : item))} />
+                    <span className="text-slate-400">–</span>
+                    <TimeInput value={slot.ends_at} onChange={(value) => onChange(slots.map((item, i) => i === position ? { ...item, ends_at: value } : item))} />
+                    {daySlots.length > 1 && <button type="button" aria-label="Șterge intervalul" onClick={() => onChange(slots.filter((_, i) => i !== position))} className="grid h-8 w-8 place-items-center text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>}
+                  </div>
+                ))}
+              </div>
+            ) : <span className="text-sm text-slate-400">Liber</span>}
+            <button type="button" aria-label={on ? `Liber ${label}` : `Lucrez ${label}`} onClick={toggle} className="justify-self-end"><Toggle on={on} /></button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TimeInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  return <input type="time" step={1800} value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={() => { if (draft && draft !== value) onChange(draft); }} className="h-9 rounded-[10px] border border-slate-200 px-2.5 font-mono text-[13px] outline-none focus:border-blue-600" />;
+}
+
+function UploadCard({ title, status, text, button, missing = false, onFile }: { title: string; status: string; text: string; button: string; missing?: boolean; onFile: (file: File) => void }) {
+  const input = useRef<HTMLInputElement | null>(null);
+  return (
+    <div className={cn('flex flex-col gap-2.5 rounded-xl border p-4', missing ? 'border-amber-200 bg-amber-50' : 'border-slate-200')}>
+      <div className="flex items-center justify-between"><span className="text-sm font-semibold text-slate-950">{title}</span><span className={cn('text-xs', missing ? 'font-semibold text-amber-800' : 'text-slate-500')}>{status}</span></div>
+      <span className={cn('text-[13px]', missing ? 'text-amber-900' : 'text-slate-500')}>{text}</span>
+      <input ref={input} type="file" accept="image/jpeg,image/png" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) onFile(file); event.target.value = ''; }} />
+      <button type="button" onClick={() => input.current?.click()} className="h-9 self-start rounded-[10px] border border-slate-200 bg-white px-3 text-[13px] font-medium hover:bg-slate-50">{button}</button>
+    </div>
+  );
+}
+
+function VacationDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenChange: (open: boolean) => void; onSaved: () => void }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [form, setForm] = useState({ starts_on: today, ends_on: today, reason: '' });
+  const [error, setError] = useState('');
+  useEffect(() => { if (open) { setForm({ starts_on: today, ends_on: today, reason: '' }); setError(''); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const submit = async () => {
     try {
-      await apiRequest('/doctor/vacations', {
-        method: 'POST',
-        body: JSON.stringify({
-          starts_on: vacationForm.starts_on,
-          ends_on: vacationForm.ends_on,
-          reason: vacationForm.reason || null
-        })
-      });
-      setVacationForm({ starts_on: '', ends_on: '', reason: '' });
-      setMessage('Concediul a fost adăugat.');
-      loadProfile();
+      await apiRequest('/doctor/vacations', { method: 'POST', body: JSON.stringify({ ...form, reason: form.reason || null }) });
+      onOpenChange(false);
+      onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nu am putut adăuga concediul.');
     }
   };
-
-  const deleteVacation = async (vacation: Vacation) => {
-    if (!(await dialogs.confirm({ title: 'Ștergi acest concediu?', description: 'Pacienții te vor putea programa din nou în acest interval.', confirmLabel: 'Șterge concediul', tone: 'danger' }))) return;
-
-    setError('');
-    setMessage('');
-
-    try {
-      await apiRequest(`/doctor/vacations/${vacation.id}`, {
-        method: 'DELETE'
-      });
-      setMessage('Concediul a fost șters.');
-      loadProfile();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nu am putut șterge concediul.');
-    }
-  };
-
-  const saveAvailability = async () => {
-    setError('');
-    setMessage('');
-    try {
-      const response = await apiRequest<{message: string; availability: AvailabilitySlot[]}>('/doctor/availability', {
-        method: 'PUT',
-        body: JSON.stringify({ slots: availability })
-      });
-      setAvailability(response.availability.map((slot) => ({
-        ...slot,
-        starts_at: slot.starts_at.slice(0, 5),
-        ends_at: slot.ends_at.slice(0, 5)
-      })));
-      setMessage(response.message);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nu am putut salva programul.');
-    }
-  };
-
-  const updateAvailabilitySlot = (index: number, patch: Partial<AvailabilitySlot>) => {
-    setAvailability((current) => current.map((slot, slotIndex) => slotIndex === index ? { ...slot, ...patch } : slot));
-  };
-
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <PageHeader title="Profilul meu" description="Ce văd pacienții despre tine, prețurile, disponibilitatea și documentele PDF." />
-        <div className="flex items-center gap-3 rounded-xl border border-slate-200/70 bg-white px-4 py-3 shadow-sm">
-          <Label htmlFor="available-mode" className="cursor-pointer font-medium">
-            Disponibil pentru consultații
-          </Label>
-          <Switch
-            id="available-mode"
-            checked={form.is_available}
-            onCheckedChange={(value) => setForm({ ...form, is_available: value })}
-          />
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[calc(100%-1rem)] gap-4 rounded-2xl p-6 sm:max-w-[440px]">
+        <DialogTitle className="text-lg font-semibold">Adaugă concediu</DialogTitle>
+        <DialogDescription>În aceste zile pacienții nu te pot programa.</DialogDescription>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="De la"><input type="date" value={form.starts_on} onChange={(event) => setForm({ ...form, starts_on: event.target.value })} className={field} /></Field>
+          <Field label="Până la"><input type="date" value={form.ends_on} onChange={(event) => setForm({ ...form, ends_on: event.target.value })} className={field} /></Field>
         </div>
-      </div>
-
-      {(message || error) && (
-        <div className={`rounded-xl border px-4 py-3 text-sm ${error ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
-          {error || message}
+        <Field label={<>Motiv <span className="font-normal text-slate-400">· opțional</span></>}><input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} className={field} /></Field>
+        {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        <div className="flex justify-end gap-2.5">
+          <button type="button" onClick={() => onOpenChange(false)} className="h-10 rounded-[10px] border border-slate-200 bg-white px-4 text-sm font-medium">Anulează</button>
+          <button type="button" onClick={() => void submit()} className="h-10 rounded-[10px] bg-blue-600 px-4 text-sm font-semibold text-white">Adaugă</button>
         </div>
-      )}
-
-      <DoctorSignature />
-      <DoctorSignature kind="logo" />
-      <div className="grid gap-3 rounded-xl border p-4"><label>Denumirea clinicii<Input value={form.clinic_name} onChange={(event) => setForm({ ...form, clinic_name: event.target.value })} /></label><label>Date clinică pentru antet<Textarea value={form.clinic_details} onChange={(event) => setForm({ ...form, clinic_details: event.target.value })} /></label><label><input type="checkbox" checked={form.accepts_points} onChange={(event) => setForm({ ...form, accepts_points: event.target.checked })} /> Accept plăți parțiale din bonusuri</label></div><form onSubmit={saveProfile} className="grid gap-6 lg:grid-cols-[1.3fr_0.8fr]">
-        <Card ref={vacationsCardRef} className="scroll-mt-24 border-slate-200/70 bg-white shadow-sm ring-primary/0 transition-shadow">
-          <CardHeader>
-            <CardTitle>Informații publice</CardTitle>
-            <CardDescription>Aceste date sunt afișate pacienților în catalog.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Nume complet">
-                <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required className="h-11 rounded-xl" />
-              </Field>
-              <Field label="Email">
-                <Input value={form.email} disabled className="h-11 rounded-xl bg-slate-50" />
-              </Field>
-              <Field label="Telefon">
-                <Input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} className="h-11 rounded-xl" />
-              </Field>
-              <Field label="Specializare">
-                <Select value={form.specialty_id || 'none'} onValueChange={(value) => setForm({ ...form, specialty_id: value === 'none' ? '' : value })}>
-                  <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Neselectat</SelectItem>
-                    {specialties.map((specialty) => (
-                      <SelectItem key={specialty.id} value={String(specialty.id)}>{specialty.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Număr licență">
-                <Input value={form.license_number} onChange={(event) => setForm({ ...form, license_number: event.target.value })} className="h-11 rounded-xl" />
-              </Field>
-              <Field label="Experiență (ani)">
-                <Input type="number" min={0} value={form.experience_years} onChange={(event) => setForm({ ...form, experience_years: Number(event.target.value) })} className="h-11 rounded-xl" />
-              </Field>
-              <Field label="Preț consultație (MDL)">
-                <Input type="number" min={0} value={form.consultation_price} onChange={(event) => setForm({ ...form, consultation_price: Number(event.target.value) })} className="h-11 rounded-xl" />
-              </Field>
-              <Field label="Preț video (MDL)">
-                <Input type="number" min={0} value={form.video_price} onChange={(event) => setForm({ ...form, video_price: Number(event.target.value) })} className="h-11 rounded-xl" />
-              </Field>
-              <Field label="Durată video (min)">
-                <Input type="number" min={5} value={form.video_duration_minutes} onChange={(event) => setForm({ ...form, video_duration_minutes: Number(event.target.value) })} className="h-11 rounded-xl" />
-              </Field>
-              <Field label="Cont Gmail / Meet">
-                <Input value={form.google_meet_account} onChange={(event) => setForm({ ...form, google_meet_account: event.target.value })} className="h-11 rounded-xl" />
-              </Field>
-            </div>
-            <Field label="Descriere / spectru de probleme">
-              <Textarea aria-label="Descriere / spectru de probleme" maxLength={4000} value={form.bio} onChange={(event) => setForm({ ...form, bio: event.target.value })} className="min-h-32 rounded-xl" />
-            </Field>
-            <Field label="Servicii oferite (unul pe linie)">
-              <Textarea aria-label="Servicii oferite (unul pe linie)" value={form.service_catalog_text} onChange={(event) => setForm({ ...form, service_catalog_text: event.target.value })} className="min-h-24 rounded-xl" />
-            </Field>
-            <Field label="Investigații pentru consultația cu examinare">
-              <p className="mb-2 text-xs text-slate-500">Alege din catalog ce se efectuează la domiciliu. Obligatoriile condiționează consultația; cele opționale pot fi alese de pacient.</p>
-              <div className="max-h-72 space-y-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
-                {investigationsCatalog.map((investigation) => {
-                  const state = investigationState(investigation.id);
-                  return (
-                    <div key={investigation.id} className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
-                      <span className="min-w-0 flex-1 truncate text-slate-700">{investigation.name}</span>
-                      <div className="flex shrink-0 overflow-hidden rounded-lg border border-slate-200">
-                        {([
-                          { key: 'none', label: 'Nu' },
-                          { key: 'required', label: 'Obligatoriu' },
-                          { key: 'optional', label: 'Opțional' }
-                        ] as const).map((option) => (
-                          <button
-                            key={option.key}
-                            type="button"
-                            onClick={() => setInvestigationState(investigation.id, option.key)}
-                            className={`px-2.5 py-1 text-xs transition-colors ${
-                              state === option.key
-                                ? option.key === 'required'
-                                  ? 'bg-primary text-white'
-                                  : option.key === 'optional'
-                                    ? 'bg-amber-500 text-white'
-                                    : 'bg-slate-200 text-slate-700'
-                                : 'bg-white text-slate-500 hover:bg-slate-100'
-                            }`}
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-                {investigationsCatalog.length === 0 && (
-                  <p className="px-2 py-2 text-sm text-slate-400">Catalogul de investigații e gol. Adminul îl completează din „Investigații".</p>
-                )}
-              </div>
-            </Field>
-            <Button type="submit" disabled={isSaving || isLoading} className="h-11 rounded-xl">
-              {isSaving ? 'Se salvează…' : isLoading ? 'Se încarcă…' : 'Salvează modificările'}
-            </Button>
-            {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-            {message && <p role="status" className="text-sm text-emerald-700">{message}</p>}
-          </CardContent>
-        </Card>
-
-        <Card className="border-slate-200/70 bg-white shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <CalendarDays className="mr-2 h-5 w-5 text-primary" />
-              Program săptămânal
-            </CardTitle>
-            <CardDescription>Pacienții pot programa consultații doar în aceste intervale.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {availability.map((slot, index) => (
-              <div key={`${slot.weekday}-${index}`} className="grid gap-3 rounded-xl border border-slate-200/70 bg-slate-50/70 p-3 sm:grid-cols-[1fr_120px_120px_auto] sm:items-end">
-                <Field label="Zi">
-                  <Select value={String(slot.weekday)} onValueChange={(value) => updateAvailabilitySlot(index, { weekday: Number(value) })}>
-                    <SelectTrigger className="h-10 rounded-xl bg-white"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {weekdays.map((day, dayIndex) => (
-                        <SelectItem key={day} value={String(dayIndex)}>{day}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="De la">
-                  <Input type="time" value={slot.starts_at} onChange={(event) => updateAvailabilitySlot(index, { starts_at: event.target.value })} className="h-10 rounded-xl bg-white" />
-                </Field>
-                <Field label="Până la">
-                  <Input type="time" value={slot.ends_at} onChange={(event) => updateAvailabilitySlot(index, { ends_at: event.target.value })} className="h-10 rounded-xl bg-white" />
-                </Field>
-                <div className="flex items-center justify-between gap-2 pb-2 sm:justify-end">
-                  <Label>Activ</Label>
-                  <Switch checked={slot.is_active} onCheckedChange={(value) => updateAvailabilitySlot(index, { is_active: value })} />
-                </div>
-              </div>
-            ))}
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button type="button" variant="outline" className="rounded-xl bg-white" onClick={() => setAvailability([...availability, { weekday: 1, starts_at: '09:00', ends_at: '18:00', is_active: true }])}>
-                <Plus className="mr-2 h-4 w-4" />
-                Adaugă interval
-              </Button>
-              <Button type="button" className="rounded-xl" onClick={saveAvailability}>
-                Salvează programul
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-slate-200/70 bg-white shadow-sm">
-          <CardHeader>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <CardTitle>Contact video</CardTitle>
-                <CardDescription>Platforme salvate în profil.</CardDescription>
-              </div>
-              <Button type="button" variant="outline" size="sm" className="rounded-lg bg-white" onClick={() => setIsPlatformModalOpen(true)}>
-                <Plus className="mr-1 h-4 w-4" />
-                Adaugă
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {platforms.length === 0 && (
-              <div className="rounded-xl border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">
-                Nicio platformă adăugată.
-              </div>
-            )}
-            {platforms.map((platform, index) => (
-              <div key={`${typeof platform === 'string' ? platform : platform.name}-${index}`} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
-                <div className="min-w-0">
-                  <p className="font-semibold text-slate-950">{typeof platform === 'string' ? platform : platform.name}</p>
-                  <p className="truncate text-sm text-slate-500">{typeof platform === 'string' ? 'Canal disponibil în platformă' : platform.value}</p>
-                </div>
-                <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600" onClick={() => setPlatforms(platforms.filter((_, itemIndex) => itemIndex !== index))}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card className="border-slate-200/70 bg-white shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <CalendarDays className="mr-2 h-5 w-5 text-primary" />
-              Concedii
-            </CardTitle>
-            <CardDescription>Intervalele în care nu apăreți disponibil pentru pacienți.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-600">
-              Status public: {form.is_available ? 'disponibil manual' : 'indisponibil manual'}; concediile active opresc automat disponibilitatea.
-            </div>
-            <div className="space-y-3">
-              {vacations.length === 0 && (
-                <div className="rounded-xl border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">
-                  Nu există concedii planificate.
-                </div>
-              )}
-              {vacations.map((vacation) => (
-                <div key={vacation.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-white p-3">
-                  <div>
-                    <p className="font-semibold text-slate-950">
-                      {new Date(vacation.starts_on).toLocaleDateString()} - {new Date(vacation.ends_on).toLocaleDateString()}
-                    </p>
-                    <p className="text-sm text-slate-500">{vacation.reason || 'Concediu'}</p>
-                  </div>
-                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600" onClick={() => deleteVacation(vacation)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-            <div className="border-t border-slate-100 pt-4">
-              <div className="space-y-3">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="De la">
-                    <Input type="date" value={vacationForm.starts_on} onChange={(event) => setVacationForm({ ...vacationForm, starts_on: event.target.value })} className="h-11 rounded-xl" />
-                  </Field>
-                  <Field label="Până la">
-                    <Input type="date" value={vacationForm.ends_on} onChange={(event) => setVacationForm({ ...vacationForm, ends_on: event.target.value })} className="h-11 rounded-xl" />
-                  </Field>
-                </div>
-                <Field label="Motiv / notă">
-                  <Input value={vacationForm.reason} onChange={(event) => setVacationForm({ ...vacationForm, reason: event.target.value })} placeholder="Ex: concediu anual" className="h-11 rounded-xl" />
-                </Field>
-                <Button type="button" variant="outline" className="h-10 rounded-xl bg-white" onClick={addVacation} disabled={!vacationForm.starts_on || !vacationForm.ends_on}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Adaugă concediu
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </form>
-
-      <Dialog open={isPlatformModalOpen} onOpenChange={setIsPlatformModalOpen}>
-        <DialogContent className="sm:max-w-[420px] rounded-2xl border-0 bg-white shadow-xl">
-          <form onSubmit={addPlatform}>
-            <DialogHeader>
-              <DialogTitle className="flex items-center text-xl">
-                <Video className="mr-2 h-5 w-5" />
-                Platformă contact
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-5">
-              <Field label="Platformă">
-                <Select value={newPlatform.name} onValueChange={(value) => setNewPlatform({ ...newPlatform, name: value })}>
-                  <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Selectează" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="WhatsApp">WhatsApp</SelectItem>
-                    <SelectItem value="Viber">Viber</SelectItem>
-                    <SelectItem value="Telegram">Telegram</SelectItem>
-                    <SelectItem value="Skype">Skype</SelectItem>
-                    <SelectItem value="Telefon">Telefon</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Date de contact">
-                <Input value={newPlatform.value} onChange={(event) => setNewPlatform({ ...newPlatform, value: event.target.value })} required className="h-11 rounded-xl" />
-              </Field>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" className="rounded-xl bg-white" onClick={() => setIsPlatformModalOpen(false)}>
-                Anulare
-              </Button>
-              <Button type="submit" className="rounded-xl">
-                Adaugă
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-2">
-      <Label>{label}</Label>
-      {children}
-    </div>
-  );
-}
-
-function textToItems(value: string) {
-  return value
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((name) => ({ name }));
 }

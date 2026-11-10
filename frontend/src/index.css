@@ -91,10 +91,10 @@
     @apply border-border;
   }
   html {
-    @apply overflow-x-hidden;
+    @apply overflow-x-clip;
   }
   body {
-    @apply min-w-0 overflow-x-hidden bg-background font-heading text-foreground antialiased;
+    @apply min-w-0 overflow-x-clip bg-background font-heading text-foreground antialiased;
   }
   button,
   a {

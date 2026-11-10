@@ -104,6 +104,19 @@ class DoctorServicesTest extends TestCase
             ->assertJsonPath('data.0.services.1.name', 'Al doilea');
     }
 
+    public function test_saving_the_profile_without_prices_keeps_the_prices_from_services(): void
+    {
+        $doctor = $this->doctor();
+        Sanctum::actingAs($doctor);
+
+        $this->putJson('/api/v1/doctor/profile', ['name' => 'Ana Ciobanu', 'bio' => 'Medic de familie'])->assertOk();
+
+        $profile = $doctor->doctorProfile->fresh();
+        $this->assertSame(300, $profile->video_price);
+        $this->assertSame(400, $profile->consultation_price);
+        $this->assertSame('Medic de familie', $profile->bio);
+    }
+
     private function doctor(): User
     {
         $doctor = $this->userWithRole('doctor');

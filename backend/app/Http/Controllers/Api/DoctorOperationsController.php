@@ -190,6 +190,7 @@ class DoctorOperationsController extends Controller
             'phone' => $validated['phone'] ?? null,
         ])->save();
 
+        $existing = $doctor->doctorProfile;
         $profile = $doctor->doctorProfile()->updateOrCreate(
             ['user_id' => $doctor->id],
             [
@@ -200,14 +201,15 @@ class DoctorOperationsController extends Controller
                 'accepts_points' => $validated['accepts_points'] ?? $doctor->doctorProfile?->accepts_points ?? false,
                 'bio' => $validated['bio'] ?? null,
                 'experience_years' => $validated['experience_years'] ?? 0,
-                'consultation_price' => $validated['consultation_price'] ?? 0,
-                'video_price' => $validated['video_price'] ?? null,
-                'video_duration_minutes' => $validated['video_duration_minutes'] ?? (int) app(PlatformConfig::class)->number('video.default_duration_minutes', 10),
-                'google_meet_account' => $validated['google_meet_account'] ?? null,
-                'platforms' => $validated['platforms'] ?? [],
-                'service_catalog' => $validated['service_catalog'] ?? [],
+                // Prețurile vin din servicii; câmpurile vechi se schimbă doar când sunt trimise.
+                'consultation_price' => array_key_exists('consultation_price', $validated) ? ($validated['consultation_price'] ?? 0) : ($existing?->consultation_price ?? 0),
+                'video_price' => array_key_exists('video_price', $validated) ? $validated['video_price'] : $existing?->video_price,
+                'video_duration_minutes' => $validated['video_duration_minutes'] ?? $existing?->video_duration_minutes ?? (int) app(PlatformConfig::class)->number('video.default_duration_minutes', 10),
+                'google_meet_account' => array_key_exists('google_meet_account', $validated) ? $validated['google_meet_account'] : $existing?->google_meet_account,
+                'platforms' => $validated['platforms'] ?? $existing?->platforms ?? [],
+                'service_catalog' => $validated['service_catalog'] ?? $existing?->service_catalog ?? [],
                 'required_investigations' => $doctor->doctorProfile?->required_investigations ?? [],
-                'is_available' => $validated['is_available'] ?? true,
+                'is_available' => $validated['is_available'] ?? $existing?->is_available ?? true,
                 'is_approved' => $doctor->doctorProfile?->is_approved ?? true,
             ],
         );
