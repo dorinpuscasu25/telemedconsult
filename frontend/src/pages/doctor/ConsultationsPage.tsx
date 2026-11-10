@@ -1,75 +1,50 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import {
-  Activity,
-  ArrowLeft,
-  CalendarClock,
-  CalendarDays,
-  CheckCircle2,
-  ClipboardList,
-  Clock,
-  FileText,
-  Hourglass,
-  MessageSquare,
-  Microscope,
-  Play,
-  RefreshCw,
-  Search,
-  Stethoscope,
-  Wallet,
-  XCircle
-} from 'lucide-react';
-import { Avatar, AvatarFallback } from '../../components/ui/avatar';
-import { Button } from '../../components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/ui/dialog';
-import { Input } from '../../components/ui/input';
-import { Label } from '../../components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import { ArrowLeft, MapPin, MessageSquare, MoreHorizontal, Search, Stethoscope, Video } from 'lucide-react';
+import { Dialog, DialogContent, DialogTitle } from '../../components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../components/ui/dropdown-menu';
 import { ListSkeleton } from '../../components/ui/skeleton';
 import { cn } from '../../components/ui/utils';
-import { PageHeader } from '../../components/app/PageHeader';
-import { EmptyState } from '../../components/app/EmptyState';
-import { StatusBadge, ToneBadge } from '../../components/app/StatusBadge';
-import { MoreMenu, type MoreMenuItem } from '../../components/app/MoreMenu';
 import { useDialogs } from '../../components/app/DialogProvider';
-import { ConsultationVideoButton } from '../../components/ConsultationVideoButton';
 import { HigoConsultationProposal } from '../../components/HigoConsultationProposal';
 import { ConsultationDocuments } from '../../components/ConsultationDocuments';
-import { FinalizeConsultationDialog } from '../../components/doctor/FinalizeConsultationDialog';
-import { useAuth } from '../../contexts/AuthContext';
+import { ConclusionDialog } from '../../components/doctor/ConclusionEditor';
+import { ProposeTimeDialog } from '../../components/doctor/ProposeTimeDialog';
+import { PatientChart, type ExamMediaItem, type InvestigationSummary, type ObjectiveDataEntry, type PatientProfileSummary } from '../../components/PatientChart';
+import { countDone } from '../../components/patient/record/sectionMeta';
 import { apiRequest } from '../../lib/api';
-import { dateTime, money, relativeDay, timeOnly, timeUntil } from '../../lib/format';
-import { CONSULTATION_KIND_LABELS, paymentStatusLabel } from '../../lib/status';
-import { useNow } from '../../lib/use-now';
 import {
-  PatientChart,
-  type ExamMediaItem,
-  type InvestigationSummary,
-  type ObjectiveDataEntry,
-  type PatientProfileSummary
-} from '../../components/PatientChart';
+  agoLabel, ageLabel, hm, leftLabel, mdl, serviceMeta, stageOf, STAGE_LABEL, STAGE_TONE, whenLabel,
+  type Proposal, type RequestService, type Stage
+} from '../../lib/doctor';
+import { MEDICAL_SECTIONS, type MedicalRecord } from '../../lib/medical-record';
+import { usePageTitle } from '../../lib/use-page-title';
+import { useNow } from '../../lib/use-now';
+import { Avatar } from './DoctorHome';
+import { ServiceIcon } from '../../components/doctor/ServiceIcon';
 
 interface ConsultationRequest {
   id: string;
   type: string;
   status: string;
+  stage?: Stage;
+  consultation_kind?: string;
+  service?: RequestService;
+  proposal?: Proposal | null;
+  doctor_reply_due_at?: string | null;
   current_illness_history?: string | null;
   symptoms?: string | null;
   triage_notes?: string | null;
-  specialty?: string | null;
   patient?: { id: string; name: string; email: string } | null;
-  doctor?: { id: string; name: string } | null;
   amount?: number;
-  provider_amount?: number;
   payment_status?: string;
-  acceptance_expires_at?: string | null;
-  chat_expires_at?: string | null;
-  cancellation_reason?: string | null;
   created_at: string;
+  accepted_at?: string | null;
+  completed_at?: string | null;
   scheduled_at?: string | null;
-  proposed_scheduled_at?: string | null;
-  consultation_kind?: string;
+  free_chat_until?: string | null;
+  cancellation_reason?: string | null;
   patient_profile?: PatientProfileSummary | null;
   objective_data?: ObjectiveDataEntry[];
   exam_media?: ExamMediaItem[];
@@ -78,548 +53,558 @@ interface ConsultationRequest {
   objective_data_completed_at?: string | null;
   ready_for_doctor?: boolean;
   doctor_started_at?: string | null;
+  has_conclusion_draft?: boolean;
 }
 
-type Bucket = 'new' | 'accepted' | 'completed' | 'closed';
-
-const BUCKETS: Array<{ value: Bucket; label: string; empty: string; emptyDescription: string }> = [
-  { value: 'new', label: 'Cereri noi', empty: 'Nicio cerere nouă', emptyDescription: 'Cererile pacienților apar aici imediat ce sunt trimise.' },
-  { value: 'accepted', label: 'Active', empty: 'Nicio consultație activă', emptyDescription: 'Consultațiile confirmate și cele în desfășurare apar aici.' },
-  { value: 'completed', label: 'Finalizate', empty: 'Nicio consultație finalizată', emptyDescription: 'Consultațiile cu concluzia publicată apar aici.' },
-  { value: 'closed', label: 'Închise', empty: 'Nicio cerere închisă', emptyDescription: 'Cererile anulate, respinse sau expirate apar aici.' }
-];
-
-const bucketOf = (request: ConsultationRequest): Bucket =>
-  ['new', 'rescheduled'].includes(request.status) ? 'new'
-    : request.status === 'accepted' ? 'accepted'
-      : request.status === 'completed' ? 'completed'
-        : 'closed';
-
+type Bucket = 'new' | 'act' | 'fin' | 'cl';
+const TABS: Array<[Bucket, string]> = [['new', 'Cereri noi'], ['act', 'Active'], ['fin', 'Finalizate'], ['cl', 'Închise']];
+const bucketOf = (stage: Stage): Bucket => (['new', 'prop', 'ask'].includes(stage) ? 'new' : ['conf', 'live'].includes(stage) ? 'act' : stage === 'done' ? 'fin' : 'cl');
 const time = (value?: string | null) => (value ? new Date(value).getTime() : 0);
+const nameOf = (request: ConsultationRequest) => request.patient_profile?.name || request.patient?.name || 'Pacient';
+const priceOf = (request: ConsultationRequest) => request.service?.price ?? request.amount ?? 0;
+const DOW = ['duminică', 'luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă'];
 
-const patientNameOf = (request: ConsultationRequest) => request.patient_profile?.name || request.patient?.name || 'Pacient';
-
-const initialsOf = (name: string) => name.split(' ').map((part) => part.charAt(0)).slice(0, 2).join('').toUpperCase();
-
-const isFuture = (value?: string | null) => Boolean(value && new Date(value).getTime() > Date.now());
-
-/** Ce are medicul de făcut acum, într-o propoziție. */
-function doctorNextStep(request: ConsultationRequest): { text: string; tone: 'warning' | 'info' | 'success' | 'neutral' } | null {
-  if (request.status === 'new') return { text: request.scheduled_at ? `Pacientul a cerut consultația pentru ${dateTime(request.scheduled_at)}. Confirmă ora sau propune alta.` : 'Pacientul așteaptă răspunsul tău.', tone: 'warning' };
-  if (request.status === 'rescheduled') return { text: `Ai propus ${dateTime(request.proposed_scheduled_at)}. Așteptăm confirmarea pacientului.`, tone: 'neutral' };
-  if (request.status !== 'accepted') return null;
-  if (request.doctor_started_at) return { text: 'Consultația este în desfășurare. Publică concluzia când ai terminat.', tone: 'success' };
-  if (!request.ready_for_doctor) return { text: 'Se așteaptă datele examinării de la operator. Te anunțăm când sunt gata.', tone: 'info' };
-  if (isFuture(request.scheduled_at)) return { text: `Poți începe consultația la ${dateTime(request.scheduled_at)}. Pacientul așteaptă să o deschizi.`, tone: 'info' };
-  return { text: 'Totul este pregătit. Poți începe consultația.', tone: 'success' };
+function dayWord(value?: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  const diff = Math.round((new Date(date.toDateString()).getTime() - new Date(new Date().toDateString()).getTime()) / 86400000);
+  return diff === 0 ? 'azi' : diff === -1 ? 'ieri' : diff > -7 ? DOW[date.getDay()] : date.toLocaleDateString('ro-RO', { day: 'numeric', month: 'short' });
 }
 
+/** Ce scrie sub nume în listă: cât de recentă e cererea sau ce s-a întâmplat. */
+function sentLabel(request: ConsultationRequest, stage: Stage, now: number) {
+  if (['new', 'prop', 'ask'].includes(stage)) return agoLabel(request.created_at, now);
+  if (stage === 'conf' || stage === 'live') return `confirmată ${dayWord(request.accepted_at ?? request.created_at)}`;
+  if (stage === 'done') return dayWord(request.completed_at ?? request.created_at);
+  return STAGE_LABEL[stage].toLowerCase();
+}
+
+function whenForList(request: ConsultationRequest, stage: Stage) {
+  if (stage === 'prop') return `Propus: ${(request.proposal?.slots ?? []).map((slot) => whenLabel(slot)).join(', ')}`;
+  if (stage === 'ask') return 'Cere alte ore';
+  return whenLabel(request.scheduled_at ?? request.created_at, true);
+}
+
+const TONES = {
+  amber: 'border-amber-200 bg-amber-50 [--banner:#92400E]',
+  blue: 'border-blue-200 bg-blue-50 [--banner:#1E3A8A]',
+  green: 'border-green-200 bg-green-50 [--banner:#166534]',
+  grey: 'border-slate-200 bg-slate-50 [--banner:#0F172A]'
+} as const;
+
+interface Banner { tone: keyof typeof TONES; title: string; text: string; slots?: string[]; note?: string | null }
+
+function bannerFor(request: ConsultationRequest, stage: Stage, now: number): Banner {
+  const price = mdl(priceOf(request));
+  const expires = whenLabel(request.proposal?.expires_at);
+  const reschedule = Boolean(request.proposal?.is_reschedule);
+  const timeCome = !request.scheduled_at || time(request.scheduled_at) <= now;
+  switch (stage) {
+    case 'new':
+      return {
+        tone: 'amber',
+        title: request.doctor_reply_due_at ? `Răspunde până ${whenLabel(request.doctor_reply_due_at)}` : 'Cerere nouă',
+        text: 'Confirmă ora cerută sau propune altele. Dacă nu răspunzi, cererea expiră și banii revin la pacient.'
+      };
+    case 'prop': {
+      const count = request.proposal?.slots.length ?? 0;
+      return {
+        tone: 'blue',
+        title: reschedule ? 'Ai propus mutarea consultației' : `Ai propus ${count === 1 ? 'o oră nouă' : `${count} ore noi`}`,
+        text: `Pacientul a primit notificare în aplicație și pe Telegram. Așteptăm răspunsul până ${expires}. ${reschedule ? `Dacă nu răspunde, rămâne ora confirmată: ${whenLabel(request.scheduled_at)}.` : 'Dacă nu răspunde, cererea expiră și banii revin la pacient.'}`,
+        slots: request.proposal?.slots
+      };
+    }
+    case 'ask':
+      return { tone: 'amber', title: 'Niciuna dintre ore nu i se potrivește', text: `Propune alte ore până ${expires}. Altfel cererea se anulează și banii revin la pacient.`, note: request.proposal?.patient_note };
+    case 'conf':
+      if (request.consultation_kind === 'with_exam' && !request.ready_for_doctor) {
+        return { tone: 'blue', title: `Consultația e ${whenLabel(request.scheduled_at)}`, text: 'Se așteaptă datele examinării la domiciliu. Te anunțăm când sunt gata.' };
+      }
+      return {
+        tone: 'blue',
+        title: `Consultația e ${whenLabel(request.scheduled_at)}`,
+        text: timeCome ? 'A venit ora. Începe consultația, apoi sună pacientul.' : '„Începe consultația” devine activ la ora programată. Până atunci poți reprograma din „⋯”.'
+      };
+    case 'live':
+      return { tone: 'blue', title: `Consultația a început la ${hm(request.doctor_started_at ?? now)}`, text: 'Scrie concluzia aici sau direct din apel. Ciorna se salvează singură.' };
+    case 'done':
+      return {
+        tone: 'green',
+        title: 'Concluzia a fost publicată. Pacientul a primit documentul PDF.',
+        text: `${price} au intrat în balanța ta.${request.free_chat_until && time(request.free_chat_until) > now ? ` Chatul rămâne deschis gratuit până ${whenLabel(request.free_chat_until).split(',')[0]}.` : ''}`
+      };
+    case 'expired':
+      return { tone: 'grey', title: request.cancellation_reason || 'Cererea a expirat', text: `${price} au revenit în portofelul pacientului. Ambii ați primit notificare.` };
+    default:
+      return {
+        tone: 'grey',
+        title: request.status === 'rejected' ? 'Ai respins cererea' : 'Pacientul a anulat cererea',
+        text: `${price} au revenit în portofelul pacientului. Ambii ați primit notificare.`
+      };
+  }
+}
+
+const MONEY_NOTE: Record<Stage, string> = {
+  new: 'rezervat de pacient', prop: 'rezervat de pacient', ask: 'rezervat de pacient', conf: 'rezervat de pacient', live: 'rezervat de pacient',
+  done: 'transferat la tine', cancel: 'returnat', expired: 'returnat'
+};
+
+interface Action { label: string; run: () => void; danger?: boolean; disabled?: boolean; href?: string; video?: boolean }
+interface Actions { primary: Action | null; secondary: Action[]; menu: Action[]; hint: string | null }
+
+/**
+ * C1 + P1: lista cererilor cu serviciul și prețul pe fiecare rând; în dreapta,
+ * cererea aleasă începe cu serviciul, apoi acuzele, ora și acțiunile etapei.
+ * Pe telefon (MBb), cererea se deschide pe tot ecranul cu acțiunile jos.
+ */
 export function ConsultationsPage() {
-  const { user, role } = useAuth();
+  usePageTitle('Consultații');
   const dialogs = useDialogs();
+  const location = useLocation();
   const now = useNow();
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [loadError, setLoadError] = useState('');
-  const loadSequence = useRef(0);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [requests, setRequests] = useState<ConsultationRequest[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [bucket, setBucket] = useState<Bucket>('new');
   const [search, setSearch] = useState('');
-  const [requests, setRequests] = useState<ConsultationRequest[]>([]);
-  const [finalizeRequest, setFinalizeRequest] = useState<ConsultationRequest | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const starting = useRef(new Set<string>());
-  const [rescheduleRequest, setRescheduleRequest] = useState<ConsultationRequest | null>(null);
-  const [proposedTime, setProposedTime] = useState('');
-  const [scheduleError, setScheduleError] = useState('');
-  const [scheduleSaving, setScheduleSaving] = useState(false);
-  const [detailTab, setDetailTab] = useState<'summary' | 'chart' | 'documents'>('summary');
-
+  const [busy, setBusy] = useState(false);
+  const [proposeOpen, setProposeOpen] = useState(false);
+  const [conclusionOpen, setConclusionOpen] = useState(false);
+  const [chartOpen, setChartOpen] = useState(false);
+  const [docsOpen, setDocsOpen] = useState(false);
+  const sequence = useRef(0);
   const selectedId = searchParams.get('request');
 
-  const invalidateRequests = useCallback(() => { loadSequence.current++; }, []);
-
-  const loadRequests = useCallback(async () => {
-    const sequence = ++loadSequence.current;
+  const load = useCallback(async () => {
+    const current = ++sequence.current;
     try {
       const response = await apiRequest<{ data: ConsultationRequest[] }>('/requests');
-      if (sequence !== loadSequence.current) return;
-      setRequests(response.data);
+      if (current !== sequence.current) return;
+      setRequests(response.data ?? []);
       setLoadError('');
     } catch (err) {
-      if (sequence === loadSequence.current) setLoadError(err instanceof Error ? err.message : 'Nu am putut încărca consultațiile.');
+      if (current === sequence.current) setLoadError(err instanceof Error ? err.message : 'Nu am putut încărca consultațiile.');
     } finally {
-      if (sequence === loadSequence.current) { setIsLoading(false); setIsRefreshing(false); }
+      if (current === sequence.current) setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    setIsLoading(true);
-    setRequests([]);
-    void loadRequests();
-    const timer = window.setInterval(() => void loadRequests(), 15000);
-    const refresh = () => void loadRequests();
+    void load();
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void load(); }, 15000);
+    const refresh = () => void load();
     window.addEventListener('focus', refresh);
-    return () => { invalidateRequests(); window.clearInterval(timer); window.removeEventListener('focus', refresh); };
-  }, [invalidateRequests, loadRequests, user?.id, role]);
+    return () => { sequence.current++; window.clearInterval(timer); window.removeEventListener('focus', refresh); };
+  }, [load]);
 
-  // Un link direct (?request=…) deschide tab-ul potrivit consultației.
-  const selected = requests.find((item) => String(item.id) === selectedId) ?? null;
+  const withStage = useMemo(() => requests.map((request) => ({ ...request, stage: stageOf(request) })), [requests]);
+  const counts = useMemo(() => {
+    const result: Record<Bucket, number> = { new: 0, act: 0, fin: 0, cl: 0 };
+    withStage.forEach((request) => { result[bucketOf(request.stage)]++; });
+    return result;
+  }, [withStage]);
+
+  const selected = withStage.find((request) => request.id === selectedId) ?? null;
+  useEffect(() => { if (selected) setBucket(bucketOf(selected.stage)); }, [selected?.id, selected?.stage]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!selected) return;
-    setBucket(bucketOf(selected));
-  }, [selected?.id, selected?.status]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    setDetailTab(searchParams.get('chart') === '1' ? 'chart' : 'summary');
-  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const byBucket = useMemo(() => {
-    const groups: Record<Bucket, ConsultationRequest[]> = { new: [], accepted: [], completed: [], closed: [] };
-    requests.forEach((request) => groups[bucketOf(request)].push(request));
-    // Întâi cererile cu termen de răspuns (cel mai apropiat primul), apoi
-    // reprogramările care așteaptă pacientul, apoi restul după ora cerută.
-    const urgency = (request: ConsultationRequest) => request.status === 'rescheduled' ? Number.MAX_SAFE_INTEGER : time(request.acceptance_expires_at) || Number.MAX_SAFE_INTEGER - 1;
-    groups.new.sort((a, b) => urgency(a) - urgency(b) || (time(a.scheduled_at) || time(a.created_at)) - (time(b.scheduled_at) || time(b.created_at)));
-    groups.accepted.sort((a, b) => Number(Boolean(b.doctor_started_at)) - Number(Boolean(a.doctor_started_at)) || (time(a.scheduled_at) || time(a.created_at)) - (time(b.scheduled_at) || time(b.created_at)));
-    groups.completed.sort((a, b) => time(b.created_at) - time(a.created_at));
-    groups.closed.sort((a, b) => time(b.created_at) - time(a.created_at));
-    return groups;
-  }, [requests]);
+    if (selected && searchParams.get('propose') === '1') {
+      setProposeOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('propose');
+      setSearchParams(next, { replace: true });
+    }
+  }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const query = search.trim().toLocaleLowerCase('ro');
-  const list = byBucket[bucket].filter((request) => !query || [patientNameOf(request), request.patient?.name, request.patient_profile?.patient_code, request.id, request.specialty]
-    .some((value) => String(value ?? '').toLocaleLowerCase('ro').includes(query)));
+  const list = withStage
+    .filter((request) => bucketOf(request.stage) === bucket)
+    .filter((request) => !query || [nameOf(request), request.patient?.name, request.patient_profile?.patient_code, request.id].some((value) => String(value ?? '').toLocaleLowerCase('ro').includes(query)))
+    .sort((a, b) => (bucket === 'new' ? time(a.created_at) - time(b.created_at) : bucket === 'act' ? Number(Boolean(b.doctor_started_at)) - Number(Boolean(a.doctor_started_at)) || time(a.scheduled_at) - time(b.scheduled_at) : time(b.created_at) - time(a.created_at)));
   const shown = selected ?? list[0] ?? null;
 
-  const selectRequest = (id: string | null) => {
+  const select = (id: string | null) => {
     const next = new URLSearchParams(searchParams);
-    next.delete('chart');
     if (id) next.set('request', id); else next.delete('request');
     setSearchParams(next);
   };
 
-  const changeBucket = (value: string) => {
-    setBucket(value as Bucket);
-    const next = new URLSearchParams(searchParams);
-    next.delete('request');
-    next.delete('chart');
-    setSearchParams(next, { replace: true });
-  };
-
-  /**
-   * Erorile serverului ajung la medic, iar lista se reîmprospătează după fiecare
-   * acțiune. Fără asta, un refuz al backendului părea că butonul nu face nimic.
-   */
-  const runAction = async (request: ConsultationRequest, action: () => Promise<unknown>, successMessage: string) => {
-    setBusyId(request.id);
+  const changed = () => { window.dispatchEvent(new Event('requests-changed')); void load(); };
+  const run = async (action: () => Promise<unknown>, success: string) => {
+    setBusy(true);
     try {
       await action();
-      toast.success(successMessage);
+      toast.success(success);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Acțiunea nu a putut fi finalizată.');
     } finally {
-      setBusyId(null);
-      void loadRequests();
+      setBusy(false);
+      changed();
     }
   };
 
-  const startConsultation = async (request: ConsultationRequest) => {
-    if (request.doctor_started_at || starting.current.has(request.id)) return;
-    starting.current.add(request.id);
-    setBusyId(request.id);
-    try {
-      const response = await apiRequest<{ request: ConsultationRequest }>(`/requests/${request.id}/start`, { method: 'POST' });
-      setRequests((items) => items.map((item) => item.id === request.id ? response.request : item));
-      toast.success('Consultația a început. Poți intra în apelul video sau în chat.');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Nu am putut începe consultația.');
-    } finally {
-      starting.current.delete(request.id);
-      setBusyId(null);
-    }
-  };
+  const post = (request: ConsultationRequest, path: string, body?: unknown) => apiRequest(`/requests/${request.id}/${path}`, { method: 'POST', body: body ? JSON.stringify(body) : undefined });
 
-  const acceptRequest = (request: ConsultationRequest) => runAction(
-    request,
-    () => apiRequest(`/requests/${request.id}/accept`, { method: 'POST' }),
-    'Solicitare acceptată. Pacientul a fost anunțat.'
-  );
-
-  const rejectRequest = async (request: ConsultationRequest) => {
+  const refuse = async (request: ConsultationRequest & { stage: Stage }) => {
     const confirmed = await dialogs.confirm({
-      title: 'Respingi solicitarea?',
-      description: <p>Pacientul <strong>{patientNameOf(request)}</strong> primește înapoi suma de {money(request.amount)} MDL. Acțiunea nu poate fi anulată.</p>,
-      confirmLabel: 'Respinge și returnează banii',
+      title: request.stage === 'conf' ? 'Anulezi consultația?' : 'Respingi cererea?',
+      description: <p>{nameOf(request)} primește înapoi {mdl(priceOf(request))}. Acțiunea nu poate fi anulată.</p>,
+      confirmLabel: request.stage === 'conf' ? 'Anulează și returnează banii' : 'Respinge și returnează banii',
       tone: 'danger'
     });
     if (!confirmed) return;
-    await runAction(
-      request,
-      () => apiRequest(`/requests/${request.id}/reject`, { method: 'POST', body: JSON.stringify({ reason: 'Solicitare respinsă de medic.' }) }),
-      'Solicitare respinsă. Banii au fost returnați pacientului.'
-    );
+    await run(() => post(request, 'reject', { reason: request.stage === 'conf' ? 'Consultație anulată de medic.' : 'Cerere respinsă de medic.' }), 'Banii au revenit la pacient.');
   };
 
-  const requestInvestigation = async (request: ConsultationRequest) => {
-    const values = await dialogs.form({
-      title: 'Cere o investigație suplimentară',
-      description: 'Pacientul și operatorul primesc cererea împreună cu notele tale.',
-      confirmLabel: 'Trimite cererea',
-      fields: [
-        { name: 'title', label: 'Investigația', placeholder: 'Ex: Hemoleucogramă completă', required: true },
-        { name: 'notes', label: 'Note pentru pacient / operator', type: 'textarea' }
-      ]
-    });
-    if (!values) return;
-    await runAction(
-      request,
-      () => apiRequest(`/requests/${request.id}/additional-investigation`, { method: 'POST', body: JSON.stringify({ title: values.title, notes: values.notes || '' }) }),
-      'Investigație suplimentară solicitată.'
-    );
-  };
+  const start = (request: ConsultationRequest) => run(() => post(request, 'start'), 'Consultația a început. Poți suna pacientul sau scrie concluzia.');
 
-  const proposeTime = (request: ConsultationRequest) => {
-    setRescheduleRequest(request);
-    setProposedTime('');
-    setScheduleError('');
-  };
-
-  const submitProposedTime = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!rescheduleRequest || scheduleSaving) return;
-    if (!proposedTime || new Date(proposedTime).getTime() <= Date.now()) {
-      setScheduleError('Alege o dată și o oră în viitor.');
-      return;
+  const actionsFor = (request: ConsultationRequest & { stage: Stage }): Actions => {
+    const chat = `/doctor/chat?request=${request.id}`;
+    const video = `/consultations/${request.id}/video`;
+    const openPropose = () => setProposeOpen(true);
+    const reschedule = Boolean(request.proposal?.is_reschedule);
+    switch (request.stage) {
+      case 'new':
+        return {
+          primary: { label: request.scheduled_at ? `Confirmă ${whenLabel(request.scheduled_at)}` : 'Acceptă cererea', run: () => void run(() => post(request, 'accept'), 'Ora e confirmată. Pacientul a fost anunțat.') },
+          secondary: [{ label: 'Propune altă oră', run: openPropose }],
+          menu: [{ label: 'Finalizează direct', run: () => setConclusionOpen(true) }, { label: 'Respinge și returnează banii', run: () => void refuse(request), danger: true }],
+          hint: 'Banii sunt deja rezervați din portofelul pacientului. Îi primești când publici concluzia.'
+        };
+      case 'prop':
+        return {
+          primary: { label: 'Modifică propunerea', run: openPropose },
+          secondary: [{ label: 'Mesaje', run: () => undefined, href: chat }],
+          menu: [
+            { label: 'Retrage propunerea', run: () => void run(() => post(request, 'withdraw-proposal'), 'Propunerea a fost retrasă.') },
+            { label: reschedule ? 'Anulează și returnează banii' : 'Respinge și returnează banii', run: () => void refuse(request), danger: true }
+          ],
+          hint: null
+        };
+      case 'ask':
+        return {
+          primary: { label: 'Propune alte ore', run: openPropose },
+          secondary: [{ label: 'Scrie pacientului', run: () => undefined, href: chat }],
+          menu: [{ label: 'Respinge și returnează banii', run: () => void refuse(request), danger: true }],
+          hint: null
+        };
+      case 'conf': {
+        const blocked = (request.scheduled_at && time(request.scheduled_at) > now) || (request.consultation_kind === 'with_exam' && !request.ready_for_doctor);
+        return {
+          primary: { label: blocked && request.scheduled_at && time(request.scheduled_at) > now ? `Începe consultația · de la ${hm(request.scheduled_at)}` : 'Începe consultația', run: () => void start(request), disabled: Boolean(blocked) || busy },
+          secondary: [...(request.service?.type !== 'chat' ? [{ label: 'Apel video', run: () => undefined, href: video, video: true }] : []), { label: 'Mesaje', run: () => undefined, href: chat }],
+          menu: [{ label: 'Reprogramează', run: openPropose }, { label: 'Anulează și returnează banii', run: () => void refuse(request), danger: true }],
+          hint: null
+        };
+      }
+      case 'live':
+        return {
+          primary: { label: request.has_conclusion_draft ? 'Continuă concluzia' : 'Scrie concluzia', run: () => setConclusionOpen(true) },
+          secondary: [...(request.service?.type !== 'chat' ? [{ label: 'Apel video', run: () => undefined, href: video, video: true }] : []), { label: 'Mesaje', run: () => undefined, href: chat }],
+          menu: [],
+          hint: request.service?.type !== 'chat' ? 'Concluzia se poate scrie și din ecranul apelului.' : null
+        };
+      case 'done':
+        return { primary: { label: 'Vezi PDF-ul', run: () => setDocsOpen(true) }, secondary: [{ label: 'Vezi discuția', run: () => undefined, href: chat }], menu: [], hint: null };
+      default:
+        return { primary: null, secondary: [{ label: 'Vezi discuția', run: () => undefined, href: chat }], menu: [], hint: null };
     }
-    setScheduleSaving(true);
-    setScheduleError('');
-    try {
-      await apiRequest(`/requests/${rescheduleRequest.id}/propose-time`, {
-        method: 'POST',
-        body: JSON.stringify({ scheduled_at: new Date(proposedTime).toISOString() })
-      });
-      setRescheduleRequest(null);
-      toast.success('Oră nouă propusă. Așteptăm confirmarea pacientului.');
-      void loadRequests();
-    } catch (err) {
-      setScheduleError(err instanceof Error ? err.message : 'Nu am putut propune ora.');
-    } finally {
-      setScheduleSaving(false);
-    }
   };
 
-  const requestedMissing = !isLoading && !loadError && selectedId && !selected;
+  const actions = shown ? actionsFor(shown) : null;
+  const linkState = { returnTo: location.pathname + location.search };
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Consultații"
-        description="Cererile pacienților, programările și concluziile tale."
-        actions={
-          <Button type="button" variant="outline" onClick={() => { setIsRefreshing(true); void loadRequests(); }} disabled={isRefreshing}>
-            <RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} />Actualizează
-          </Button>
-        }
-      />
-
-      {loadError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{loadError}</p>}
-      {requestedMissing && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Consultația solicitată nu este disponibilă pentru acest cont de medic.</p>}
-
-      <div className="grid gap-5 lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)] lg:items-start">
-        {/* Lista */}
-        <section className={cn('space-y-3 lg:sticky lg:top-24', selected && 'hidden lg:block')} aria-label="Lista consultațiilor">
-          <Tabs value={bucket} onValueChange={changeBucket}>
-            <TabsList className="grid w-full grid-cols-4">
-              {BUCKETS.map((item) => (
-                <TabsTrigger key={item.value} value={item.value} className="flex-col gap-0 px-1 py-1.5 text-xs sm:flex-row sm:gap-1.5 sm:text-[13px]">
-                  <span className="truncate">{item.label}</span>
-                  <span className={cn('tabular text-[11px] font-bold', item.value === 'new' && byBucket.new.length > 0 ? 'text-amber-600' : 'text-slate-400')}>{byBucket[item.value].length}</span>
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Caută pacient, cod sau #ID" className="pl-9" aria-label="Caută consultații" />
+    <>
+      {/* Desktop · C1a */}
+      <div className="hidden lg:grid lg:h-[calc(100dvh-64px)] lg:grid-cols-[380px_minmax(0,1fr)]">
+        <section className="flex min-h-0 flex-col border-r border-slate-200 bg-white" aria-label="Lista consultațiilor">
+          <ListControls bucket={bucket} counts={counts} search={search} onSearch={setSearch} onBucket={(value) => { setBucket(value); select(null); }} />
+          <div className="flex-1 overflow-y-auto">
+            {isLoading ? <div className="p-4"><ListSkeleton rows={4} /></div> : list.length === 0 ? (
+              <p className="border-t border-slate-100 px-4 py-8 text-center text-sm text-slate-500">{query ? 'Niciun rezultat pentru căutare.' : 'Nimic aici deocamdată.'}</p>
+            ) : list.map((request) => (
+              <ListRow key={request.id} request={request} active={shown?.id === request.id} now={now} onSelect={() => select(request.id)} />
+            ))}
           </div>
-
-          {isLoading ? <ListSkeleton rows={4} /> : list.length === 0 ? (
-            <EmptyState
-              compact
-              icon={ClipboardList}
-              title={query ? 'Niciun rezultat' : BUCKETS.find((item) => item.value === bucket)?.empty}
-              description={query ? 'Încearcă alt nume sau cod de pacient.' : BUCKETS.find((item) => item.value === bucket)?.emptyDescription}
-            />
-          ) : (
-            <ul className="space-y-2">
-              {list.map((request) => (
-                <li key={request.id}>
-                  <RequestListItem request={request} active={selected?.id === request.id} implicitActive={!selected && shown?.id === request.id} now={now} onSelect={() => selectRequest(request.id)} />
-                </li>
-              ))}
-            </ul>
-          )}
         </section>
-
-        {/* Detaliul */}
-        <section className={cn('min-w-0', !selected && 'hidden lg:block')} aria-label="Detaliile consultației">
-          {selected && (
-            <Button variant="ghost" size="sm" className="-ml-2 mb-2 lg:hidden" onClick={() => selectRequest(null)}>
-              <ArrowLeft className="h-4 w-4" />Înapoi la listă
-            </Button>
-          )}
-          {shown ? (
-            <RequestDetail
-              key={shown.id}
-              request={shown}
-              now={now}
-              busy={busyId === shown.id}
-              tab={detailTab}
-              onTabChange={setDetailTab}
-              onAccept={() => void acceptRequest(shown)}
-              onReject={() => void rejectRequest(shown)}
-              onPropose={() => proposeTime(shown)}
-              onStart={() => void startConsultation(shown)}
-              onFinalize={() => setFinalizeRequest(shown)}
-              onInvestigation={() => void requestInvestigation(shown)}
-            />
+        <section className="min-w-0 overflow-y-auto px-7 py-6" aria-label="Detaliile cererii">
+          {loadError && <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{loadError}</p>}
+          {shown && actions ? (
+            <Detail request={shown} now={now} actions={actions} linkState={linkState} onChart={() => setChartOpen(true)} />
           ) : !isLoading && (
-            <EmptyState icon={Stethoscope} title="Selectează o consultație" description="Detaliile, fișa pacientului și acțiunile apar aici." className="py-20" />
+            <div className="grid h-full place-items-center text-center text-sm text-slate-500"><span><Stethoscope className="mx-auto mb-3 h-8 w-8 text-slate-300" />Alege o cerere din listă.</span></div>
           )}
         </section>
       </div>
 
-      <Dialog open={!!rescheduleRequest} onOpenChange={(open) => { if (!open && !scheduleSaving) setRescheduleRequest(null); }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Propune altă oră</DialogTitle>
-            <DialogDescription>Alege când poți consulta pacientul. Acesta primește propunerea și o confirmă.</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={submitProposedTime} className="space-y-5">
-            {rescheduleRequest?.scheduled_at && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">Programarea actuală: <strong className="text-slate-900">{dateTime(rescheduleRequest.scheduled_at)}</strong></p>}
-            <div className="space-y-2">
-              <Label htmlFor="proposed-time">Data și ora nouă</Label>
-              <Input id="proposed-time" type="datetime-local" required value={proposedTime} onChange={(event) => setProposedTime(event.target.value)} disabled={scheduleSaving} />
-              <p className="text-xs text-slate-500">Fus orar: {Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
-            </div>
-            {scheduleError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{scheduleError}</p>}
-            <DialogFooter>
-              <Button type="button" variant="outline" disabled={scheduleSaving} onClick={() => setRescheduleRequest(null)}>Renunță</Button>
-              <Button type="submit" disabled={scheduleSaving || !proposedTime}>{scheduleSaving ? 'Se trimite…' : 'Trimite propunerea'}</Button>
-            </DialogFooter>
-          </form>
+      {/* Telefon · lista */}
+      <div className="flex flex-col gap-3 lg:hidden">
+        <h1 className="text-2xl font-bold tracking-[-.02em] text-slate-950">Consultații</h1>
+        <div className="-mx-4 border-y border-slate-200 bg-white">
+          <ListControls bucket={bucket} counts={counts} search={search} onSearch={setSearch} onBucket={setBucket} />
+          {isLoading ? <div className="p-4"><ListSkeleton rows={3} /></div> : list.length === 0 ? (
+            <p className="border-t border-slate-100 px-4 py-8 text-center text-sm text-slate-500">Nimic aici deocamdată.</p>
+          ) : list.map((request) => <ListRow key={request.id} request={request} active={false} now={now} onSelect={() => select(request.id)} />)}
+        </div>
+        {loadError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{loadError}</p>}
+      </div>
+
+      {/* Telefon · MBb */}
+      {selected && actions && (
+        <MobileRequest request={selected} now={now} actions={actions} linkState={linkState} onBack={() => select(null)} onChart={() => setChartOpen(true)} />
+      )}
+
+      <ProposeTimeDialog request={shown} open={proposeOpen} onOpenChange={setProposeOpen} onSent={() => { toast.success('Propunerea a fost trimisă pacientului.'); changed(); }} />
+      <ConclusionDialog request={shown} open={conclusionOpen} onOpenChange={setConclusionOpen} onPublished={() => { toast.success('Concluzia a fost publicată. Pacientul a primit documentul PDF.'); changed(); }} />
+      <Dialog open={chartOpen} onOpenChange={setChartOpen}>
+        <DialogContent className="max-h-[92dvh] w-[calc(100%-1rem)] overflow-y-auto sm:max-w-3xl">
+          <DialogTitle>Fișa medicală · {shown ? nameOf(shown) : ''}</DialogTitle>
+          {shown && (
+            <PatientChart profile={shown.patient_profile} illnessHistory={shown.current_illness_history} symptoms={shown.symptoms} triageNotes={shown.triage_notes}
+              objectiveData={shown.objective_data} examMedia={shown.exam_media} investigations={shown.investigations}
+              anamnesisCompletedAt={shown.anamnesis_completed_at} objectiveDataCompletedAt={shown.objective_data_completed_at} />
+          )}
         </DialogContent>
       </Dialog>
+      <Dialog open={docsOpen} onOpenChange={setDocsOpen}>
+        <DialogContent className="max-h-[92dvh] w-[calc(100%-1rem)] overflow-y-auto sm:max-w-2xl">
+          <DialogTitle>Documente publicate</DialogTitle>
+          {shown && <ConsultationDocuments requestId={shown.id} />}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
 
-      <FinalizeConsultationDialog
-        request={finalizeRequest}
-        open={Boolean(finalizeRequest)}
-        onOpenChange={(open) => { if (!open) setFinalizeRequest(null); }}
-        onCompleted={() => { toast.success('Concluzia a fost publicată. Pacientul a primit documentul PDF.'); void loadRequests(); }}
-      />
+function ListControls({ bucket, counts, search, onSearch, onBucket }: { bucket: Bucket; counts: Record<Bucket, number>; search: string; onSearch: (value: string) => void; onBucket: (bucket: Bucket) => void }) {
+  return (
+    <div className="flex flex-col gap-3 p-4">
+      <div className="grid grid-cols-4 gap-0.5 rounded-[10px] bg-slate-100 p-[3px]">
+        {TABS.map(([value, label]) => (
+          <button key={value} type="button" onClick={() => onBucket(value)}
+            className={cn('flex h-8 items-center justify-center gap-[5px] rounded-lg text-[13px] font-medium', bucket === value ? 'bg-white text-slate-950 shadow-[0_1px_2px_rgba(15,23,42,.12)]' : 'text-slate-500')}>
+            <span className="truncate">{label}</span><span className="text-[11px] text-slate-400">{counts[value]}</span>
+          </button>
+        ))}
+      </div>
+      <label className="flex h-10 items-center gap-2 rounded-[10px] border border-slate-200 px-3 focus-within:border-blue-600">
+        <Search className="h-4 w-4 shrink-0 text-slate-400" />
+        <input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Caută pacient, cod sau #ID" aria-label="Caută consultații" className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400" />
+      </label>
     </div>
   );
 }
 
-function RequestListItem({ request, active, implicitActive = false, now, onSelect }: { request: ConsultationRequest; active: boolean; implicitActive?: boolean; now: number; onSelect: () => void }) {
-  const name = patientNameOf(request);
-  const when = request.scheduled_at || request.created_at;
-  const expiresIn = request.status === 'new' ? timeUntil(request.acceptance_expires_at, now) : null;
+function ListRow({ request, active, now, onSelect }: { request: ConsultationRequest & { stage: Stage }; active: boolean; now: number; onSelect: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-current={active ? 'true' : undefined}
-      className={cn(
-        'flex w-full items-start gap-3 rounded-2xl border bg-white p-3.5 text-left transition',
-        active ? 'border-primary/40 shadow-sm ring-2 ring-primary/15' : implicitActive ? 'border-slate-200 hover:border-slate-300 lg:border-primary/40 lg:shadow-sm lg:ring-2 lg:ring-primary/15' : 'border-slate-200 hover:border-slate-300 hover:shadow-sm'
-      )}>
-      <Avatar className="size-10 shrink-0">
-        <AvatarFallback className={cn('text-xs font-semibold', active || implicitActive ? 'bg-primary text-white' : 'bg-slate-100 text-slate-600')}>{initialsOf(name)}</AvatarFallback>
-      </Avatar>
-      <span className="min-w-0 flex-1">
-        <span className="flex items-start justify-between gap-2">
-          <span className="truncate font-semibold text-slate-900">{name}</span>
-          <span className="tabular shrink-0 text-xs text-slate-500">{relativeDay(when)}, {timeOnly(when)}</span>
-        </span>
-        <span className="mt-0.5 block truncate text-sm text-slate-500">{request.specialty || 'Consultație'} · {CONSULTATION_KIND_LABELS[request.consultation_kind ?? ''] ?? 'Consultație'}</span>
-        <span className="mt-2 flex flex-wrap items-center gap-1.5">
-          <StatusBadge request={request} perspective="doctor" />
-          {expiresIn && <span className={cn('inline-flex items-center gap-1 text-xs font-medium', expiresIn === 'expirat' ? 'text-red-600' : 'text-amber-700')}><Hourglass className="h-3 w-3" />{expiresIn === 'expirat' ? 'Termen depășit' : `Răspunde în ${expiresIn}`}</span>}
-          {request.consultation_kind === 'with_exam' && request.status === 'accepted' && !request.ready_for_doctor && <span className="text-xs text-slate-500">· așteaptă examinarea</span>}
-        </span>
+    <button type="button" onClick={onSelect} aria-current={active ? 'true' : undefined}
+      className={cn('flex w-full gap-3 border-t border-slate-100 px-4 py-3.5 text-left', active ? 'bg-blue-50 shadow-[inset_3px_0_0_#2563EB]' : 'bg-white hover:bg-slate-50')}>
+      <Avatar name={nameOf(request)} size={38} />
+      <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
+        <span className="flex justify-between gap-2"><span className="truncate text-sm font-semibold text-slate-950">{nameOf(request)}</span><span className="whitespace-nowrap text-xs text-slate-400">{sentLabel(request, request.stage, now)}</span></span>
+        <span className="truncate text-[13px] text-slate-700">{request.service?.name ?? 'Consultație'}</span>
+        <span className="flex items-center justify-between gap-2"><span className="truncate text-xs text-slate-500">{whenForList(request, request.stage)}</span><span className="whitespace-nowrap text-[13px] font-bold text-slate-950">{mdl(priceOf(request))}</span></span>
       </span>
     </button>
   );
 }
 
-function RequestDetail({
-  request,
-  now,
-  busy,
-  tab,
-  onTabChange,
-  onAccept,
-  onReject,
-  onPropose,
-  onStart,
-  onFinalize,
-  onInvestigation
-}: {
-  request: ConsultationRequest;
-  now: number;
-  busy: boolean;
-  tab: 'summary' | 'chart' | 'documents';
-  onTabChange: (tab: 'summary' | 'chart' | 'documents') => void;
-  onAccept: () => void;
-  onReject: () => void;
-  onPropose: () => void;
-  onStart: () => void;
-  onFinalize: () => void;
-  onInvestigation: () => void;
+function subtitle(request: ConsultationRequest) {
+  const profile = request.patient_profile;
+  return [ageLabel(profile?.age), request.patient?.name && request.patient.name !== profile?.name ? `titular ${request.patient.name}` : null, profile?.patient_code ? `#${profile.patient_code}` : `#${request.id}`].filter(Boolean).join(' · ');
+}
+
+function recordProgress(request: ConsultationRequest) {
+  const record = request.patient_profile?.medical_record as MedicalRecord | null | undefined;
+  return record ? `${countDone(record)} din ${MEDICAL_SECTIONS.length} secțiuni` : null;
+}
+
+function addressOf(request: ConsultationRequest) {
+  const profile = request.patient_profile;
+  return [profile?.address, profile?.locality].filter(Boolean).join(', ') || '—';
+}
+
+function Detail({ request, now, actions, linkState, onChart }: {
+  request: ConsultationRequest & { stage: Stage }; now: number; actions: Actions; linkState: { returnTo: string }; onChart: () => void;
 }) {
-  const name = patientNameOf(request);
-  const bucket = bucketOf(request);
-  const next = doctorNextStep(request);
-  const expiresIn = request.status === 'new' ? timeUntil(request.acceptance_expires_at, now) : null;
-  const startBlocked = isFuture(request.scheduled_at);
-
-  // O singură acțiune principală pe etapă; restul în „⋯”.
-  let primary: React.ReactNode = null;
-  const secondary: React.ReactNode[] = [];
-  const more: MoreMenuItem[] = [];
-
-  if (request.status === 'new') {
-    primary = <Button onClick={onAccept} disabled={busy}><CheckCircle2 className="h-4 w-4" />{busy ? 'Se confirmă…' : request.scheduled_at ? 'Confirmă ora' : 'Acceptă'}</Button>;
-    secondary.push(<Button key="propose" variant="outline" onClick={onPropose} disabled={busy}><CalendarClock className="h-4 w-4" />Propune altă oră</Button>);
-    more.push({ label: 'Finalizează direct', icon: FileText, onSelect: onFinalize });
-    more.push({ label: 'Respinge și returnează banii', icon: XCircle, onSelect: onReject, danger: true, separatorBefore: true });
-  } else if (request.status === 'accepted') {
-    if (request.ready_for_doctor && !request.doctor_started_at) {
-      primary = <Button onClick={onStart} disabled={busy || startBlocked} title={startBlocked ? `Disponibil de la ${dateTime(request.scheduled_at)}` : undefined}><Play className="h-4 w-4" />{busy ? 'Se începe…' : 'Începe consultația'}</Button>;
-      more.push({ label: 'Finalizează consultația', icon: FileText, onSelect: onFinalize });
-    } else {
-      primary = <Button onClick={onFinalize}><FileText className="h-4 w-4" />Scrie concluzia</Button>;
-    }
-    secondary.push(<ConsultationVideoButton key="video" requestId={request.id} size="default" variant="outline" label="Apel video" />);
-    secondary.push(<Button key="chat" asChild variant="outline"><Link to={`/doctor/chat?request=${request.id}`}><MessageSquare className="h-4 w-4" />Mesaje</Link></Button>);
-    if (request.consultation_kind === 'with_exam') more.unshift({ label: 'Cere investigație suplimentară', icon: Microscope, onSelect: onInvestigation });
-    more.push({ label: 'Reprogramează', icon: CalendarClock, onSelect: onPropose });
-  } else {
-    secondary.push(<Button key="history" asChild variant="outline"><Link to={`/doctor/chat?request=${request.id}`}><MessageSquare className="h-4 w-4" />Vezi discuția</Link></Button>);
-  }
+  const { primary, secondary, menu, hint } = actions;
+  const stage = request.stage;
+  const banner = bannerFor(request, stage, now);
+  const index = { new: 0, prop: 0, ask: 0, conf: 1, live: 2, done: 3, cancel: -1, expired: -1 }[stage];
+  const service = request.service;
+  const progress = recordProgress(request);
 
   return (
-    <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      {/* Antet */}
-      <header className="border-b border-slate-100 p-5 sm:p-6">
-        <div className="flex items-start gap-4">
-          <Avatar className="size-12 shrink-0">
-            <AvatarFallback className="bg-primary/10 text-sm font-semibold text-primary">{initialsOf(name)}</AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <h2 className="text-xl font-bold tracking-tight text-slate-950">{name}</h2>
-              <StatusBadge request={request} perspective="doctor" />
-            </div>
-            <p className="mt-1 text-sm text-slate-500">
-              {[request.patient_profile?.patient_code && `Cod ${request.patient_profile.patient_code}`, request.patient?.name && `Titular: ${request.patient.name}`, `#${request.id}`].filter(Boolean).join(' · ')}
-            </p>
-          </div>
+    <div className="flex max-w-[880px] flex-col gap-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <Avatar name={nameOf(request)} size={52} />
+          <div className="flex flex-col gap-[3px]"><h2 className="text-xl font-bold tracking-[-.01em] text-slate-950">{nameOf(request)}</h2><span className="text-[13px] text-slate-500">{subtitle(request)}</span></div>
         </div>
+        <span className={cn('whitespace-nowrap rounded-full px-[11px] py-[5px] text-xs font-semibold', STAGE_TONE[stage])}>{stage === 'cancel' && request.status === 'rejected' ? 'Respinsă' : STAGE_LABEL[stage]}</span>
+      </div>
 
-        <dl className="mt-5 grid gap-3 sm:grid-cols-3">
-          <Fact icon={CalendarDays} label={request.scheduled_at ? (request.status === 'new' ? 'Ora solicitată' : 'Programare') : 'Trimisă la'} value={dateTime(request.scheduled_at || request.created_at)} />
-          <Fact icon={Stethoscope} label="Tip" value={`${request.specialty || 'Consultație'} · ${CONSULTATION_KIND_LABELS[request.consultation_kind ?? ''] ?? '—'}`} />
-          <Fact icon={Wallet} label="Plată" value={`${money(request.amount)} MDL`} detail={paymentStatusLabel(request.payment_status)} />
-        </dl>
+      {index >= 0 && (
+        <div className="grid grid-cols-4 gap-1.5">
+          {['Cerere', 'Ora stabilită', 'În curs', 'Concluzie publicată'].map((label, i) => (
+            <div key={label} className="flex flex-col gap-1.5">
+              <div className={cn('h-1 rounded-sm', i <= index ? 'bg-blue-600' : 'bg-slate-200')} />
+              <span className={cn('text-xs', i <= index ? 'text-slate-950' : 'text-slate-400', i === index ? 'font-semibold' : 'font-medium')}>{label}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
-        {next && (
-          <div className={cn('mt-5 flex items-start gap-2.5 rounded-xl px-3.5 py-3 text-sm',
-            next.tone === 'warning' ? 'bg-amber-50 text-amber-900' : next.tone === 'success' ? 'bg-emerald-50 text-emerald-900' : next.tone === 'info' ? 'bg-blue-50 text-blue-900' : 'bg-slate-50 text-slate-700')}>
-            <Clock className="mt-0.5 h-4 w-4 shrink-0 opacity-70" />
-            <p className="flex-1">{next.text}{expiresIn && <strong className="ml-1 font-semibold">{expiresIn === 'expirat' ? 'Termenul de răspuns a expirat.' : `Termen de răspuns: ${expiresIn}.`}</strong>}</p>
+      <BannerBox banner={banner} />
+
+      <div className="flex flex-col gap-3.5 rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="flex items-center gap-3.5">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-700"><ServiceIcon type={service?.type ?? 'video'} className="h-[22px] w-[22px]" /></span>
+          <div className="flex flex-1 flex-col gap-[3px]">
+            <span className="text-xs font-semibold tracking-[.04em] text-slate-500">SERVICIU ALES</span>
+            <span className="text-base font-semibold text-slate-950">{service?.name ?? 'Consultație'}</span>
+            {service && <span className="text-[13px] text-slate-500">{serviceMeta(service)}</span>}
+          </div>
+          <div className="flex flex-col items-end gap-0.5"><span className="text-[22px] font-bold text-slate-950">{mdl(priceOf(request))}</span><span className="text-xs text-slate-500">{MONEY_NOTE[stage]}</span></div>
+        </div>
+        {service?.type === 'home' && (
+          <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-3.5">
+            <div className="flex flex-col gap-1.5"><span className="text-xs text-slate-500">Investigații</span><InvestigationChips request={request} /></div>
+            <div className="flex flex-col gap-1"><span className="text-xs text-slate-500">Adresa</span><span className="text-sm text-slate-950">{addressOf(request)}</span></div>
           </div>
         )}
+      </div>
 
-        {(primary || secondary.length > 0) && (
-          <div className="mt-5 flex flex-wrap items-center gap-2">
-            {primary}
-            {secondary}
-            <MoreMenu items={more} />
-          </div>
-        )}
-      </header>
+      <div className="grid grid-cols-2 gap-[18px] rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="col-span-2 flex flex-col gap-1.5"><span className="text-xs font-semibold tracking-[.04em] text-slate-500">ACUZE</span><span className="whitespace-pre-wrap text-[15px] leading-[1.55] text-slate-950">{request.symptoms || request.triage_notes || 'Pacientul nu a descris acuzele.'}</span></div>
+        <div className="flex flex-col gap-1"><span className="text-xs font-semibold tracking-[.04em] text-slate-500">{['new', 'prop', 'ask'].includes(stage) ? 'ORA CERUTĂ' : 'PROGRAMARE'}</span><span className="text-[15px] font-semibold text-slate-950">{whenLabel(request.scheduled_at ?? request.created_at, true)}</span></div>
+        <div className="flex flex-col gap-1"><span className="text-xs font-semibold tracking-[.04em] text-slate-500">FIȘA MEDICALĂ</span><button type="button" onClick={onChart} className="self-start text-sm font-medium text-blue-600 hover:underline">Vezi fișa{progress ? ` · ${progress}` : ''}</button></div>
+      </div>
 
-      {/* Conținut */}
-      <Tabs value={tab} onValueChange={(value) => onTabChange(value as 'summary' | 'chart' | 'documents')} className="gap-0">
-        <TabsList variant="line" className="w-full justify-start gap-4 overflow-x-auto px-5 sm:px-6">
-          <TabsTrigger value="summary" className="flex-none rounded-none border-b-2 border-transparent px-1 pb-3 pt-3 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">Rezumat</TabsTrigger>
-          <TabsTrigger value="chart" className="flex-none rounded-none border-b-2 border-transparent px-1 pb-3 pt-3 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">Fișa pacientului</TabsTrigger>
-          {bucket === 'completed' && <TabsTrigger value="documents" className="flex-none rounded-none border-b-2 border-transparent px-1 pb-3 pt-3 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">Documente</TabsTrigger>}
-        </TabsList>
+      {(['new', 'conf'] as Stage[]).includes(stage) && <HigoConsultationProposal requestId={request.id} />}
 
-        <TabsContent value="summary" className="space-y-5 p-5 sm:p-6">
-          <div>
-            <h3 className="text-sm font-semibold text-slate-900">Acuzele pacientului</h3>
-            <p className="mt-2 whitespace-pre-wrap rounded-xl bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700">{request.symptoms || request.triage_notes || 'Pacientul nu a descris acuzele.'}</p>
-          </div>
-          {request.current_illness_history && (
-            <div>
-              <h3 className="text-sm font-semibold text-slate-900">Istoricul bolii actuale</h3>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{request.current_illness_history}</p>
-            </div>
+      {(primary || secondary.length > 0) && (
+        <div className="flex flex-wrap items-center gap-2.5">
+          {primary && <ActionButton action={primary} primary linkState={linkState} />}
+          {secondary.map((action) => <ActionButton key={action.label} action={action} linkState={linkState} />)}
+          {menu.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button type="button" aria-label="Mai multe acțiuni" className="grid h-11 w-11 place-items-center rounded-[10px] border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"><MoreHorizontal className="h-[18px] w-[18px]" /></button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="top" className="min-w-[280px] rounded-xl p-1.5">
+                {menu.map((action) => (
+                  <DropdownMenuItem key={action.label} onSelect={action.run} className={cn('h-10 cursor-pointer rounded-lg px-3 text-sm', action.danger ? 'text-red-600 focus:text-red-700' : 'text-slate-950')}>{action.label}</DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
-          {request.consultation_kind === 'with_exam' && (
-            <div className="flex flex-wrap items-center gap-2">
-              <ToneBadge tone={request.objective_data_completed_at ? 'success' : 'warning'}>
-                <Activity className="h-3 w-3" />Date obiective {request.objective_data_completed_at ? 'primite' : 'în așteptare'}
-              </ToneBadge>
-              {(request.objective_data ?? []).some((entry) => entry.from_device) && <ToneBadge tone="info" dot={false}>Aparat HIGO</ToneBadge>}
-              <button type="button" className="text-sm font-medium text-primary hover:underline" onClick={() => onTabChange('chart')}>Vezi datele în fișă</button>
-            </div>
-          )}
-          {['new', 'accepted'].includes(request.status) && <HigoConsultationProposal requestId={request.id} />}
-          {bucket === 'closed' && <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">{request.cancellation_reason || 'Solicitare închisă. Fișa și istoricul rămân disponibile.'}</p>}
-          {bucket === 'completed' && (
-            <div>
-              <h3 className="mb-2 text-sm font-semibold text-slate-900">Documente publicate</h3>
-              <ConsultationDocuments requestId={request.id} compact />
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="chart" className="p-5 sm:p-6">
-          <PatientChart
-            profile={request.patient_profile}
-            illnessHistory={request.current_illness_history}
-            symptoms={request.symptoms}
-            triageNotes={request.triage_notes}
-            objectiveData={request.objective_data}
-            examMedia={request.exam_media}
-            investigations={request.investigations}
-            anamnesisCompletedAt={request.anamnesis_completed_at}
-            objectiveDataCompletedAt={request.objective_data_completed_at}
-          />
-        </TabsContent>
-
-        {bucket === 'completed' && (
-          <TabsContent value="documents" className="p-5 sm:p-6">
-            <ConsultationDocuments requestId={request.id} />
-          </TabsContent>
-        )}
-      </Tabs>
-    </article>
+        </div>
+      )}
+      {hint && <span className="-mt-1.5 text-[13px] text-slate-500">{hint}</span>}
+    </div>
   );
 }
 
-function Fact({ icon: Icon, label, value, detail }: { icon: React.ElementType; label: string; value: React.ReactNode; detail?: React.ReactNode }) {
+function BannerBox({ banner }: { banner: Banner }) {
   return (
-    <div className="rounded-xl border border-slate-100 bg-slate-50/60 px-3.5 py-3">
-      <dt className="flex items-center gap-1.5 text-xs font-medium text-slate-500"><Icon className="h-3.5 w-3.5" />{label}</dt>
-      <dd className="mt-1 text-sm font-semibold text-slate-900">{value}</dd>
-      {detail && <dd className="text-xs text-slate-500">{detail}</dd>}
+    <div className={cn('flex flex-col gap-1 rounded-xl border px-4 py-3.5', TONES[banner.tone])}>
+      <span className="text-[15px] font-semibold text-[var(--banner)]">{banner.title}</span>
+      <span className="text-[13px] leading-normal text-slate-700">{banner.text}</span>
+      {banner.slots && banner.slots.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1.5">{banner.slots.map((slot) => <span key={slot} className="rounded-lg border border-slate-200 bg-white px-2.5 py-[5px] text-[13px] font-semibold text-slate-950">{whenLabel(slot)}</span>)}</div>
+      )}
+      {banner.note && <span className="mt-1 rounded-lg bg-white px-3 py-2 text-sm text-slate-950">„{banner.note}”</span>}
+    </div>
+  );
+}
+
+function InvestigationChips({ request }: { request: ConsultationRequest }) {
+  const items = request.service?.investigations ?? [];
+  if (!items.length) return <span className="text-sm text-slate-500">Fără investigații</span>;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {items.map((item) => (
+        <span key={item.id} className={cn('rounded-full px-2.5 py-1 text-xs font-medium', item.requirement === 'optional' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-700')}>
+          {item.requirement === 'optional' ? `+ ${item.name} · ${mdl(item.price)}` : item.name}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ActionButton({ action, primary = false, linkState, className }: { action: Action; primary?: boolean; linkState: { returnTo: string }; className?: string }) {
+  const classes = cn('flex h-11 items-center justify-center gap-2 rounded-[10px] px-4 text-sm whitespace-nowrap',
+    primary ? cn('px-[18px] text-[15px] font-semibold text-white', action.disabled ? 'bg-blue-300' : 'bg-blue-600 hover:bg-blue-700')
+      : action.danger ? 'border border-slate-200 bg-white font-medium text-red-600 hover:bg-red-50' : 'border border-slate-200 bg-white font-medium text-slate-950 hover:bg-slate-50', className);
+  if (action.href) {
+    return <Link to={action.href} state={action.video ? linkState : undefined} className={classes}>{action.video && <Video className="h-4 w-4" />}{action.href.includes('/chat') && !primary && <MessageSquare className="h-4 w-4" />}{action.label}</Link>;
+  }
+  return <button type="button" onClick={action.run} disabled={action.disabled} className={classes}>{action.label}</button>;
+}
+
+function MobileRequest({ request, now, actions, linkState, onBack, onChart }: {
+  request: ConsultationRequest & { stage: Stage }; now: number; actions: Actions; linkState: { returnTo: string }; onBack: () => void; onChart: () => void;
+}) {
+  const stage = request.stage;
+  const left = stage === 'new' ? leftLabel(request.doctor_reply_due_at, now) : ['prop', 'ask'].includes(stage) ? leftLabel(request.proposal?.expires_at, now) : null;
+  const service = request.service;
+  const banner = bannerFor(request, stage, now);
+  const progress = recordProgress(request);
+  // Pe telefon, meniul „⋯” devine butoane: secundarele și cele din meniu, pe două coloane.
+  const extra = [...actions.secondary, ...actions.menu.filter((action) => action.label !== 'Finalizează direct')].map((action) => ({
+    ...action,
+    label: action.label === 'Propune altă oră' ? 'Altă oră' : action.label === 'Respinge și returnează banii' ? 'Refuză' : action.label
+  }));
+
+  return (
+    <div className="fixed inset-0 z-40 flex flex-col bg-slate-50 lg:hidden">
+      <div className="flex items-center gap-1 px-2 pb-2.5 pt-[max(12px,env(safe-area-inset-top))]">
+        <button type="button" onClick={onBack} aria-label="Înapoi" className="grid h-10 w-10 place-items-center text-slate-700"><ArrowLeft className="h-[22px] w-[22px]" /></button>
+        <span className="flex-1 text-[17px] font-semibold text-slate-950">{STAGE_LABEL[stage]}</span>
+        {left && <span className="mr-2 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">expiră în {left}</span>}
+      </div>
+      <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 pb-4 pt-1">
+        <div className="flex items-center gap-3 px-0.5 py-1">
+          <Avatar name={nameOf(request)} size={48} />
+          <div className="flex flex-col gap-0.5"><span className="text-lg font-bold text-slate-950">{nameOf(request)}</span><span className="text-[13px] text-slate-500">{subtitle(request)}</span></div>
+        </div>
+        {stage !== 'new' && <BannerBox banner={banner} />}
+        <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="flex justify-between gap-2.5">
+            <div className="flex flex-col gap-[3px]">
+              <span className="text-[11px] font-semibold tracking-[.04em] text-slate-500">SERVICIU ALES</span>
+              <span className="text-[15px] font-semibold text-slate-950">{service?.name ?? 'Consultație'}</span>
+              {service && <span className="text-[13px] text-slate-500">{serviceMeta(service)}</span>}
+            </div>
+            <span className="whitespace-nowrap text-lg font-bold text-slate-950">{mdl(priceOf(request))}</span>
+          </div>
+          {service?.type === 'home' && (
+            <>
+              <InvestigationChips request={request} />
+              <div className="flex items-start gap-2 border-t border-slate-100 pt-3 text-sm text-slate-950"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />{addressOf(request)}</div>
+            </>
+          )}
+        </div>
+        <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="flex flex-col gap-1"><span className="text-[11px] font-semibold tracking-[.04em] text-slate-500">ACUZE</span><span className="whitespace-pre-wrap text-[15px] leading-normal text-slate-950">{request.symptoms || 'Pacientul nu a descris acuzele.'}</span></div>
+          <div className="flex flex-col gap-1 border-t border-slate-100 pt-3"><span className="text-[11px] font-semibold tracking-[.04em] text-slate-500">{['new', 'prop', 'ask'].includes(stage) ? 'ORA CERUTĂ' : 'PROGRAMARE'}</span><span className="text-[15px] font-semibold text-slate-950">{whenLabel(request.scheduled_at ?? request.created_at, true)}</span></div>
+          <button type="button" onClick={onChart} className="border-t border-slate-100 pt-3 text-left text-sm font-medium text-blue-600">Vezi fișa medicală{progress ? ` · ${progress}` : ''}</button>
+        </div>
+        {stage === 'done' && <ConsultationDocuments requestId={request.id} compact />}
+      </div>
+      {(actions.primary || extra.length > 0) && (
+        <div className="flex flex-col gap-2 border-t border-slate-200 bg-white px-4 pb-[max(28px,env(safe-area-inset-bottom))] pt-3">
+          {actions.primary && <ActionButton action={actions.primary} primary linkState={linkState} className="h-12 w-full" />}
+          {extra.length > 0 && (
+            <div className={cn('grid gap-2', extra.length === 1 ? 'grid-cols-1' : 'grid-cols-2')}>
+              {extra.map((action) => <ActionButton key={action.label} action={action} linkState={linkState} className="h-11 w-full px-2" />)}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

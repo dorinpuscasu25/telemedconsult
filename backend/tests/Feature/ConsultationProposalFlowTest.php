@@ -138,6 +138,20 @@ class ConsultationProposalFlowTest extends TestCase
         $this->getJson("/api/v1/requests/{$item->id}/conclusion-draft")->assertForbidden();
     }
 
+    public function test_doctor_slots_mark_taken_times_except_the_request_being_moved(): void
+    {
+        $item = $this->book('2026-11-11 10:30');
+        $other = $this->book('2026-11-11 11:00');
+        Sanctum::actingAs($this->doctor);
+
+        $day = collect($this->getJson("/api/v1/doctor/slots?ignore={$item->id}")->assertOk()->json('days'))->firstWhere('date', '2026-11-11');
+        $slots = collect($day['slots'])->keyBy('time');
+
+        $this->assertFalse($slots['10:30']['taken']);
+        $this->assertTrue($slots['11:00']['taken']);
+        $this->assertNotNull($other);
+    }
+
     private function book(string $localTime): ConsultationRequest
     {
         Sanctum::actingAs($this->patientUser);

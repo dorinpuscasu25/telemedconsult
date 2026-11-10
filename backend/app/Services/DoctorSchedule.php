@@ -80,7 +80,7 @@ class DoctorSchedule
      *
      * @return array{has_schedule: bool, is_available: bool, timezone: string, days: list<array{date: string, slots: list<array{starts_at: string, time: string}>}>}
      */
-    public function freeSlots(User $doctor, int $days = 7, ?CarbonImmutable $now = null): array
+    public function freeSlots(User $doctor, int $days = 7, ?CarbonImmutable $now = null, bool $includeTaken = false, ?int $ignoreRequestId = null): array
     {
         $doctor->loadMissing('doctorProfile');
         $now ??= CarbonImmutable::now();
@@ -97,6 +97,7 @@ class DoctorSchedule
         $booked = ConsultationRequest::query()
             ->whereIn('status', self::ACTIVE_STATUSES)
             ->where('doctor_id', $doctor->id)
+            ->when($ignoreRequestId, fn ($query) => $query->where('id', '!=', $ignoreRequestId))
             ->whereNotNull('scheduled_at')
             ->whereBetween('scheduled_at', [$this->inAppTimezone($firstDay->subMinutes(self::SLOT_MINUTES)), $this->inAppTimezone($lastDay->addMinutes(self::SLOT_MINUTES))])
             ->toBase()
@@ -119,10 +120,12 @@ class DoctorSchedule
                     $end = $day->setTimeFromTimeString((string) $window->ends_at);
 
                     for ($slot = $start; $slot->addMinutes(self::SLOT_MINUTES) <= $end; $slot = $slot->addMinutes(self::SLOT_MINUTES)) {
-                        if ($slot <= $now || $this->overlapsBooked($booked, $slot)) {
+                        $taken = $this->overlapsBooked($booked, $slot);
+                        if ($slot <= $now || ($taken && ! $includeTaken)) {
                             continue;
                         }
-                        $slots[$slot->format('H:i')] = ['starts_at' => $slot->utc()->toIso8601String(), 'time' => $slot->format('H:i')];
+                        $slots[$slot->format('H:i')] = ['starts_at' => $slot->utc()->toIso8601String(), 'time' => $slot->format('H:i')]
+                            + ($includeTaken ? ['taken' => $taken] : []);
                     }
                 }
             }

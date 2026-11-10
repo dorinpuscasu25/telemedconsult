@@ -8,6 +8,7 @@ import {
   Building2,
   Check,
   ChevronDown,
+  Ellipsis,
   ClipboardList,
   Gift,
   Home,
@@ -111,6 +112,11 @@ function secondaryNav(role: RoleName | null, newsLabel: string): NavItem[] {
   return items;
 }
 
+const doctorSpecialty = (user: ReturnType<typeof useAuth>['user']) =>
+  ((user?.profiles?.doctor as { specialty?: { name?: string } | null } | null | undefined)?.specialty?.name) ?? null;
+
+const chatParamsHas = (search: string, key: string) => new URLSearchParams(search).has(key);
+
 export function AppLayout() {
   const { user, logout, role, roles, switchRole } = useAuth();
   const { isEnabled } = useFeatureFlags();
@@ -143,23 +149,38 @@ export function AppLayout() {
   const doctorsEnabled = isEnabled('doctors');
   const initials = (user?.name || '?').split(' ').map((part) => part.charAt(0)).slice(0, 2).join('').toUpperCase();
   const profilePath = role === 'patient' ? '/patient/profile?tab=account' : role === 'institution' ? '/institution/settings' : `/${role}/profile`;
-  const { unreadMessages, telegramLinked } = useShellCounts(Boolean(role) && role !== 'admin');
+  const { unreadMessages, pendingRequests, unreadNews, telegramLinked } = useShellCounts(Boolean(role) && role !== 'admin', role);
   const badgeFor = (item: NavItem) => (item.path.endsWith('/chat') ? unreadMessages : 0);
-  const dotFor = (item: NavItem) => item.path.endsWith('/telegram') && telegramLinked === false;
+  // La medic, „Consultații” arată cererile care așteaptă răspunsul lui (N1 medic).
+  const warnFor = (item: NavItem) => (role === 'doctor' && item.path === '/doctor/consultations' ? pendingRequests : 0);
+  const dotFor = (item: NavItem) => (role === 'doctor'
+    ? item.path.endsWith('/noutati') && unreadNews > 0
+    : item.path.endsWith('/telegram') && telegramLinked === false);
 
   // Chatul ocupă tot spațiul, fără antet și fără margini (C1a / C2a).
   const bleed = location.pathname.endsWith('/chat');
-  const ownMobileHeader = bleed || location.pathname === '/patient/more' || location.pathname.startsWith('/patient/patients/');
+  // Consultațiile medicului: listă și detaliu pe toată înălțimea (C1a).
+  const doctorSplit = role === 'doctor' && location.pathname === '/doctor/consultations';
+  const headerTitle = doctorSplit ? 'Consultații' : null;
+  const ownMobileHeader = bleed || ['/patient/more', '/doctor/more', '/doctor', '/doctor/profile'].includes(location.pathname) || location.pathname.startsWith('/patient/patients/')
+    || (role === 'doctor' && location.pathname === '/doctor/consultations' && chatParamsHas(location.search, 'request'));
   // Conversația deschisă pe telefon ocupă tot ecranul (C2b).
   const chatParams = new URLSearchParams(location.search);
-  const fullScreenChat = role === 'patient' && bleed && ['doctor', 'operator', 'conversation', 'request'].some((key) => chatParams.has(key));
+  const fullScreenChat = (role === 'patient' && bleed && ['doctor', 'operator', 'conversation', 'request'].some((key) => chatParams.has(key)))
+    || (role === 'doctor' && location.pathname === '/doctor/consultations' && chatParams.has('request'));
   // În asistentul de pornire (5a/5b) bara cu pașii ține locul antetului.
   const wizardHeader = location.pathname === '/patient/doctors' && chatParams.get('from') === 'start';
 
   // Pe telefon pacientul are patru pagini și „Mai mult” (N2b).
+  // Pe telefon medicul are Acasă, Consultații, Mesaje, Profil și „Mai mult” (MB).
   const mobileItems: NavItem[] = role === 'patient'
     ? [...navItems.filter((item) => item.path !== '/patient/profile'), { label: 'Mai mult', path: '/patient/more', icon: Menu }]
-    : navItems;
+    : role === 'doctor'
+      ? [...navItems.filter((item) => item.path !== '/doctor/stats'), { label: 'Mai mult', path: '/doctor/more', icon: Ellipsis }]
+      : navItems;
+  const moreMatches = role === 'doctor'
+    ? ['/doctor/more', '/doctor/stats', '/doctor/noutati', '/doctor/telegram']
+    : ['/patient/profile', '/patient/patients', '/patient/complaints', '/patient/noutati', '/patient/telegram'];
 
   const accountMenu = (
     <DropdownMenuContent align="end" side="top" className="w-60">
@@ -229,7 +250,7 @@ export function AppLayout() {
           )}
 
           <nav className="flex flex-col gap-0.5 px-3 py-2">
-            {navItems.map((item) => <SidebarLink key={item.path} item={item} active={isActive(item.path)} badge={badgeFor(item)} />)}
+            {navItems.map((item) => <SidebarLink key={item.path} item={item} active={isActive(item.path)} badge={badgeFor(item)} warn={warnFor(item)} />)}
           </nav>
 
           {moreItems.length > 0 && (
@@ -249,8 +270,8 @@ export function AppLayout() {
               <AvatarFallback className="bg-blue-50 text-xs font-semibold text-blue-600">{initials}</AvatarFallback>
             </Avatar>
             <span className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-[13px] font-semibold text-slate-950">{user?.name}</span>
-              <span className="text-xs text-slate-500">{role ? ROLE_LABELS[role] : ''}</span>
+              <span className="truncate text-[13px] font-semibold text-slate-950">{role === 'doctor' ? `Dr. ${user?.name ?? ''}` : user?.name}</span>
+              <span className="truncate text-xs text-slate-500">{role === 'doctor' ? doctorSpecialty(user) ?? ROLE_LABELS.doctor : role ? ROLE_LABELS[role] : ''}</span>
             </span>
             <ChevronDown className="h-4 w-4 text-slate-500" />
           </DropdownMenuTrigger>
@@ -261,7 +282,8 @@ export function AppLayout() {
       <div className="flex min-h-screen flex-col lg:pl-[232px]">
         {/* Antetul: pe desktop doar clopoțelul; pe telefon logo + clopoțel. */}
         <header className={cn('sticky top-0 z-20 border-b border-slate-200 bg-white', bleed && 'lg:hidden', ownMobileHeader && 'max-lg:hidden', wizardHeader && 'hidden')}>
-          <div className="flex h-14 items-center justify-between gap-3 pl-4 pr-2 pt-[env(safe-area-inset-top)] lg:h-16 lg:justify-end lg:px-6">
+          <div className={cn('flex h-14 items-center justify-between gap-3 pl-4 pr-2 pt-[env(safe-area-inset-top)] lg:h-16 lg:px-6', !headerTitle && 'lg:justify-end')}>
+            {headerTitle && <span className="hidden text-lg font-semibold text-slate-950 lg:block">{headerTitle}</span>}
             <span className="lg:hidden">{logo('sm')}</span>
             <span className="lg:hidden"><NotificationBell bare /></span>
             <span className="hidden lg:block"><NotificationBell /></span>
@@ -269,7 +291,7 @@ export function AppLayout() {
         </header>
 
         {role !== 'patient' && <ActiveConsultationBanner />}
-        <main className={cn('w-full min-w-0 flex-1', bleed ? (fullScreenChat ? '' : 'pb-[calc(60px+max(12px,env(safe-area-inset-bottom)))] lg:pb-0') : 'px-4 pb-28 pt-5 lg:px-8 lg:pb-10 lg:pt-7')}>
+        <main className={cn('w-full min-w-0 flex-1', bleed ? (fullScreenChat ? '' : 'pb-[calc(60px+max(12px,env(safe-area-inset-bottom)))] lg:pb-0') : doctorSplit ? 'px-4 pb-28 pt-5 lg:p-0' : 'px-4 pb-28 pt-5 lg:px-8 lg:pb-10 lg:pt-7')}>
           {/* Boundary per pagină: o pagină care crapă nu mai omoară navigația.
               `key` resetează boundary-ul la fiecare schimbare de rută. */}
           <ErrorBoundary inline key={location.pathname} label={`app:${location.pathname}`}>
@@ -283,14 +305,16 @@ export function AppLayout() {
       <nav className={cn('fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white pb-[max(12px,env(safe-area-inset-bottom))] lg:hidden', fullScreenChat && 'hidden')} aria-label="Navigație principală">
         <div className="grid" style={{ gridTemplateColumns: `repeat(${mobileItems.length}, minmax(0, 1fr))` }}>
           {mobileItems.map((item) => {
-            const active = isActive(item.path) || (item.path === '/patient/more' && ['/patient/profile', '/patient/patients', '/patient/complaints', '/patient/noutati', '/patient/telegram'].some((path) => location.pathname.startsWith(path)));
+            const active = isActive(item.path) || (item.path.endsWith('/more') && moreMatches.some((path) => location.pathname.startsWith(path)));
             const badge = badgeFor(item);
+            const warn = warnFor(item);
             return (
               <Link key={item.path} to={item.path} aria-current={active ? 'page' : undefined}
                 className={cn('relative flex h-[60px] flex-col items-center justify-center gap-[3px] text-[11px]', active ? 'font-semibold text-blue-600' : 'text-slate-500')}>
                 <item.icon className="h-5 w-5" />
                 <span className="max-w-full truncate px-1">{item.mobileLabel ?? item.label}</span>
                 {badge > 0 && <span className="absolute left-[calc(50%+6px)] top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-blue-600 px-1 text-[10px] font-bold text-white">{badge > 99 ? '99+' : badge}</span>}
+                {warn > 0 && <span className="absolute left-[calc(50%+6px)] top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">{warn > 99 ? '99+' : warn}</span>}
               </Link>
             );
           })}
@@ -300,16 +324,18 @@ export function AppLayout() {
   );
 }
 
-function SidebarLink({ item, active, badge = 0, dot = false }: { item: NavItem; active: boolean; badge?: number; dot?: boolean }) {
+function SidebarLink({ item, active, badge = 0, warn = 0, dot = false }: { item: NavItem; active: boolean; badge?: number; warn?: number; dot?: boolean }) {
+  const isNews = item.path.endsWith('/noutati');
   return (
     <Link
       to={item.path}
       aria-current={active ? 'page' : undefined}
-      className={cn('flex h-10 items-center gap-3 rounded-[10px] px-3 text-sm transition-colors', active ? 'bg-blue-50 font-medium text-blue-600' : 'text-slate-700 hover:bg-slate-50')}>
+      className={cn('flex h-10 items-center gap-3 rounded-[10px] px-3 text-sm transition-colors', active ? 'bg-blue-50 font-semibold text-blue-600' : 'font-medium text-slate-700 hover:bg-slate-50')}>
       <item.icon className={cn('h-[18px] w-[18px] shrink-0', active ? 'text-blue-600' : 'text-slate-500')} />
       <span className="flex-1 whitespace-nowrap">{item.label}</span>
+      {warn > 0 && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-amber-100 px-1.5 text-[11px] font-bold text-amber-800">{warn > 99 ? '99+' : warn}</span>}
       {badge > 0 && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-blue-600 px-1.5 text-[11px] font-bold text-white">{badge > 99 ? '99+' : badge}</span>}
-      {dot && <span title="Neconectat" className="h-2 w-2 shrink-0 rounded-full bg-amber-500" />}
+      {dot && <span title={isNews ? 'Anunțuri necitite' : 'Neconectat'} className={cn('h-2 w-2 shrink-0 rounded-full', isNews ? 'bg-blue-600' : 'bg-amber-500')} />}
     </Link>
   );
 }

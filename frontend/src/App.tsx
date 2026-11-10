@@ -48,6 +48,7 @@ import { ConsultationsPage } from './pages/doctor/ConsultationsPage';
 import { DoctorChatPage } from './pages/doctor/DoctorChatPage';
 import { StatsPage } from './pages/doctor/StatsPage';
 import { DoctorProfilePage } from './pages/doctor/DoctorProfilePage';
+import { DoctorMorePage } from './pages/doctor/DoctorMorePage';
 // New Operator Pages
 import { RequestsPage } from './pages/operator/RequestsPage';
 import { OperatorChatPage } from './pages/operator/OperatorChatPage';
@@ -258,6 +259,7 @@ function AppRoutes() {
         <Route path="chat" element={<DoctorChatPage />} />
         <Route path="stats" element={<StatsPage />} />
         <Route path="profile" element={<DoctorProfilePage />} />
+        <Route path="more" element={<DoctorMorePage />} />
         <Route path="noutati" element={<AppNewsListPage />} />
         <Route path="noutati/:slug" element={<AppNewsPostPage />} />
         <Route path="telegram" element={<TelegramPage />} />

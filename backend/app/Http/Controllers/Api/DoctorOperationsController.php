@@ -19,6 +19,7 @@ use App\Models\WithdrawalRequest;
 use App\Notifications\AppEventNotification;
 use App\Rules\ValidPhoneNumber;
 use App\Services\DoctorPerformance;
+use App\Services\DoctorSchedule;
 use App\Services\DoctorServiceCatalog;
 use App\Services\InstitutionLedger;
 use App\Services\PlatformConfig;
@@ -328,6 +329,22 @@ class DoctorOperationsController extends Controller
                 ->pluck('investigation_type_id')
                 ->values(),
         ];
+    }
+
+    /**
+     * Programul medicului pe zile, cu orele ocupate marcate, ca să poată
+     * propune doar ore libere. `ignore` exclude cererea pentru care propune.
+     */
+    public function slots(Request $request): JsonResponse
+    {
+        $doctor = $request->user()->loadMissing('roles');
+        abort_unless($doctor->hasRole('doctor'), 403, 'Ai nevoie de rol medic.');
+        $validated = $request->validate([
+            'days' => ['nullable', 'integer', 'min:1', 'max:21'],
+            'ignore' => ['nullable', 'integer'],
+        ]);
+
+        return response()->json(app(DoctorSchedule::class)->freeSlots($doctor, (int) ($validated['days'] ?? 8), null, true, isset($validated['ignore']) ? (int) $validated['ignore'] : null));
     }
 
     public function stats(Request $request): JsonResponse

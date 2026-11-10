@@ -254,6 +254,7 @@ Route::prefix('v1')->group(function () {
         Route::delete('/doctor/vacations/{doctorVacation}', [DoctorOperationsController::class, 'destroyVacation']);
         Route::get('/doctor/dashboard', [DoctorOperationsController::class, 'dashboard']);
         Route::get('/doctor/stats', [DoctorOperationsController::class, 'stats']);
+        Route::get('/doctor/slots', [DoctorOperationsController::class, 'slots']);
         Route::get('/doctor/services', [DoctorServiceController::class, 'index']);
         Route::post('/doctor/services', [DoctorServiceController::class, 'store']);
         Route::put('/doctor/services/order', [DoctorServiceController::class, 'reorder']);
