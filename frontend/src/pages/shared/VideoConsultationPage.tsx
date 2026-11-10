@@ -1,7 +1,7 @@
 import { OutgoingVideoCall } from '../../components/OutgoingVideoCall';
 import { inviteVideoCall, type CallInvitation } from '../../lib/video-calls';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import type { LocalUserChoices } from '@livekit/components-react';
 import { ArrowLeft, Video, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -10,6 +10,8 @@ import { apiRequest, type ApiError } from '../../lib/api';
 import { ConsultationChatNavigation } from '../../components/ConsultationChatNavigation';
 import { Button } from '../../components/ui/button';
 import type { VideoStatus, VideoConnection } from '../../lib/consultation-video';
+import { ConclusionPanel, type ConclusionRequest } from '../../components/doctor/ConclusionEditor';
+import { toast } from 'sonner';
 
 const VideoCallPanel = lazy(() => import('../../components/VideoCallPanel'));
 
@@ -32,6 +34,18 @@ export function VideoConsultationPage() {
   const isPatient = role === 'patient';
   const patientInThisCall = isPatient && patientCall.session?.requestId === String(requestId);
   const [durationMinutes, setDurationMinutes] = useState(10);
+  const navigate = useNavigate();
+  // P2a: medicul scrie concluzia din apel; aceeași ciornă ca în Consultații.
+  const [conclusionOpen, setConclusionOpen] = useState(false);
+  const [conclusionRequest, setConclusionRequest] = useState<ConclusionRequest | null>(null);
+  const openConclusion = useCallback(() => {
+    if (conclusionOpen) { setConclusionOpen(false); return; }
+    setConclusionOpen(true);
+    if (conclusionRequest) return;
+    apiRequest<{ data: ConclusionRequest[] }>('/requests')
+      .then((response) => setConclusionRequest(response.data.find((item) => String(item.id) === String(requestId)) ?? null))
+      .catch(() => setError('Nu am putut deschide concluzia.'));
+  }, [conclusionOpen, conclusionRequest, requestId]);
   const onDeviceError = useCallback(() => setError('Permite accesul la cameră și microfon. Poți intra și cu acestea oprite.'), []);
   const onDisconnected = useCallback(() => {
     if (connection?.attemptId !== attempt.current) return;
@@ -164,9 +178,20 @@ export function VideoConsultationPage() {
         : !status.configured ? <p className="p-12 text-center text-slate-600">Apelurile video nu sunt încă configurate. Contactează administratorul.</p>
         : patientInThisCall ? <div className="space-y-4 p-6 text-center sm:p-12"><h2 className="text-xl font-semibold">Ești în apel</h2><p className="text-slate-500">Apelul continuă pe orice pagină, minimizat în colțul ecranului.</p><Button onClick={() => patientCall.setExpanded(true)}>Revino în apel</Button></div>
         : <Suspense fallback={<p className="p-12 text-center text-slate-500">Se încarcă interfața video...</p>}>
-          {status.participant && status.consultation && <VideoCallPanel connection={connection} joining={joining} onJoin={join} participant={status.participant} context={status.consultation} rejoining={rejoining}
-            onDisconnected={onDisconnected} onConnectionError={onConnectionError} onDeviceError={onDeviceError} />
-          }
+          {status.participant && status.consultation && (
+            <div className={conclusionOpen ? 'grid lg:grid-cols-[minmax(0,1fr)_460px]' : undefined}>
+              <VideoCallPanel connection={connection} joining={joining} onJoin={join} participant={status.participant} context={status.consultation} rejoining={rejoining}
+                onDisconnected={onDisconnected} onConnectionError={onConnectionError} onDeviceError={onDeviceError}
+                onConclusion={role === 'doctor' && connection ? openConclusion : undefined} conclusionOpen={conclusionOpen} />
+              {conclusionOpen && (
+                <div className="min-h-[560px] border-t border-slate-200 lg:border-l lg:border-t-0">
+                  {conclusionRequest
+                    ? <ConclusionPanel request={conclusionRequest} onPublished={() => { toast.success('Concluzia a fost publicată. Apelul s-a închis.'); navigate(returnTo); }} />
+                    : <p className="p-6 text-sm text-slate-500">Se încarcă ciorna…</p>}
+                </div>
+              )}
+            </div>
+          )}
         </Suspense>}
     </section>
     <p className="text-center text-xs text-slate-500">Ieșirea din apel nu finalizează consultația. Poți reveni cât timp aceasta este activă.</p>
