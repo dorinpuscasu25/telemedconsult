@@ -22,11 +22,11 @@ export const SITE_CONTENT_DEFAULTS = {
 
   // Pagina principală · secțiunea de sus
   'home.hero.badge': 'Platformă de telemedicină',
-  'home.hero.title': 'Sănătatea ta,',
-  'home.hero.title_highlight': 'mai aproape',
-  'home.hero.title_end': 'ca niciodată',
+  'home.hero.title': 'Suntem mai aproape ca niciodată de',
+  'home.hero.title_highlight': 'sănătatea ta',
+  'home.hero.title_end': '',
   'home.hero.subtitle':
-    'telemedconsult.md conectează pacienții cu medici și operatori medicali pentru consultații online rapide, examinări la domiciliu și o fișă medicală digitală sigură.',
+    'Consultații video și în chat cu medici verificați, examinări la domiciliu și o fișă medicală digitală, datorită tehnologiei HIGO și TeleMedConsult.',
   'home.hero.cta_primary': 'Începe acum',
   'home.hero.cta_secondary': 'Află mai multe',
 
@@ -45,13 +45,13 @@ export const SITE_CONTENT_DEFAULTS = {
 
   // Pagina principală · cum funcționează
   'home.steps.title': 'Cum funcționează',
-  'home.steps.subtitle': 'Trei pași simpli până la îngrijirea de care ai nevoie.',
-  'home.steps.1.title': 'Creează-ți contul',
-  'home.steps.1.text': 'Înregistrare rapidă ca pacient, medic sau operator.',
-  'home.steps.2.title': 'Alege serviciul',
-  'home.steps.2.text': 'Selectează un medic sau o examinare potrivită nevoilor tale.',
-  'home.steps.3.title': 'Primești îngrijire',
-  'home.steps.3.text': 'Consultație online, recomandări și, la nevoie, vizita unui operator.',
+  'home.steps.subtitle': 'Trei pași de la căutare la concluzia medicului.',
+  'home.steps.1.title': 'Găsește medicul',
+  'home.steps.1.text': 'Caută după specialitate sau nume. Vezi instituția, serviciile și prețul.',
+  'home.steps.2.title': 'Alege serviciul și ora',
+  'home.steps.2.text': 'Suma se rezervă din portofel. Dacă medicul nu confirmă, revine integral.',
+  'home.steps.3.title': 'Primești concluzia',
+  'home.steps.3.text': 'Diagnosticul, recomandările și PDF-ul rămân în fișa medicală.',
 
   // Pagina principală · pentru cine
   'home.audiences.1.title': 'Pentru pacienți',

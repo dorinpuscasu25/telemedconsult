@@ -1,7 +1,7 @@
 import React from 'react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Activity, Menu, X } from 'lucide-react';
-import { Button } from '../components/ui/button';
+import { cn } from '../components/ui/utils';
 import { useAuth } from '../contexts/AuthContext';
 import { useSiteContent } from '../contexts/SiteContentContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -12,15 +12,26 @@ function dashboardPath(role: string | null, status?: string): string {
   return role === 'admin' ? '/admin' : `/${role}`;
 }
 
+function Logo({ small = false }: { small?: boolean }) {
+  const { text } = useSiteContent();
+  return (
+    <Link to="/" className="flex min-w-0 items-center gap-2 lg:gap-2.5">
+      <span className={cn('grid shrink-0 place-items-center bg-blue-600 text-white', small ? 'h-7 w-7 rounded-lg' : 'h-8 w-8 rounded-[9px]')}><Activity className={small ? 'h-4 w-4' : 'h-[18px] w-[18px]'} /></span>
+      <span className={cn('font-bold text-slate-950', small ? 'text-sm' : 'text-base')}>{text('header.brand_name')}<span className="text-blue-600">{text('header.brand_suffix')}</span></span>
+    </Link>
+  );
+}
+
+/** Antetul și subsolul paginilor publice („Antet public”, „Subsol public”). */
 export function PublicLayout() {
   const { isAuthenticated, role, user } = useAuth();
   const { text } = useSiteContent();
-  const navigate = useNavigate();
-  const [mobileOpen, setMobileOpen] = React.useState(false);
-
+  const location = useLocation();
+  const [menuOpen, setMenuOpen] = React.useState(false);
   const target = dashboardPath(role, user?.status);
 
-  // Etichetele de meniu sunt editabile din panoul de conținut.
+  React.useEffect(() => { setMenuOpen(false); window.scrollTo(0, 0); }, [location.pathname]);
+
   const navLinks = [
     { label: text('header.nav_home'), to: '/' },
     { label: text('header.nav_doctors'), to: '/medici' },
@@ -29,94 +40,48 @@ export function PublicLayout() {
   ];
 
   return (
-    <div className="flex min-h-screen flex-col gradient-bg">
-      <header className="sticky top-0 z-30 glass-panel border-b border-white/20">
-        <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4 md:px-8">
-          <Link to="/" className="flex min-w-0 items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-purple-600 text-white shadow-md shadow-primary/20">
-              <Activity className="h-5 w-5" />
-            </div>
-            <span className="text-xl font-extrabold tracking-tight text-slate-900">
-              {text('header.brand_name')}
-              <span className="text-primary">{text('header.brand_suffix')}</span>
-            </span>
-          </Link>
-
-          <nav className="hidden items-center gap-1 md:flex">
+    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-950">
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
+        {/* Desktop */}
+        <div className="mx-auto hidden h-[68px] max-w-[1200px] items-center gap-8 px-10 md:flex">
+          <Logo />
+          <nav className="flex flex-1 gap-1">
             {navLinks.map((link) => (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                end={link.to === '/'}
-                className={({ isActive }) =>
-                  `rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                    isActive ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-white/60 hover:text-slate-900'
-                  }`
-                }>
+              <NavLink key={link.to} to={link.to} end={link.to === '/'}
+                className={({ isActive }) => cn('flex h-9 items-center rounded-lg px-3.5 text-sm', isActive ? 'bg-blue-50 font-semibold text-blue-700' : 'font-medium text-slate-700 hover:bg-slate-50')}>
                 {link.label}
               </NavLink>
             ))}
           </nav>
-
-          <div className="hidden items-center gap-2 md:flex">
-            {isAuthenticated ? (
-              <Button className="rounded-xl" onClick={() => navigate(target)}>
-                {text('header.cta_dashboard')}
-              </Button>
-            ) : (
-              <>
-                <Button variant="ghost" className="rounded-xl" onClick={() => navigate('/login')}>
-                  {text('header.cta_login')}
-                </Button>
-                <Button className="rounded-xl bg-gradient-to-r from-primary to-purple-600 shadow-lg shadow-primary/20" onClick={() => navigate('/register')}>
-                  {text('header.cta_register')}
-                </Button>
-              </>
-            )}
-          </div>
-
-          <button
-            type="button"
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-white/60 md:hidden"
-            aria-label="Meniu"
-            onClick={() => setMobileOpen((open) => !open)}>
-            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          {isAuthenticated ? (
+            <Link to={target} className="flex h-10 items-center rounded-[10px] bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">{text('header.cta_dashboard')}</Link>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Link to="/login" className="flex h-10 items-center rounded-[10px] px-3.5 text-sm font-medium text-slate-950 hover:bg-slate-50">Intră în cont</Link>
+              <Link to="/register" className="flex h-10 items-center rounded-[10px] bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">{text('header.cta_register')}</Link>
+            </div>
+          )}
+        </div>
+        {/* Telefon */}
+        <div className="flex items-center gap-2 py-2 pl-4 pr-2 pt-[max(8px,env(safe-area-inset-top))] md:hidden">
+          <div className="flex-1"><Logo small /></div>
+          {isAuthenticated
+            ? <Link to={target} className="flex h-9 items-center rounded-[10px] bg-blue-600 px-3 text-[13px] font-semibold text-white">{text('header.cta_dashboard')}</Link>
+            : <Link to="/login" className="flex h-9 items-center rounded-[10px] border border-slate-200 px-3 text-[13px] font-semibold text-slate-950">Intră</Link>}
+          <button type="button" aria-label="Meniu" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)} className="grid h-11 w-11 place-items-center text-slate-700">
+            {menuOpen ? <X className="h-[22px] w-[22px]" /> : <Menu className="h-[22px] w-[22px]" />}
           </button>
         </div>
-
-        {mobileOpen && (
-          <div className="border-t border-white/20 bg-white/80 px-4 py-3 backdrop-blur-xl md:hidden">
-            <nav className="flex flex-col gap-1">
-              {navLinks.map((link) => (
-                <NavLink
-                  key={link.to}
-                  to={link.to}
-                  end={link.to === '/'}
-                  onClick={() => setMobileOpen(false)}
-                  className={({ isActive }) =>
-                    `rounded-lg px-4 py-2.5 text-sm font-medium ${isActive ? 'bg-primary/10 text-primary' : 'text-slate-700'}`
-                  }>
-                  {link.label}
-                </NavLink>
-              ))}
-              <div className="mt-2 flex flex-col gap-2 border-t border-slate-200/70 pt-3">
-                {isAuthenticated ? (
-                  <Button className="rounded-xl" onClick={() => { setMobileOpen(false); navigate(target); }}>
-                    {text('header.cta_dashboard')}
-                  </Button>
-                ) : (
-                  <>
-                    <Button variant="outline" className="rounded-xl" onClick={() => { setMobileOpen(false); navigate('/login'); }}>
-                      {text('header.cta_login')}
-                    </Button>
-                    <Button className="rounded-xl" onClick={() => { setMobileOpen(false); navigate('/register'); }}>
-                      {text('header.cta_register')}
-                    </Button>
-                  </>
-                )}
-              </div>
-            </nav>
-          </div>
+        {menuOpen && (
+          <nav className="flex flex-col gap-1 border-t border-slate-100 px-4 pb-4 pt-2 md:hidden">
+            {navLinks.map((link) => (
+              <NavLink key={link.to} to={link.to} end={link.to === '/'}
+                className={({ isActive }) => cn('rounded-[10px] px-3 py-3 text-[15px]', isActive ? 'bg-blue-50 font-semibold text-blue-700' : 'font-medium text-slate-700')}>
+                {link.label}
+              </NavLink>
+            ))}
+            {!isAuthenticated && <Link to="/register" className="mt-2 flex h-12 items-center justify-center rounded-[10px] bg-blue-600 text-[15px] font-semibold text-white">{text('header.cta_register')}</Link>}
+          </nav>
         )}
       </header>
 
@@ -126,21 +91,29 @@ export function PublicLayout() {
         </ErrorBoundary>
       </main>
 
-      <footer className="glass-panel border-t border-white/20">
-        <div className="mx-auto flex w-full max-w-7xl flex-col items-center justify-between gap-4 px-4 py-7 text-center text-sm text-slate-500 md:flex-row md:px-8 md:py-8 md:text-left">
-          <div className="flex items-start gap-2 sm:items-center">
-            <Activity className="mt-0.5 h-4 w-4 shrink-0 text-primary sm:mt-0" />
-            <span>© {new Date().getFullYear()} {text('footer.copyright')}</span>
+      <footer className="border-t border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-[1200px] flex-col gap-[22px] px-5 pb-9 pt-7 md:gap-9 md:px-10 md:pb-7 md:pt-12">
+          <div className="grid grid-cols-2 gap-[18px] md:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))] md:gap-8">
+            <div className="col-span-2 flex flex-col gap-3 md:col-span-1">
+              <Logo small />
+              <span className="hidden max-w-[280px] text-sm leading-[1.55] text-slate-500 md:block">Consultații online și examinări la domiciliu, cu dispozitive HIGO.</span>
+            </div>
+            <FooterColumn title="Pacienți" links={[['Caută medic', '/medici'], ['Cum funcționează', '/#cum-functioneaza'], ['Întrebări frecvente', '/#intrebari']]} />
+            <FooterColumn title="Profesioniști" links={[['Înscrie-te ca medic', '/register/specialist'], ['Înscrie-te ca operator', '/register/specialist?type=operator']]} />
+            <FooterColumn title="Platformă" links={[[text('header.nav_news'), '/noutati'], [text('header.nav_partners'), '/parteneri']]} />
           </div>
-          <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
-            {navLinks.map((link) => (
-              <Link key={link.to} to={link.to} className="transition-colors hover:text-slate-800">
-                {link.label}
-              </Link>
-            ))}
-          </nav>
+          <div className="text-xs text-slate-500 md:border-t md:border-slate-100 md:pt-5 md:text-[13px]">© {new Date().getFullYear()} {text('footer.copyright')}</div>
         </div>
       </footer>
+    </div>
+  );
+}
+
+function FooterColumn({ title, links }: { title: string; links: Array<[string, string]> }) {
+  return (
+    <div className="flex flex-col gap-2.5 text-sm">
+      <span className="font-semibold text-slate-950">{title}</span>
+      {links.map(([label, to]) => <Link key={to} to={to} className="text-slate-600 hover:text-slate-950">{label}</Link>)}
     </div>
   );
 }

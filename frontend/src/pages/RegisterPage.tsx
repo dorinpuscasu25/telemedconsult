@@ -35,7 +35,8 @@ const SPECIALIST_TYPES: { value: AccountType; label: string; hint: string; icon:
 export function RegisterPage({ audience = 'patient' }: { audience?: 'patient' | 'specialist' }) {
   const isPatientForm = audience === 'patient';
   const [step, setStep] = useState<RegisterStep>('details');
-  const [accountType, setAccountType] = useState<AccountType>(isPatientForm ? 'patient' : 'doctor');
+  // `/register/specialist?type=operator` deschide direct contul de operator.
+  const [accountType, setAccountType] = useState<AccountType>(isPatientForm ? 'patient' : new URLSearchParams(window.location.search).get('type') === 'operator' ? 'operator' : 'doctor');
   const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');

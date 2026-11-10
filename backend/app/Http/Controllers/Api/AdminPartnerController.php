@@ -79,6 +79,7 @@ class AdminPartnerController extends Controller
             'logo_url' => $logoUrl,
             'website_url' => $validated['website_url'] ?? null,
             'description' => $validated['description'] ?? null,
+            'category' => $validated['category'] ?? null,
             'sort_order' => $validated['sort_order'] ?? 0,
             'is_active' => $validated['is_active'] ?? true,
         ];
@@ -95,6 +96,7 @@ class AdminPartnerController extends Controller
             'logo_url' => $partner->logo_url,
             'website_url' => $partner->website_url,
             'description' => $partner->description,
+            'category' => $partner->category,
             'sort_order' => $partner->sort_order,
             'is_active' => $partner->is_active,
         ];

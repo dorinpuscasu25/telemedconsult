@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#E9EDF3;font-family:Geist,system-ui,sans-serif;color:#0F172A;-webkit-font-smoothing:antialiased}
+a{color:#2563EB;text-decoration:none}a:hover{color:#1D4ED8;text-decoration:underline}
+button,input,textarea{font-family:Geist,system-ui,sans-serif}
+input:focus,textarea:focus{outline:none;border-color:#2563EB!important;box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+.dv-turn{padding:44px 48px 40px;border-bottom:1px solid rgba(15,23,42,.08);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:12px;margin:0 0 6px}
+.dv-tid{font:600 11px 'Geist Mono',ui-monospace,monospace;padding:3px 8px;background:#0F172A;color:#fff;border-radius:5px;text-decoration:none}
+.dv-tname{font:600 20px/1.2 Geist,sans-serif;color:#0F172A;letter-spacing:-.01em}
+.dv-tdesc{font:400 14px/1.5 Geist,sans-serif;color:#475569;margin:0 0 20px;max-width:860px;text-wrap:pretty}
+.dv-opts{display:flex;flex-wrap:wrap;gap:36px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:10px;scroll-margin-top:16px}
+.dv-oid{font:600 11px 'Geist Mono',ui-monospace,monospace;padding:3px 7px;background:rgba(15,23,42,.08);color:#0F172A;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 13px/1.3 Geist,sans-serif;color:#475569}
+.dv-opt:target .dv-oid{background:#2563EB;color:#fff}
+</style>
+</helmet>
+
+<section class="dv-turn" id="t0" style="background:#fff">
+  <div style="display:flex;flex-direction:column;gap:14px;max-width:960px">
+    <div style="font:600 12px 'Geist Mono',monospace;color:#2563EB;letter-spacing:.04em">TELEMEDCONSULT.MD · MEDIC · CICLUL UNEI CONSULTAȚII</div>
+    <h1 style="margin:0;font-size:36px;line-height:1.15;letter-spacing:-.02em;font-weight:700">De la cerere la concluzie, cu termene clare pentru ambele părți</h1>
+    <p style="margin:0;font-size:16px;line-height:1.6;color:#475569;text-wrap:pretty">Procesul de azi rămâne, dar are patru lipsuri, iar fiecare are acum o rezolvare. Pacientul e anunțat când medicul propune altă oră. Pacientul poate refuza ora propusă și cere altele. Propunerea expiră. Medicul alege dintre orele lui libere, nu dintr-un câmp gol. În plus, concluzia se poate scrie și din apel, nu doar din Consultații, iar ciorna se salvează singură.</p>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;padding:20px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:16px">
+      <span style="font-size:12px;font-weight:600;color:#64748B;letter-spacing:.04em">STĂRILE CERERII · CEA AUTO-EVIDENȚIATĂ E STAREA DIN P1</span>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+        <sc-for list="{{ flowMain }}" as="f" hint-placeholder-count="4"><span style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;font-weight:600;padding:6px 12px;border-radius:999px;background:{{ f.bg }};color:{{ f.color }};border:{{ f.border }}">{{ f.label }}</span><sc-if value="{{ f.arrow }}" hint-placeholder-val="{{ true }}"><span style="color:#94A3B8">→</span></sc-if></span></sc-for>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+        <span style="font-size:13px;color:#64748B;width:96px">Altă oră:</span>
+        <sc-for list="{{ flowProp }}" as="f" hint-placeholder-count="3"><span style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;font-weight:600;padding:6px 12px;border-radius:999px;background:{{ f.bg }};color:{{ f.color }};border:{{ f.border }}">{{ f.label }}</span><sc-if value="{{ f.arrow }}" hint-placeholder-val="{{ true }}"><span style="color:#94A3B8">{{ f.arrowTxt }}</span></sc-if></span></sc-for>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+        <span style="font-size:13px;color:#64748B;width:96px">Ieșiri:</span>
+        <sc-for list="{{ flowExit }}" as="f" hint-placeholder-count="3"><span style="font-size:13px;font-weight:600;padding:6px 12px;border-radius:999px;background:{{ f.bg }};color:{{ f.color }};border:{{ f.border }}">{{ f.label }}</span></sc-for>
+        <span style="font-size:13px;color:#64748B">· banii revin integral la pacient</span>
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+      <a href="#p1" style="padding:6px 12px;border:1px solid #E2E8F0;border-radius:999px;font-size:13px;color:#334155">P1 Fluxul interactiv: medic + pacient</a>
+      <a href="#p2" style="padding:6px 12px;border:1px solid #E2E8F0;border-radius:999px;font-size:13px;color:#334155">P2 Concluzie din apelul video</a>
+      <a href="#p3" style="padding:6px 12px;border:1px solid #E2E8F0;border-radius:999px;font-size:13px;color:#334155">P3 Termene și notificări</a>
+    </div>
+  </div>
+</section>
+
+<section class="dv-turn" id="p1">
+  <div class="dv-thd"><a class="dv-tid" href="#p1">P1</a><span class="dv-tname">Fluxul interactiv · medicul în stânga, pacientul în dreapta</span></div>
+  <p class="dv-tdesc">Cele două ecrane împart aceeași cerere. Propune ore din P1a și răspunde din P1b ca pacient: alege o oră, cere altele sau anulează. Apoi începe consultația și scrie concluzia. Butoanele de mai jos sar peste așteptare.</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 20px">
+    <button onClick="{{ reset }}" style="height:34px;padding:0 12px;border:1px solid #CBD5E1;border-radius:8px;background:#fff;font-size:13px;font-weight:500;cursor:pointer">↺ Reia de la cerere nouă</button>
+    <button onClick="{{ simTime }}" style="height:34px;padding:0 12px;border:1px solid #CBD5E1;border-radius:8px;background:#fff;font-size:13px;font-weight:500;cursor:pointer">Simulează: a venit ora consultației</button>
+    <button onClick="{{ simExpire }}" style="height:34px;padding:0 12px;border:1px solid #CBD5E1;border-radius:8px;background:#fff;font-size:13px;font-weight:500;cursor:pointer">Simulează: propunerea expiră</button>
+  </div>
+  <div class="dv-opts">
+    <div class="dv-opt" id="p1a">
+      <div class="dv-olabel"><a class="dv-oid" href="#p1a">P1a</a>Medic · Consultații · 1280</div>
+      <div style="width:1280px;height:860px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;overflow:hidden;display:flex;box-shadow:0 10px 30px rgba(15,23,42,.08);position:relative">
+        <dc-import name="Navigatie medic" active="cons" mode="desktop" hint-size="232px,100%" style="height:100%;flex:none"></dc-import>
+        <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+          <div style="height:64px;flex:none;padding:0 24px;background:#fff;border-bottom:1px solid #E2E8F0;display:flex;align-items:center;gap:8px;font-size:14px;color:#64748B"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>Consultații</div>
+          <div style="flex:1;overflow-y:auto;padding:24px 32px;display:flex;flex-direction:column;gap:16px;max-width:880px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
+              <div style="display:flex;gap:14px;align-items:center"><div style="width:52px;height:52px;border-radius:50%;background:#DBEAFE;color:#1D4ED8;font-weight:600;display:flex;align-items:center;justify-content:center">AP</div><div style="display:flex;flex-direction:column;gap:3px"><span style="font-size:20px;font-weight:700;letter-spacing:-.01em">Ana Puscasu</span><span style="font-size:13px;color:#64748B">7 ani · titular Dorin Puscasu · #387571</span></div></div>
+              <span style="font-size:12px;font-weight:600;padding:5px 11px;border-radius:999px;background:{{ st.bg }};color:{{ st.color }}">{{ st.label }}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+              <sc-for list="{{ steps }}" as="p" hint-placeholder-count="4"><div style="display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:{{ p.bar }}"></div><span style="font-size:12px;font-weight:{{ p.w }};color:{{ p.color }}">{{ p.label }}</span></div></sc-for>
+            </div>
+            <div style="display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:12px;background:{{ st.bannerBg }};border:{{ st.bannerBorder }}">
+              <div style="display:flex;flex-direction:column;gap:4px;flex:1"><span style="font-size:15px;font-weight:600;color:{{ st.bannerColor }}">{{ st.title }}</span><span style="font-size:13px;line-height:1.5;color:#334155">{{ st.text }}</span>
+                <sc-if value="{{ st.hasSlots }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px"><sc-for list="{{ sentSlots }}" as="x" hint-placeholder-count="2"><span style="font-size:13px;font-weight:600;padding:5px 10px;border-radius:8px;background:#fff;border:1px solid #E2E8F0">{{ x }}</span></sc-for></div></sc-if>
+                <sc-if value="{{ st.hasNote }}" hint-placeholder-val="{{ false }}"><span style="font-size:14px;color:#0F172A;padding:8px 12px;background:#fff;border-radius:8px;margin-top:4px">„{{ askNote }}”</span></sc-if>
+              </div>
+            </div>
+            <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:20px;display:flex;gap:14px;align-items:center;flex:none">
+              <div style="width:44px;height:44px;border-radius:12px;background:#EFF6FF;color:#1D4ED8;display:flex;align-items:center;justify-content:center;flex:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"></path><rect x="2" y="6" width="14" height="12" rx="2"></rect></svg></div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font-size:12px;font-weight:600;color:#64748B;letter-spacing:.04em">SERVICIU</span><span style="font-size:16px;font-weight:600">Consultație video</span><span style="font-size:13px;color:#64748B">Video · 30 min · {{ timeLabel }}</span></div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px"><span style="font-size:22px;font-weight:700">300 MDL</span><span style="font-size:12px;color:#64748B">{{ st.money }}</span></div>
+            </div>
+            <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:6px;flex:none"><span style="font-size:12px;font-weight:600;color:#64748B;letter-spacing:.04em">ACUZE</span><span style="font-size:15px;line-height:1.55">Febră 38,2 de aseară, o doare gâtul. A luat paracetamol o dată.</span></div>
+            <div style="display:flex;gap:10px;align-items:center;position:relative;flex:none">
+              <sc-if value="{{ a.hasPrimary }}" hint-placeholder-val="{{ true }}"><button onClick="{{ a.primary }}" style="height:44px;padding:0 18px;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;background:{{ a.pBg }};color:#fff">{{ a.pLabel }}</button></sc-if>
+              <sc-for list="{{ a.secondary }}" as="b" hint-placeholder-count="1"><button onClick="{{ b.go }}" style="height:44px;padding:0 16px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;font-size:14px;font-weight:500;cursor:pointer">{{ b.label }}</button></sc-for>
+              <sc-if value="{{ a.hasMenu }}" hint-placeholder-val="{{ true }}"><button onClick="{{ toggleMenu }}" style="width:44px;height:44px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#334155"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg></button></sc-if>
+              <sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;bottom:52px;left:0;min-width:280px;background:#fff;border:1px solid #E2E8F0;border-radius:12px;box-shadow:0 16px 40px rgba(15,23,42,.16);padding:6px;display:flex;flex-direction:column;z-index:3"><sc-for list="{{ a.menu }}" as="m" hint-placeholder-count="2"><button onClick="{{ m.go }}" style="height:40px;padding:0 12px;border:none;border-radius:8px;background:transparent;text-align:left;font-size:14px;cursor:pointer;color:{{ m.color }}">{{ m.label }}</button></sc-for></div></sc-if>
+            </div>
+            <sc-if value="{{ a.hasHint }}" hint-placeholder-val="{{ false }}"><span style="font-size:13px;color:#64748B;margin-top:-6px">{{ a.hint }}</span></sc-if>
+          </div>
+        </div>
+
+        <sc-if value="{{ propOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:5">
+            <div style="width:620px;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.25);display:flex;flex-direction:column;overflow:hidden">
+              <div style="padding:20px 24px 0;display:flex;justify-content:space-between;align-items:flex-start"><div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:18px;font-weight:600">{{ pr.title }}</span><span style="font-size:13px;color:#64748B">Consultație video · 30 min. Vezi doar orele libere din programul tău.</span></div><button onClick="{{ closeProp }}" style="width:32px;height:32px;border:none;background:transparent;color:#64748B;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button></div>
+              <div style="padding:18px 24px;display:flex;flex-direction:column;gap:16px">
+                <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px"><sc-for list="{{ pr.days }}" as="d" hint-placeholder-count="7"><button onClick="{{ d.pick }}" style="height:58px;border-radius:10px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:{{ d.bg }};border:{{ d.border }};color:{{ d.color }}"><span style="font-size:12px">{{ d.dow }}</span><span style="font-size:16px;font-weight:600">{{ d.num }}</span><span style="font-size:10px;color:{{ d.subColor }}">{{ d.sub }}</span></button></sc-for></div>
+                <sc-if value="{{ pr.dayOff }}" hint-placeholder-val="{{ false }}"><div style="padding:20px;text-align:center;font-size:14px;color:#64748B;border:1px dashed #CBD5E1;border-radius:12px">Nu lucrezi în această zi.</div></sc-if>
+                <sc-if value="{{ pr.dayOn }}" hint-placeholder-val="{{ true }}"><div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px"><sc-for list="{{ pr.slots }}" as="x" hint-placeholder-count="12"><button onClick="{{ x.pick }}" title="{{ x.title }}" style="height:38px;border-radius:8px;font-family:'Geist Mono',monospace;font-size:13px;font-weight:500;cursor:{{ x.cursor }};background:{{ x.bg }};border:{{ x.border }};color:{{ x.color }};text-decoration:{{ x.deco }}">{{ x.t }}</button></sc-for></div></sc-if>
+                <div style="display:flex;gap:14px;font-size:12px;color:#64748B;align-items:center"><span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:3px;border:1px solid #E2E8F0"></span>Liber</span><span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:3px;background:#F1F5F9"></span>Ocupat</span><span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:3px;border:1.5px dashed #F59E0B"></span>{{ pr.origLegend }}</span></div>
+                <div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#F8FAFC;border-radius:12px"><span style="font-size:13px;font-weight:500;color:#334155">Orele propuse · {{ pr.count }} din 3</span><div style="display:flex;gap:6px;flex-wrap:wrap;min-height:32px;align-items:center"><sc-for list="{{ pr.chosen }}" as="c" hint-placeholder-count="2"><button onClick="{{ c.remove }}" style="height:32px;padding:0 8px 0 12px;border:1px solid #BFDBFE;border-radius:8px;background:#EFF6FF;color:#1D4ED8;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;cursor:pointer">{{ c.label }}<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button></sc-for><sc-if value="{{ pr.none }}" hint-placeholder-val="{{ false }}"><span style="font-size:13px;color:#94A3B8">Alege una până la trei ore. Pacientul o păstrează pe cea care îi convine.</span></sc-if></div></div>
+                <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;font-weight:500;color:#334155">Mesaj pentru pacient <span style="font-weight:400;color:#94A3B8">· opțional</span></span><input value="{{ pNote }}" onChange="{{ onPNote }}" placeholder="Ex: Mâine dimineață am gardă, pot după-amiază." style="height:40px;padding:0 12px;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;color:#0F172A"></input></label>
+                <span style="font-size:13px;color:#475569;line-height:1.5">{{ pr.rule }}</span>
+              </div>
+              <div style="padding:16px 24px;border-top:1px solid #E2E8F0;display:flex;justify-content:flex-end;gap:10px"><button onClick="{{ closeProp }}" style="height:42px;padding:0 16px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;font-size:14px;font-weight:500;cursor:pointer">Anulează</button><button onClick="{{ sendProp }}" style="height:42px;padding:0 16px;border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;background:{{ pr.sendBg }}">{{ pr.sendLabel }}</button></div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ cOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:6">
+            <div style="width:1200px;height:800px;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.25);display:flex;flex-direction:column;overflow:hidden;position:relative">
+              <div style="height:60px;flex:none;padding:0 20px 0 24px;border-bottom:1px solid #E2E8F0;display:flex;align-items:center;gap:12px"><span style="font-size:17px;font-weight:600;flex:1">Concluzie · Ana Puscasu</span><span style="font-size:12px;color:#64748B;display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Ciornă salvată automat</span><button onClick="{{ closeC }}" style="width:34px;height:34px;border:none;background:transparent;color:#64748B;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button></div>
+              <div style="flex:1;display:grid;grid-template-columns:340px minmax(0,1fr);min-height:0">
+                <div style="background:#F8FAFC;border-right:1px solid #E2E8F0;padding:20px;overflow-y:auto;display:flex;flex-direction:column;gap:16px">
+                  <div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:11px;font-weight:600;color:#64748B;letter-spacing:.05em">PACIENT</span><span style="font-size:15px;font-weight:600">Ana Puscasu · 7 ani · F</span><span style="font-size:13px;color:#64748B">22 kg · 121 cm</span></div>
+                  <div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:11px;font-weight:600;color:#64748B;letter-spacing:.05em">SERVICIU</span><span style="font-size:14px">Consultație video · 30 min · 300 MDL</span></div>
+                  <div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:11px;font-weight:600;color:#64748B;letter-spacing:.05em">ACUZE DIN CERERE</span><span style="font-size:14px;line-height:1.5">Febră 38,2 de aseară, o doare gâtul. A luat paracetamol o dată.</span></div>
+                  <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:11px;font-weight:600;color:#64748B;letter-spacing:.05em">DIN FIȘA MEDICALĂ</span>
+                    <div style="display:flex;flex-direction:column;gap:2px;padding:10px 12px;background:#FEF2F2;border:1px solid #FECACA;border-radius:10px"><span style="font-size:12px;color:#991B1B;font-weight:600">Alergii</span><span style="font-size:14px;color:#7F1D1D">Amoxicilină (erupție)</span></div>
+                    <div style="display:flex;flex-direction:column;gap:2px;padding:10px 12px;background:#fff;border:1px solid #E2E8F0;border-radius:10px"><span style="font-size:12px;color:#64748B">Boli cronice</span><span style="font-size:14px">Nimic de raportat</span></div>
+                    <div style="display:flex;flex-direction:column;gap:2px;padding:10px 12px;background:#fff;border:1px solid #E2E8F0;border-radius:10px"><span style="font-size:12px;color:#64748B">Medicamente acum</span><span style="font-size:14px">Paracetamol sirop, la nevoie</span></div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:11px;font-weight:600;color:#64748B;letter-spacing:.05em">CONSULTAȚII ANTERIOARE</span><span style="font-size:14px">2 sep · Chat · Rinofaringită</span></div>
+                </div>
+                <div style="display:flex;flex-direction:column;min-height:0">
+                  <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid #E2E8F0;flex:none"><sc-for list="{{ cTabs }}" as="t" hint-placeholder-count="4"><button onClick="{{ t.pick }}" style="height:52px;border:none;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:{{ t.w }};color:{{ t.color }};box-shadow:{{ t.line }}"><span style="width:20px;height:20px;border-radius:50%;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;background:{{ t.dotBg }};color:{{ t.dotColor }}">{{ t.mark }}</span>{{ t.label }}</button></sc-for></div>
+                  <div style="flex:1;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:16px">
+                    <sc-if value="{{ cs0 }}" hint-placeholder-val="{{ true }}">
+                      <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;font-weight:500;color:#334155;display:flex;gap:8px;align-items:center">Istoricul bolii actuale<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#F1F5F9;color:#475569">din cerere</span></span><textarea value="{{ f.anam }}" onChange="{{ on.anam }}" rows="7" style="padding:12px;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;line-height:1.55;resize:vertical;color:#0F172A"></textarea></label>
+                    </sc-if>
+                    <sc-if value="{{ cs1 }}" hint-placeholder-val="{{ false }}">
+                      <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;font-weight:500;color:#334155">Observațiile tale</span><textarea value="{{ f.exam }}" onChange="{{ on.exam }}" rows="7" placeholder="Ex: Faringe hiperemiat, amigdale mărite fără depozite. Respirație liberă." style="padding:12px;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;line-height:1.55;resize:vertical;color:#0F172A"></textarea></label>
+                      <span style="font-size:13px;color:#64748B">La serviciile la domiciliu, aici apar și câmpurile pentru investigațiile din serviciu: ECG, tensiune, pulsoximetrie.</span>
+                    </sc-if>
+                    <sc-if value="{{ cs2 }}" hint-placeholder-val="{{ false }}">
+                      <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;font-weight:500;color:#334155">Diagnostic <span style="color:#DC2626">*</span></span><input value="{{ f.diag }}" onChange="{{ on.diag }}" placeholder="Ex: Faringită acută (J02.9)" style="height:44px;padding:0 12px;border:{{ diagBorder }};border-radius:10px;font-size:15px;color:#0F172A"></input></label>
+                      <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;font-weight:500;color:#334155">Planul de tratament</span><textarea value="{{ f.plan }}" onChange="{{ on.plan }}" rows="3" style="padding:12px;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;line-height:1.55;resize:vertical;color:#0F172A"></textarea></label>
+                      <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;font-weight:500;color:#334155">Recomandări</span><textarea value="{{ f.rec }}" onChange="{{ on.rec }}" rows="3" style="padding:12px;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;line-height:1.55;resize:vertical;color:#0F172A"></textarea></label>
+                      <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;font-weight:500;color:#334155">Investigații recomandate</span><input value="{{ f.inv }}" onChange="{{ on.inv }}" placeholder="Ex: Hemoleucogramă, exsudat faringian" style="height:40px;padding:0 12px;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;color:#0F172A"></input></label>
+                    </sc-if>
+                    <sc-if value="{{ cs3 }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:13px;font-weight:500;color:#334155">Medicamente</span>
+                        <sc-for list="{{ meds }}" as="m" hint-placeholder-count="1"><div style="display:grid;grid-template-columns:1fr 1fr 36px;gap:8px"><input value="{{ m.n }}" onChange="{{ m.onN }}" placeholder="Medicament" style="height:40px;padding:0 12px;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;color:#0F172A;min-width:0"></input><input value="{{ m.d }}" onChange="{{ m.onD }}" placeholder="Dozaj și durată" style="height:40px;padding:0 12px;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;color:#0F172A;min-width:0"></input><button onClick="{{ m.remove }}" style="width:36px;height:40px;border:none;background:transparent;color:#94A3B8;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button></div></sc-for>
+                        <button onClick="{{ addMed }}" style="align-self:flex-start;height:36px;padding:0 12px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;font-size:13px;font-weight:500;cursor:pointer">+ Adaugă medicament</button>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;font-weight:500;color:#334155">Rețetă scanată <span style="font-weight:400;color:#94A3B8">· opțional</span></span><button onClick="{{ toggleRx }}" style="height:84px;border:1.5px dashed #CBD5E1;border-radius:12px;background:#F8FAFC;font-size:14px;color:#475569;cursor:pointer">{{ rxLabel }}</button></div>
+                      <span style="font-size:13px;color:#64748B">Alergie la amoxicilină. Verifică rețeta înainte de publicare.</span>
+                    </sc-if>
+                  </div>
+                  <div style="padding:14px 24px;border-top:1px solid #E2E8F0;display:flex;gap:10px;align-items:center;flex:none">
+                    <a href="#p1b" style="height:42px;padding:0 14px;border:1px solid #E2E8F0;border-radius:10px;color:#0F172A;font-size:14px;font-weight:500;display:flex;align-items:center;gap:8px;text-decoration:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>Întreabă pacientul</a>
+                    <button onClick="{{ nextStep }}" style="height:42px;padding:0 14px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;font-size:14px;font-weight:500;cursor:pointer">{{ nextLabel }}</button>
+                    <div style="flex:1;text-align:right;font-size:13px;color:#B45309">{{ pubHint }}</div>
+                    <button style="height:42px;padding:0 14px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;font-size:14px;font-weight:500;cursor:pointer">Previzualizează PDF</button>
+                    <button onClick="{{ askPublish }}" style="height:42px;padding:0 18px;border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;background:{{ pubBg }}">Publică concluzia</button>
+                  </div>
+                </div>
+              </div>
+              <sc-if value="{{ cConfirm }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;inset:0;background:rgba(15,23,42,.35);display:flex;align-items:center;justify-content:center">
+                  <div style="width:460px;background:#fff;border-radius:16px;padding:24px;display:flex;flex-direction:column;gap:16px;box-shadow:0 24px 60px rgba(15,23,42,.25)">
+                    <span style="font-size:18px;font-weight:600">Publici concluzia?</span>
+                    <div style="display:flex;flex-direction:column;gap:10px">
+                      <sc-for list="{{ effects }}" as="e" hint-placeholder-count="4"><div style="display:flex;gap:10px;align-items:flex-start;font-size:14px;line-height:1.45"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M20 6 9 17l-5-5"></path></svg>{{ e }}</div></sc-for>
+                    </div>
+                    <div style="display:flex;gap:10px;justify-content:flex-end"><button onClick="{{ cancelPublish }}" style="height:42px;padding:0 16px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;font-size:14px;font-weight:500;cursor:pointer">Înapoi</button><button onClick="{{ publish }}" style="height:42px;padding:0 16px;border:none;border-radius:10px;background:#2563EB;color:#fff;font-size:14px;font-weight:600;cursor:pointer">Publică</button></div>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="p1b">
+      <div class="dv-olabel"><a class="dv-oid" href="#p1b">P1b</a>Pacient · Acasă · mobil</div>
+      <div style="width:390px;height:860px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08);position:relative">
+        <div style="padding:50px 16px 10px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:24px;font-weight:700;letter-spacing:-.02em">Bună, Dorin</span><div style="position:relative;width:40px;height:40px;display:flex;align-items:center;justify-content:center;color:#334155"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"></path><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"></path></svg><sc-if value="{{ pt.bell }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:2px;right:0;min-width:18px;height:18px;padding:0 4px;box-sizing:border-box;border-radius:999px;background:#2563EB;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #F8FAFC">1</span></sc-if></div></div>
+        <sc-if value="{{ pt.push }}" hint-placeholder-val="{{ false }}"><div style="margin:0 12px 8px;padding:12px 14px;background:#0F172A;color:#fff;border-radius:16px;display:flex;gap:10px;align-items:center"><div style="width:30px;height:30px;border-radius:8px;background:#229ED9;display:flex;align-items:center;justify-content:center;flex:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"></path></svg></div><div style="display:flex;flex-direction:column;gap:1px;flex:1;min-width:0"><span style="font-size:12px;color:#CBD5E1">Telegram · acum</span><span style="font-size:13px;font-weight:500">{{ pt.pushText }}</span></div></div></sc-if>
+        <div style="flex:1;overflow-y:auto;padding:4px 16px 16px;display:flex;flex-direction:column;gap:12px">
+          <sc-if value="{{ pt.isProp }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#fff;border:1.5px solid #2563EB;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;background:#EFF6FF;color:#1D4ED8">{{ pt.propTag }}</span><span style="font-size:12px;color:#B45309;font-weight:600">până {{ expLabel }}</span></div>
+              <div style="display:flex;flex-direction:column;gap:3px"><span style="font-size:17px;font-weight:700">Dr. Ana Ciobanu · pentru Ana</span><span style="font-size:13px;color:#64748B">Consultație video · 30 min · 300 MDL</span><span style="font-size:13px;color:#64748B">{{ pt.origLine }}</span></div>
+              <sc-if value="{{ pt.hasNote }}" hint-placeholder-val="{{ false }}"><span style="font-size:14px;line-height:1.45;padding:10px 12px;background:#F8FAFC;border-radius:10px">„{{ pNoteSent }}”</span></sc-if>
+              <div style="display:flex;flex-direction:column;gap:8px"><sc-for list="{{ pt.slots }}" as="x" hint-placeholder-count="2"><button onClick="{{ x.pick }}" style="height:48px;padding:0 14px;border-radius:12px;display:flex;align-items:center;gap:12px;cursor:pointer;background:{{ x.bg }};border:{{ x.border }}"><span style="width:20px;height:20px;border-radius:50%;box-sizing:border-box;border:{{ x.radio }};display:flex;align-items:center;justify-content:center"><span style="width:10px;height:10px;border-radius:50%;background:{{ x.dot }}"></span></span><span style="font-size:15px;font-weight:600;color:#0F172A">{{ x.label }}</span></button></sc-for></div>
+              <button onClick="{{ pAccept }}" style="height:48px;border:none;border-radius:10px;color:#fff;font-size:15px;font-weight:600;cursor:pointer;background:{{ pt.acceptBg }}">{{ pt.acceptLabel }}</button>
+              <button onClick="{{ openPSheet }}" style="height:44px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;font-size:14px;font-weight:500;cursor:pointer">Nu-mi convine niciuna</button>
+              <span style="font-size:12px;color:#64748B;line-height:1.45">{{ pt.expRule }}</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ pt.isOther }}" hint-placeholder-val="{{ true }}">
+            <div style="background:#fff;border:1px solid {{ pt.border }};border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:8px">
+              <span style="align-self:flex-start;font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;background:{{ pt.tagBg }};color:{{ pt.tagColor }}">{{ pt.tag }}</span>
+              <span style="font-size:17px;font-weight:700">{{ pt.title }}</span>
+              <span style="font-size:14px;color:#475569;line-height:1.5">{{ pt.text }}</span>
+              <sc-if value="{{ pt.hasBtn }}" hint-placeholder-val="{{ false }}"><button style="height:46px;margin-top:6px;border:none;border-radius:10px;background:#2563EB;color:#fff;font-size:15px;font-weight:600;cursor:pointer">{{ pt.btn }}</button></sc-if>
+            </div>
+          </sc-if>
+          <div style="display:flex;flex-direction:column;gap:6px;padding:12px 14px;background:#fff;border:1px solid #E2E8F0;border-radius:14px"><span style="font-size:13px;color:#64748B">Portofel</span><div style="display:flex;justify-content:space-between"><span style="font-size:15px;font-weight:600">Bani: {{ pt.bani }}</span><span style="font-size:13px;color:#92400E">{{ pt.held }}</span></div></div>
+        </div>
+        <div style="height:72px;flex:none;background:#fff;border-top:1px solid #E2E8F0;display:grid;grid-template-columns:repeat(5,1fr);padding-bottom:12px;box-sizing:border-box;font-size:11px;color:#64748B"><span style="display:flex;align-items:center;justify-content:center;color:#2563EB;font-weight:600">Acasă</span><span style="display:flex;align-items:center;justify-content:center">Consultații</span><span style="display:flex;align-items:center;justify-content:center">Mesaje</span><span style="display:flex;align-items:center;justify-content:center">Portofel</span><span style="display:flex;align-items:center;justify-content:center">Mai mult</span></div>
+        <sc-if value="{{ pSheetOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;background:rgba(15,23,42,.45);display:flex;flex-direction:column;justify-content:flex-end">
+            <div style="background:#fff;border-radius:20px 20px 0 0;padding:10px 16px 28px;display:flex;flex-direction:column;gap:12px">
+              <div style="width:40px;height:4px;border-radius:2px;background:#CBD5E1;align-self:center"></div>
+              <span style="font-size:18px;font-weight:600">Nicio oră nu-ți convine?</span>
+              <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;font-weight:500;color:#334155">Când ți-ar fi bine?</span><input value="{{ askText }}" onChange="{{ onAskText }}" placeholder="Ex: Pot doar după 17:00" style="height:48px;padding:0 14px;border:1px solid #E2E8F0;border-radius:10px;font-size:16px;color:#0F172A"></input></label>
+              <button onClick="{{ pAsk }}" style="height:48px;border:none;border-radius:10px;background:#2563EB;color:#fff;font-size:15px;font-weight:600;cursor:pointer">Cere alte ore</button>
+              <button onClick="{{ pAlt }}" style="height:46px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;font-size:14px;font-weight:500;cursor:pointer;color:{{ pAltColor }}">{{ pAltLabel }}</button>
+              <button onClick="{{ closePSheet }}" style="height:40px;border:none;background:transparent;font-size:14px;color:#64748B;cursor:pointer">Închide</button>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="dv-turn" id="p2">
+  <div class="dv-thd"><a class="dv-tid" href="#p2">P2</a><span class="dv-tname">Concluzia se scrie și din apel</span></div>
+  <p class="dv-tdesc">În apel, butonul „Concluzie” deschide același formular în dreapta, iar video-ul se strânge în stânga. Ciorna e aceeași ca în Consultații, deci medicul poate începe aici și termina acolo. „Publică și închide apelul” face exact ce face „Publică concluzia”. În Mesaje, cardul consultației în curs are și el „Scrie concluzia”.</p>
+  <div class="dv-opts"><div class="dv-opt" id="p2a">
+    <div class="dv-olabel"><a class="dv-oid" href="#p2a">P2a</a>Apel video cu concluzia deschisă · 1280</div>
+    <div style="width:1280px;height:760px;background:#0B1220;border-radius:14px;overflow:hidden;display:flex;box-shadow:0 10px 30px rgba(15,23,42,.18)">
+      <div style="flex:1;display:flex;flex-direction:column;padding:16px;gap:12px;min-width:0">
+        <div style="display:flex;justify-content:space-between;align-items:center;color:#E2E8F0"><div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600;color:#fff">Ana Puscasu · Consultație video</span><span style="font-size:12px;color:#94A3B8">cu Dorin Puscasu</span></div><span style="font-family:'Geist Mono',monospace;font-size:14px;padding:6px 10px;border-radius:8px;background:rgba(255,255,255,.08)">12:40 / 30:00</span></div>
+        <div style="flex:1;border-radius:14px;background:#1E293B;display:flex;align-items:center;justify-content:center;position:relative"><div style="width:120px;height:120px;border-radius:50%;background:#334155;color:#E2E8F0;font-size:36px;font-weight:600;display:flex;align-items:center;justify-content:center">AP</div><div style="position:absolute;right:16px;bottom:16px;width:200px;height:120px;border-radius:10px;background:#334155;border:2px solid #0B1220;display:flex;align-items:center;justify-content:center;color:#CBD5E1;font-size:13px">Tu</div></div>
+        <div style="display:flex;justify-content:center;gap:12px">
+          <div style="width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;color:#fff"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg></div>
+          <div style="width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;color:#fff"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"></path><rect x="2" y="6" width="14" height="12" rx="2"></rect></svg></div>
+          <div style="height:48px;padding:0 16px;border-radius:999px;background:#fff;color:#0F172A;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M16 13H8"></path><path d="M16 17H8"></path></svg>Concluzie</div>
+          <div style="width:64px;height:48px;border-radius:999px;background:#DC2626;display:flex;align-items:center;justify-content:center;color:#fff"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.1 13.9a14 14 0 0 0 3.732 2.668 1 1 0 0 0 1.213-.303l.355-.465A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.468.351a1 1 0 0 0-.292 1.233 14 14 0 0 0 .244.473"></path><path d="m2 2 20 20"></path></svg></div>
+        </div>
+      </div>
+      <div style="width:460px;flex:none;background:#fff;display:flex;flex-direction:column">
+        <div style="height:56px;padding:0 20px;border-bottom:1px solid #E2E8F0;display:flex;align-items:center;justify-content:space-between"><span style="font-size:16px;font-weight:600">Concluzie</span><span style="font-size:12px;color:#64748B">Ciornă salvată · 10:42</span></div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid #E2E8F0;font-size:13px"><span style="height:44px;display:flex;align-items:center;justify-content:center;color:#16A34A">✓ Anamneză</span><span style="height:44px;display:flex;align-items:center;justify-content:center;color:#16A34A">✓ Examen</span><span style="height:44px;display:flex;align-items:center;justify-content:center;color:#2563EB;font-weight:600;box-shadow:inset 0 -2px 0 #2563EB">Concluzie</span><span style="height:44px;display:flex;align-items:center;justify-content:center;color:#64748B">Rețetă</span></div>
+        <div style="flex:1;padding:20px;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;font-weight:500;color:#334155">Diagnostic *</span><div style="height:42px;padding:0 12px;border:1px solid #2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.15);border-radius:10px;display:flex;align-items:center;font-size:15px">Faringită acută (J02.9)</div></div>
+          <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;font-weight:500;color:#334155">Planul de tratament</span><div style="min-height:80px;padding:10px 12px;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;line-height:1.5;box-sizing:border-box">Gargară cu soluție salină de 3 ori pe zi. Ibuprofen 7,5 ml la febră peste 38,5.</div></div>
+          <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;font-weight:500;color:#334155">Recomandări</span><div style="min-height:60px;padding:10px 12px;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;color:#94A3B8;box-sizing:border-box">Lichide calde, odihnă…</div></div>
+        </div>
+        <div style="padding:14px 20px;border-top:1px solid #E2E8F0;display:flex;flex-direction:column;gap:8px"><button style="height:46px;border:none;border-radius:10px;background:#2563EB;color:#fff;font-size:15px;font-weight:600">Publică și închide apelul</button><span style="font-size:12px;color:#64748B;text-align:center">Sau închide apelul și termină concluzia din Consultații.</span></div>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<section class="dv-turn" id="p3">
+  <div class="dv-thd"><a class="dv-tid" href="#p3">P3</a><span class="dv-tname">Termene și notificări</span></div>
+  <p class="dv-tdesc">Fiecare așteptare are un termen și un rezultat cunoscut dinainte. Banii nu rămân niciodată blocați fără un termen. Tabelul de jos arată pe ce canal află fiecare parte despre fiecare eveniment.</p>
+  <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;max-width:1280px">
+    <sc-for list="{{ rules }}" as="r" hint-placeholder-count="6"><div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;font-weight:600;color:#2563EB;letter-spacing:.04em">{{ r.k }}</span><span style="font-size:16px;font-weight:600">{{ r.t }}</span><span style="font-size:14px;line-height:1.55;color:#475569">{{ r.d }}</span></div></sc-for>
+  </div>
+  <div style="margin-top:20px;max-width:1280px;background:#fff;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden">
+    <div style="display:grid;grid-template-columns:2fr 1fr 110px 110px 110px;padding:12px 20px;background:#F8FAFC;font-size:12px;font-weight:600;color:#64748B"><span>Eveniment</span><span>Cine află</span><span>Clopoțel</span><span>Telegram</span><span>Mesaj în chat</span></div>
+    <sc-for list="{{ notif }}" as="n" hint-placeholder-count="7"><div style="display:grid;grid-template-columns:2fr 1fr 110px 110px 110px;padding:12px 20px;border-top:1px solid #F1F5F9;font-size:14px;align-items:center"><span style="font-weight:500">{{ n.e }}<sc-if value="{{ n.isNew }}" hint-placeholder-val="{{ false }}"><span style="margin-left:8px;font-size:11px;font-weight:600;padding:2px 7px;border-radius:999px;background:#EFF6FF;color:#1D4ED8">nou</span></sc-if></span><span style="color:#475569">{{ n.who }}</span><span style="color:{{ n.c1 }}">{{ n.b }}</span><span style="color:{{ n.c2 }}">{{ n.t }}</span><span style="color:{{ n.c3 }}">{{ n.c }}</span></div></sc-for>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const BLUE = '#2563EB';
+const DOW = ['Du', 'Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sâ'];
+const DOWL = ['duminică', 'luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă'];
+const NOW = new Date(2026, 10, 10, 9, 50);
+const dt = (day, t) => { const [h, m] = t.split(':').map(Number); return new Date(2026, 10, day, h, m); };
+const hm = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+const when = d => { const diff = d.getDate() - 10; return (diff === 0 ? 'azi' : diff === 1 ? 'mâine' : `${DOWL[d.getDay()]} ${d.getDate()} nov`) + ', ' + hm(d); };
+const TAKEN = { 11: ['09:00', '10:00', '13:00', '13:30', '15:00'], 12: ['09:30', '16:00', '16:30'], 13: ['11:00', '11:30'], 16: ['10:00', '10:30', '14:00'], 17: ['09:00'] };
+const ORIG = dt(11, '10:30');
+const initial = () => ({ stage: 'new', time: ORIG, origTime: ORIG, resched: false, sent: [], exp: null, pNoteSent: '', askNote: '', menu: false, prop: false, pDay: 11, pSel: [], pNote: '',
+  timeCome: false, cOpen: false, cStep: 0, cConfirm: false, f: { anam: 'Febră 38,2 de aseară, o doare gâtul. A luat paracetamol o dată.', exam: '', diag: '', plan: '', rec: '', inv: '' }, meds: [{ n: '', d: '' }], rx: false,
+  pPick: null, pSheet: false, askText: '', cancelBy: '' });
+
+class Component extends DCLogic {
+  state = initial();
+  openProp(resched) { this.setState({ prop: true, menu: false, resched, pSel: this.state.stage === 'prop' ? this.state.sent.map(d => d.getTime()) : [], pDay: 11 }); }
+
+  renderVals() {
+    const s = this.state, set = p => this.setState(p);
+    const stg = s.stage;
+    // flow diagram
+    const pill = (label, keys) => { const on = keys.includes(stg); return { label, bg: on ? BLUE : '#fff', color: on ? '#fff' : '#334155', border: on ? '1px solid ' + BLUE : '1px solid #E2E8F0' }; };
+    const flowMain = [pill('Cerere nouă', ['new']), pill('Confirmată', ['conf']), pill('În curs', ['live']), pill('Finalizată', ['done'])].map((x, i, a) => ({ ...x, arrow: i < a.length - 1 }));
+    const flowProp = [pill('Oră nouă propusă', ['prop']), pill('Pacientul cere alte ore', ['ask']), pill('Pacientul alege → Confirmată', [])].map((x, i) => ({ ...x, arrow: i < 2, arrowTxt: i === 0 ? '⇄' : '·' }));
+    const flowExit = [pill('Respinsă de medic', s.cancelBy === 'doc' ? ['cancel'] : []), pill('Anulată de pacient', s.cancelBy === 'pat' ? ['cancel'] : []), pill('Expirată', ['expired'])];
+
+    const sentLabels = s.sent.map(d => when(d));
+    const expLabel = s.exp ? when(s.exp) : '';
+    const timeLabel = stg === 'new' || (stg === 'prop' && !s.resched) || stg === 'ask' ? 'cerut ' + when(s.time) : when(s.time);
+    const ST = {
+      new: { label: 'Cerere nouă', bg: '#FEF3C7', color: '#92400E', title: 'Răspunde până azi, 11:38', text: 'Confirmă ora cerută sau propune altele. Dacă nu răspunzi, cererea expiră și banii revin la pacient.', tone: 'amber', money: 'rezervat de pacient' },
+      prop: { label: 'Oră nouă propusă', bg: '#EFF6FF', color: '#1D4ED8', title: s.resched ? 'Ai propus mutarea consultației' : 'Ai propus ' + (s.sent.length === 1 ? 'o oră nouă' : s.sent.length + ' ore noi'), text: `Pacientul a primit notificare în aplicație și pe Telegram. Așteptăm răspunsul până ${expLabel}. ` + (s.resched ? 'Dacă nu răspunde, rămâne ora confirmată: ' + when(s.origTime) + '.' : 'Dacă nu răspunde, cererea expiră și banii revin la pacient.'), tone: 'blue', hasSlots: true, money: 'rezervat de pacient' },
+      ask: { label: 'Pacientul cere alte ore', bg: '#FEF3C7', color: '#92400E', title: 'Niciuna dintre ore nu i se potrivește', text: 'Propune alte ore până mâine, 09:50. Altfel cererea se anulează și banii revin la pacient.', tone: 'amber', hasNote: !!s.askNote, money: 'rezervat de pacient' },
+      conf: { label: 'Confirmată', bg: '#EFF6FF', color: '#1D4ED8', title: 'Consultația e ' + when(s.time), text: s.timeCome ? 'A venit ora. Începe consultația, apoi sună pacientul.' : '„Începe consultația” devine activ la ora programată. Până atunci poți reprograma din „⋯”.', tone: 'blue', money: 'rezervat de pacient' },
+      live: { label: 'În curs', bg: '#EFF6FF', color: '#1D4ED8', title: 'Consultația a început la ' + hm(s.time), text: 'Scrie concluzia aici sau direct din apel. Ciorna se salvează singură.', tone: 'blue', money: 'rezervat de pacient' },
+      done: { label: 'Finalizată', bg: '#F1F5F9', color: '#334155', title: 'Concluzia a fost publicată. Pacientul a primit documentul PDF.', text: '300 MDL au intrat în balanța ta. Chatul rămâne deschis gratuit până vineri, 13 nov.', tone: 'green', money: 'transferat la tine' },
+      cancel: { label: s.cancelBy === 'doc' ? 'Respinsă' : 'Anulată de pacient', bg: '#F1F5F9', color: '#334155', title: s.cancelBy === 'doc' ? 'Ai respins cererea' : 'Pacientul a anulat cererea', text: '300 MDL au revenit în portofelul pacientului. Ambii ați primit notificare.', tone: 'grey', money: 'returnat' },
+      expired: { label: 'Expirată', bg: '#F1F5F9', color: '#334155', title: 'Propunerea a expirat fără răspuns', text: '300 MDL au revenit în portofelul pacientului. Ambii ați primit notificare.', tone: 'grey', money: 'returnat' }
+    };
+    const TONE = { amber: ['#FFFBEB', '1px solid #FDE68A', '#92400E'], blue: ['#EFF6FF', '1px solid #BFDBFE', '#1E3A8A'], green: ['#F0FDF4', '1px solid #BBF7D0', '#166534'], grey: ['#F8FAFC', '1px solid #E2E8F0', '#0F172A'] };
+    const st0 = ST[stg]; const tn = TONE[st0.tone];
+    const st = { ...st0, bannerBg: tn[0], bannerBorder: tn[1], bannerColor: tn[2], hasSlots: !!st0.hasSlots, hasNote: !!st0.hasNote };
+    const idx = { new: 0, prop: 0, ask: 0, conf: 1, live: 2, done: 3, cancel: -1, expired: -1 }[stg];
+    const steps = ['Cerere', 'Ora stabilită', 'În curs', 'Concluzie publicată'].map((label, i) => ({ label, bar: i <= idx ? BLUE : '#E2E8F0', color: i <= idx ? '#0F172A' : '#94A3B8', w: i === idx ? 600 : 500 }));
+
+    const refund = by => () => set({ stage: 'cancel', cancelBy: by, menu: false, pSheet: false });
+    const openC = () => set({ cOpen: true, menu: false });
+    const hasDraft = !!(s.f.exam || s.f.diag);
+    const A = {
+      new: { pLabel: 'Confirmă ' + when(s.time), primary: () => set({ stage: 'conf' }), secondary: [{ label: 'Propune altă oră', go: () => this.openProp(false) }],
+        menu: [{ label: 'Finalizează direct', go: openC }, { label: 'Respinge și returnează banii', go: refund('doc'), color: '#DC2626' }] },
+      prop: { pLabel: 'Modifică propunerea', primary: () => this.openProp(s.resched), secondary: [{ label: 'Mesaje', go: () => {} }],
+        menu: [{ label: 'Retrage propunerea', go: () => set({ stage: s.resched ? 'conf' : 'new', time: s.resched ? s.origTime : s.time, menu: false, sent: [] }) }, { label: s.resched ? 'Anulează și returnează banii' : 'Respinge și returnează banii', go: refund('doc'), color: '#DC2626' }] },
+      ask: { pLabel: 'Propune alte ore', primary: () => this.openProp(s.resched), secondary: [{ label: 'Scrie pacientului', go: () => {} }], menu: [{ label: 'Respinge și returnează banii', go: refund('doc'), color: '#DC2626' }] },
+      conf: { pLabel: s.timeCome ? 'Începe consultația' : 'Începe consultația · de la ' + hm(s.time), disabled: !s.timeCome, primary: () => s.timeCome && set({ stage: 'live' }), secondary: [{ label: 'Apel video', go: () => {} }, { label: 'Mesaje', go: () => {} }],
+        menu: [{ label: 'Reprogramează', go: () => this.openProp(true) }, { label: 'Anulează și returnează banii', go: refund('doc'), color: '#DC2626' }] },
+      live: { pLabel: hasDraft ? 'Continuă concluzia' : 'Scrie concluzia', primary: openC, secondary: [{ label: 'Apel video', go: () => {} }, { label: 'Mesaje', go: () => {} }], menu: [] },
+      done: { pLabel: 'Vezi PDF-ul', primary: () => {}, secondary: [{ label: 'Vezi discuția', go: () => {} }], menu: [] },
+      cancel: { pLabel: '', secondary: [], menu: [] }, expired: { pLabel: '', secondary: [], menu: [] }
+    }[stg];
+    const a = { ...A, hasPrimary: !!A.pLabel, pBg: A.disabled ? '#93C5FD' : BLUE, hasMenu: A.menu.length > 0, menu: A.menu.map(m => ({ ...m, color: m.color || '#0F172A' })),
+      hasHint: stg === 'new' || stg === 'live', hint: stg === 'new' ? 'Banii sunt deja rezervați din portofelul pacientului. Îi primești când publici concluzia.' : 'Concluzia se poate scrie și din ecranul apelului (vezi P2).' };
+
+    // propose dialog
+    const days = [11, 12, 13, 14, 15, 16, 17].map(d => { const dd = new Date(2026, 10, d); const wd = dd.getDay(); const off = wd === 0 || wd === 6; const on = s.pDay === d;
+      const end = wd === 5 ? 15 : 18; const slots = []; if (!off) for (let h = 9; h < end; h++) for (const m of [0, 30]) slots.push(String(h).padStart(2, '0') + ':' + (m ? '30' : '00'));
+      const free = slots.filter(t => !(TAKEN[d] || []).includes(t)).length;
+      return { d, off, slots, dow: DOW[wd], num: String(d), sub: off ? 'liber' : free + ' libere', pick: () => set({ pDay: d }),
+        bg: on ? '#EFF6FF' : off ? '#F8FAFC' : '#fff', border: on ? '1.5px solid ' + BLUE : '1px solid #E2E8F0', color: off ? '#94A3B8' : on ? '#1D4ED8' : '#0F172A', subColor: off ? '#CBD5E1' : '#64748B' }; });
+    const cd = days.find(x => x.d === s.pDay);
+    const origRef = s.resched ? s.time : ORIG;
+    const pslots = cd.slots.map(t => { const d = dt(cd.d, t), k = d.getTime(); const taken = (TAKEN[cd.d] || []).includes(t) && k !== origRef.getTime(); const isOrig = k === origRef.getTime(); const on = s.pSel.includes(k);
+      const full = s.pSel.length >= 3 && !on; const dis = taken || isOrig || full;
+      return { t, title: taken ? 'Ocupat' : isOrig ? (s.resched ? 'Ora confirmată acum' : 'Ora cerută de pacient') : '', cursor: dis ? 'default' : 'pointer', deco: taken ? 'line-through' : 'none',
+        bg: on ? BLUE : taken ? '#F1F5F9' : '#fff', color: on ? '#fff' : taken ? '#94A3B8' : full ? '#CBD5E1' : '#0F172A', border: on ? '1px solid ' + BLUE : isOrig ? '1.5px dashed #F59E0B' : taken ? '1px solid #F1F5F9' : '1px solid #E2E8F0',
+        pick: () => { if (taken || isOrig) return; this.setState(st => ({ pSel: st.pSel.includes(k) ? st.pSel.filter(x => x !== k) : st.pSel.length < 3 ? [...st.pSel, k].sort((x, y) => x - y) : st.pSel })); } }; });
+    const chosen = s.pSel.map(k => ({ label: when(new Date(k)), remove: () => this.setState(st => ({ pSel: st.pSel.filter(x => x !== k) })) }));
+    const expFor = sel => { const first = new Date(Math.min(...sel)); const a24 = new Date(NOW.getTime() + 864e5); const b2 = new Date(first.getTime() - 72e5); return a24 < b2 ? a24 : b2; };
+    const prExp = s.pSel.length ? when(expFor(s.pSel)) : null;
+    const pr = { title: s.resched ? 'Reprogramează consultația' : stg === 'prop' ? 'Modifică propunerea' : 'Propune altă oră', days, dayOff: cd.off, dayOn: !cd.off, slots: pslots, chosen, count: String(s.pSel.length), none: !s.pSel.length,
+      origLegend: s.resched ? 'Ora confirmată acum' : 'Ora cerută de pacient',
+      rule: (prExp ? `Pacientul are timp să aleagă până ${prExp}. ` : 'Pacientul are 24 h să aleagă, dar cel târziu cu 2 h înainte de prima oră propusă. ') + (s.resched ? 'Dacă nu răspunde, rămâne ora confirmată acum.' : 'Dacă nu răspunde, cererea expiră și banii revin la pacient.'),
+      sendBg: s.pSel.length ? BLUE : '#93C5FD', sendLabel: s.pSel.length > 1 ? `Trimite ${s.pSel.length} ore` : 'Trimite propunerea' };
+    const sendProp = () => { if (!s.pSel.length) return; set({ stage: 'prop', prop: false, origTime: s.resched ? (stg === 'conf' ? s.time : s.origTime) : ORIG, sent: s.pSel.map(k => new Date(k)), exp: expFor(s.pSel), pNoteSent: s.pNote, pPick: null, askNote: '' }); };
+
+    // conclusion
+    const on = {}; ['anam', 'exam', 'diag', 'plan', 'rec', 'inv'].forEach(k => on[k] = e => { const v = e.target.value; this.setState(st => ({ f: { ...st.f, [k]: v } })); });
+    const filled = [!!s.f.anam.trim(), !!s.f.exam.trim(), !!s.f.diag.trim(), s.rx || s.meds.some(m => m.n.trim())];
+    const cTabs = ['Anamneză', 'Examen obiectiv', 'Concluzie', 'Rețetă'].map((label, i) => { const cur = s.cStep === i;
+      return { label, mark: filled[i] ? '✓' : String(i + 1), dotBg: filled[i] ? '#DCFCE7' : cur ? BLUE : '#F1F5F9', dotColor: filled[i] ? '#166534' : cur ? '#fff' : '#64748B',
+        color: cur ? '#0F172A' : '#475569', w: cur ? 600 : 500, line: cur ? 'inset 0 -2px 0 ' + BLUE : 'none', pick: () => set({ cStep: i }) }; });
+    const canPub = filled[2];
+    const meds = s.meds.map((m, i) => ({ ...m, onN: e => { const v = e.target.value; this.setState(st => ({ meds: st.meds.map((x, j) => j === i ? { ...x, n: v } : x) })); },
+      onD: e => { const v = e.target.value; this.setState(st => ({ meds: st.meds.map((x, j) => j === i ? { ...x, d: v } : x) })); },
+      remove: () => this.setState(st => ({ meds: st.meds.length > 1 ? st.meds.filter((_, j) => j !== i) : [{ n: '', d: '' }] })) }));
+
+    // patient
+    const pslotsP = s.sent.map(d => { const k = d.getTime(), sel = s.pPick === k; return { label: when(d), pick: () => set({ pPick: k }), bg: sel ? '#EFF6FF' : '#fff', border: sel ? '1.5px solid ' + BLUE : '1px solid #E2E8F0', radio: sel ? '2px solid ' + BLUE : '2px solid #CBD5E1', dot: sel ? BLUE : 'transparent' }; });
+    const P = {
+      new: ['Așteaptă medicul', '#FEF3C7', '#92400E', '#FDE68A', 'Cererea ta e la Dr. Ana Ciobanu', `Ai cerut ${when(ORIG)}. Medicul răspunde până azi, 11:38. Dacă nu, banii revin în portofel.`],
+      ask: ['Ai cerut alte ore', '#FEF3C7', '#92400E', '#FDE68A', 'Medicul alege alte ore', 'Îți scriem aici și pe Telegram când propune. Dacă nu propune până mâine, 09:50, cererea se anulează și banii revin.'],
+      conf: ['Confirmată', '#EFF6FF', '#1D4ED8', '#BFDBFE', 'Consultație video ' + when(s.time), 'Dr. Ana Ciobanu te sună la ora stabilită, pentru Ana.'],
+      live: ['În curs', '#EFF6FF', '#1D4ED8', '#BFDBFE', 'Consultația a început', 'Medicul scrie concluzia. O primești aici, ca PDF.'],
+      done: ['Finalizată', '#F1F5F9', '#334155', '#E2E8F0', 'Concluzia pentru Ana e gata', 'Ai primit PDF-ul. Chatul cu medicul e gratuit până vineri, 13 nov.', 'Evaluează consultația'],
+      cancel: ['Anulată', '#F1F5F9', '#334155', '#E2E8F0', s.cancelBy === 'doc' ? 'Medicul nu poate prelua cererea' : 'Ai anulat cererea', '300 MDL au revenit în portofel, la Bani.', 'Alege alt medic'],
+      expired: ['Expirată', '#F1F5F9', '#334155', '#E2E8F0', 'Propunerea medicului a expirat', '300 MDL au revenit în portofel, la Bani.', 'Programează din nou']
+    }[stg];
+    const isProp = stg === 'prop';
+    const pt = { isProp, isOther: !isProp, bell: isProp || stg === 'done', push: isProp, pushText: s.resched ? 'Dr. Ana Ciobanu propune să mutați consultația Anei' : 'Dr. Ana Ciobanu propune altă oră pentru Ana',
+      propTag: s.resched ? 'Medicul propune mutarea' : 'Medicul propune altă oră', origLine: s.resched ? 'Acum: ' + when(s.origTime) + ' · rămâne dacă nu alegi' : 'Ai cerut: ' + when(ORIG),
+      hasNote: !!s.pNoteSent, slots: pslotsP, acceptBg: s.pPick ? BLUE : '#93C5FD', acceptLabel: s.pPick ? 'Accept ' + when(new Date(s.pPick)) : 'Alege o oră',
+      expRule: s.resched ? 'Dacă nu alegi, rămâne ora de acum.' : 'Dacă nu alegi până atunci, cererea se anulează și banii revin în portofel.',
+      ...(P ? { tag: P[0], tagBg: P[1], tagColor: P[2], border: P[3], title: P[4], text: P[5], hasBtn: !!P[6], btn: P[6] || '' } : {}),
+      bani: ['cancel', 'expired'].includes(stg) ? '1 250 MDL' : '950 MDL', held: ['cancel', 'expired', 'done'].includes(stg) ? '' : '300 MDL rezervați' };
+
+    const rules = [
+      { k: 'CERERE NOUĂ', t: 'Medicul răspunde în 2 h', d: 'Confirmă, propune alte ore sau respinge. Fără răspuns, cererea expiră și banii revin la pacient.' },
+      { k: 'ORĂ PROPUSĂ', t: 'Până la 3 ore, doar din intervalele libere', d: 'Pacientul alege în 24 h, dar cel târziu cu 2 h înainte de prima oră. Fără răspuns, cererea nouă expiră și banii revin. La reprogramare rămâne ora inițială.' },
+      { k: 'ALTE ORE', t: 'Pacientul poate refuza', d: '„Nu-mi convine niciuna” trimite medicului un mesaj cu ce i-ar conveni. Medicul are 24 h să propună din nou. Altfel cererea se anulează și banii revin.' },
+      { k: 'ÎNCEPUT', t: 'De la ora programată', d: '„Începe consultația” devine activ la ora stabilită. Reprogramarea merge până la început, cu aceleași reguli ca propunerea.' },
+      { k: 'CONCLUZIE', t: 'Din Consultații, din apel sau din Mesaje', d: 'Aceeași ciornă, salvată automat. Pentru publicare trebuie doar diagnosticul și parafa din Profil.' },
+      { k: 'DUPĂ PUBLICARE', t: 'Bani, PDF, chat gratuit', d: 'Banii trec la medic, se generează PDF-ul, apelul se închide. Chatul e gratuit 3 zile (chat.free_days), apoi pacientul îl poate redeschide contra cost.' }
+    ];
+    const Y = ['Da', '#0F172A'], N = ['—', '#CBD5E1'];
+    const notif = [['Oră nouă propusă', 'Pacient', Y, Y, Y, 1], ['Pacientul a ales o oră', 'Medic', Y, Y, Y, 1], ['Pacientul cere alte ore', 'Medic', Y, Y, Y, 1], ['Propunerea expiră în 2 h', 'Pacient', Y, Y, N, 1], ['Propunerea sau cererea a expirat', 'Amândoi', Y, Y, Y, 1], ['Consultație reprogramată', 'Pacient', Y, Y, Y, 0], ['Consultație finalizată + evaluare', 'Pacient', Y, Y, Y, 0]]
+      .map(([e, who, b, t, c, n]) => ({ e, who, b: b[0], c1: b[1], t: t[0], c2: t[1], c: c[0], c3: c[1], isNew: !!n }));
+
+    return {
+      flowMain, flowProp, flowExit, st, steps, a, timeLabel, sentSlots: sentLabels, askNote: s.askNote, expLabel,
+      menuOpen: s.menu && a.hasMenu, toggleMenu: () => set({ menu: !s.menu }),
+      reset: () => set(initial()), simTime: () => set({ timeCome: true }), simExpire: () => { if (stg === 'prop') set(s.resched ? { stage: 'conf', time: s.origTime, sent: [] } : { stage: 'expired' }); },
+      propOpen: s.prop, closeProp: () => set({ prop: false }), pr, pNote: s.pNote, onPNote: e => set({ pNote: e.target.value }), sendProp,
+      cOpen: s.cOpen, closeC: () => set({ cOpen: false }), cTabs, cs0: s.cStep === 0, cs1: s.cStep === 1, cs2: s.cStep === 2, cs3: s.cStep === 3, f: s.f, on, meds,
+      addMed: () => set({ meds: [...s.meds, { n: '', d: '' }] }), toggleRx: () => set({ rx: !s.rx }), rxLabel: s.rx ? '✓ reteta-ana.pdf · 240 KB · atinge ca s-o scoți' : 'Trage aici sau alege fișierul · PDF, JPG, PNG, max. 10 MB',
+      diagBorder: s.cStep === 2 && !canPub ? '1px solid #FCD34D' : '1px solid #E2E8F0',
+      nextStep: () => set({ cStep: (s.cStep + 1) % 4 }), nextLabel: s.cStep < 3 ? 'Pasul următor' : 'Înapoi la început',
+      pubHint: canPub ? '' : 'Completează diagnosticul ca să publici', pubBg: canPub ? BLUE : '#93C5FD',
+      askPublish: () => canPub ? set({ cConfirm: true }) : set({ cStep: 2 }), cConfirm: s.cConfirm, cancelPublish: () => set({ cConfirm: false }),
+      effects: ['Ana primește PDF-ul și o cerere de evaluare.', '300 MDL trec în balanța ta.', 'Apelul video se închide, dacă e deschis.', 'Chatul rămâne gratuit 3 zile, până vineri, 13 nov.'],
+      publish: () => set({ stage: 'done', cOpen: false, cConfirm: false }),
+      pt, pNoteSent: s.pNoteSent, pAccept: () => s.pPick && set({ stage: 'conf', time: new Date(s.pPick), sent: [], timeCome: false }),
+      pSheetOpen: s.pSheet && isProp, openPSheet: () => set({ pSheet: true }), closePSheet: () => set({ pSheet: false }),
+      askText: s.askText, onAskText: e => set({ askText: e.target.value }), pAsk: () => set({ stage: 'ask', askNote: s.askText || 'Nicio oră nu-mi convine.', pSheet: false, askText: '' }),
+      pAlt: s.resched ? () => set({ stage: 'conf', time: s.origTime, sent: [], pSheet: false }) : refund('pat'),
+      pAltLabel: s.resched ? 'Păstrez ora de acum · ' + when(s.origTime) : 'Anulează și primește 300 MDL înapoi', pAltColor: s.resched ? '#0F172A' : '#DC2626',
+      rules, notif
+    };
+  }
+}
+</script>
+</body>
+</html>

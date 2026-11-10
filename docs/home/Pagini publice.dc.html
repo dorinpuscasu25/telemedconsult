@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#E9EDF3;font-family:Geist,system-ui,sans-serif;color:#0F172A;-webkit-font-smoothing:antialiased}
+a{color:#2563EB;text-decoration:none}a:hover{color:#1D4ED8;text-decoration:underline}
+button{font-family:Geist,system-ui,sans-serif}
+.dv-turn{padding:44px 48px 40px;border-bottom:1px solid rgba(15,23,42,.08);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:12px;margin:0 0 6px}
+.dv-tid{font:600 11px 'Geist Mono',ui-monospace,monospace;padding:3px 8px;background:#0F172A;color:#fff;border-radius:5px;text-decoration:none}
+.dv-tname{font:600 20px/1.2 Geist,sans-serif;color:#0F172A;letter-spacing:-.01em}
+.dv-tdesc{font:400 14px/1.5 Geist,sans-serif;color:#475569;margin:0 0 24px;max-width:780px;text-wrap:pretty}
+.dv-opts{display:flex;flex-wrap:wrap;gap:36px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:10px;scroll-margin-top:16px}
+.dv-oid{font:600 11px 'Geist Mono',ui-monospace,monospace;padding:3px 7px;background:rgba(15,23,42,.08);color:#0F172A;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 13px/1.3 Geist,sans-serif;color:#475569}
+.dv-opt:target .dv-oid{background:#2563EB;color:#fff}
+</style>
+</helmet>
+
+<section class="dv-turn" id="t0" style="background:#fff">
+  <div style="display:flex;flex-direction:column;gap:14px;max-width:900px">
+    <div style="font:600 12px 'Geist Mono',monospace;color:#2563EB;letter-spacing:.04em">TELEMEDCONSULT.MD · PAGINI PUBLICE</div>
+    <h1 style="margin:0;font-size:36px;line-height:1.15;letter-spacing:-.02em;font-weight:700">Pagina publică începe cu căutarea unui medic</h1>
+    <p style="margin:0;font-size:16px;line-height:1.6;color:#475569;text-wrap:pretty">Aceeași identitate ca aplicația: Geist, albastru #2563EB, carduri albe, fără gradiente. Prima pagină e pentru pacienți. Medicii și operatorii au o secțiune proprie, mai jos. Imaginile sunt fragmente reale din aplicație. Comutatorul „Autentificat” din Tweaks schimbă antetul și cardul de programare.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
+      <a href="#h" style="padding:6px 12px;border:1px solid #E2E8F0;border-radius:999px;font-size:13px;color:#334155">H Acasă · 2 variante</a>
+      <a href="#m" style="padding:6px 12px;border:1px solid #E2E8F0;border-radius:999px;font-size:13px;color:#334155">M Catalog medici</a>
+      <a href="#p" style="padding:6px 12px;border:1px solid #E2E8F0;border-radius:999px;font-size:13px;color:#334155">P Profil public</a>
+      <a href="#n" style="padding:6px 12px;border:1px solid #E2E8F0;border-radius:999px;font-size:13px;color:#334155">N Noutăți</a>
+      <a href="#r" style="padding:6px 12px;border:1px solid #E2E8F0;border-radius:999px;font-size:13px;color:#334155">R Parteneri</a>
+    </div>
+  </div>
+</section>
+
+<section class="dv-turn" id="h">
+  <div class="dv-thd"><a class="dv-tid" href="#h">H</a><span class="dv-tname">Acasă · desktop</span></div>
+  <p class="dv-tdesc"><a href="#ha">Ha</a> pune căutarea în centru și arată fiecare pas cu un fragment din aplicație. <a href="#hb">Hb</a> e împărțit: textul și căutarea în stânga, aplicația în dreapta, iar pașii se schimbă la click. Ambele: alege tipul serviciului deasupra căutării, întrebările se deschid la click.</p>
+  <div class="dv-opts">
+
+    <div class="dv-opt" id="ha">
+      <div class="dv-olabel"><a class="dv-oid" href="#ha">Ha</a>Căutare în centru · 1280</div>
+      <div style="width:1280px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <dc-import name="Antet public" active="acasa" mode="desktop" logged-in="{{ loggedIn }}" hint-size="100%,68px"></dc-import>
+        <div style="background:#fff;border-bottom:1px solid #E2E8F0">
+          <div style="max-width:1200px;margin:0 auto;padding:80px 40px 64px;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;gap:22px;text-align:center">
+            <span style="font-size:13px;font-weight:600;padding:6px 12px;border-radius:999px;background:#EFF6FF;color:#1D4ED8">Platformă de telemedicină</span>
+            <h1 style="margin:0;font-size:60px;line-height:1.05;letter-spacing:-.035em;font-weight:700;max-width:860px;text-wrap:balance">Suntem mai aproape ca niciodată de <span style="color:#2563EB">sănătatea ta</span></h1>
+            <p style="margin:0;font-size:18px;line-height:1.55;color:#475569;max-width:640px;text-wrap:pretty">Consultații video și în chat cu medici verificați, examinări la domiciliu și o fișă medicală digitală, datorită tehnologiei HIGO și TeleMedConsult.</p>
+            <div style="width:780px;margin-top:10px;background:#fff;border:1px solid #E2E8F0;border-radius:18px;padding:8px;box-shadow:0 12px 32px rgba(15,23,42,.08);display:flex;flex-direction:column;gap:8px;text-align:left">
+              <div style="display:flex;gap:4px">
+                <sc-for list="{{ types }}" as="t" hint-placeholder-count="3">
+                  <button onClick="{{ t.pick }}" style="height:38px;padding:0 14px;border:none;border-radius:10px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;background:{{ t.bg }};color:{{ t.color }}">
+                    <sc-if value="{{ t.isVideo }}" hint-placeholder-val="{{ true }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"></path><rect x="2" y="6" width="14" height="12" rx="2"></rect></svg></sc-if>
+                    <sc-if value="{{ t.isChat }}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></sc-if>
+                    <sc-if value="{{ t.isHome }}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2v2"></path><path d="M5 2v2"></path><path d="M5 3H4a2 2 0 0 0-2 2v4a6 6 0 0 0 12 0V5a2 2 0 0 0-2-2h-1"></path><path d="M8 15a6 6 0 0 0 12 0v-3"></path><circle cx="20" cy="10" r="2"></circle></svg></sc-if>
+                    {{ t.label }}
+                  </button>
+                </sc-for>
+              </div>
+              <div style="display:flex;gap:8px">
+                <div style="flex:1;height:56px;padding:0 16px;border-radius:12px;background:#F8FAFC;display:flex;align-items:center;gap:10px;font-size:16px;color:#64748B"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>Specialitate sau numele medicului</div>
+                <button style="height:56px;padding:0 26px;border:none;border-radius:12px;background:#2563EB;color:#fff;font-size:16px;font-weight:600;cursor:pointer">Caută medic</button>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center;font-size:13px;color:#64748B">Des căutate:<sc-for list="{{ specs }}" as="s" hint-placeholder-count="5"><span style="padding:5px 11px;border:1px solid #E2E8F0;border-radius:999px;color:#334155;background:#fff">{{ s }}</span></sc-for></div>
+          </div>
+        </div>
+
+        <div style="max-width:1200px;margin:0 auto;padding:80px 40px 0;box-sizing:border-box;display:flex;flex-direction:column;gap:96px">
+          <div style="display:flex;flex-direction:column;gap:28px">
+            <div style="display:flex;flex-direction:column;gap:8px"><h2 style="margin:0;font-size:32px;letter-spacing:-.02em;font-weight:700">Trei feluri de a ajunge la medic</h2><p style="margin:0;font-size:16px;color:#475569">Fiecare medic își alege serviciile și prețurile. Vezi totul înainte să programezi.</p></div>
+            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px">
+              <sc-for list="{{ services }}" as="s" hint-placeholder-count="3">
+                <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:24px;display:flex;flex-direction:column;gap:14px">
+                  <div style="width:44px;height:44px;border-radius:12px;background:#EFF6FF;color:#2563EB;display:flex;align-items:center;justify-content:center">
+                    <sc-if value="{{ s.isVideo }}" hint-placeholder-val="{{ true }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"></path><rect x="2" y="6" width="14" height="12" rx="2"></rect></svg></sc-if>
+                    <sc-if value="{{ s.isChat }}" hint-placeholder-val="{{ false }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></sc-if>
+                    <sc-if value="{{ s.isHome }}" hint-placeholder-val="{{ false }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2v2"></path><path d="M5 2v2"></path><path d="M5 3H4a2 2 0 0 0-2 2v4a6 6 0 0 0 12 0V5a2 2 0 0 0-2-2h-1"></path><path d="M8 15a6 6 0 0 0 12 0v-3"></path><circle cx="20" cy="10" r="2"></circle></svg></sc-if>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:6px;flex:1"><span style="font-size:18px;font-weight:600">{{ s.title }}</span><span style="font-size:14px;line-height:1.55;color:#475569;text-wrap:pretty">{{ s.desc }}</span></div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;padding-top:14px;border-top:1px solid #F1F5F9"><span style="font-size:14px;color:#64748B">{{ s.meta }} · <b style="color:#0F172A">{{ s.from }}</b></span><span style="font-size:14px;font-weight:600;color:#2563EB;display:flex;align-items:center;gap:4px">Vezi medicii<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></span></div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:28px">
+            <div style="display:flex;flex-direction:column;gap:8px"><h2 style="margin:0;font-size:32px;letter-spacing:-.02em;font-weight:700">Cum funcționează</h2><p style="margin:0;font-size:16px;color:#475569">Trei pași de la căutare la concluzia medicului.</p></div>
+            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px">
+              <sc-for list="{{ steps }}" as="st" hint-placeholder-count="3">
+                <div style="display:flex;flex-direction:column;gap:18px">
+                  <div style="background:#EFF6FF;border-radius:20px;padding:24px;height:280px;box-sizing:border-box;display:flex;align-items:center"><dc-import name="Captura aplicatie" kind="{{ st.kind }}" hint-size="100%,220px" style="width:100%"></dc-import></div>
+                  <div style="display:flex;gap:14px;align-items:flex-start;padding:0 4px">
+                    <span style="width:28px;height:28px;border-radius:50%;background:#2563EB;color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none">{{ st.n }}</span>
+                    <div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:17px;font-weight:600">{{ st.title }}</span><span style="font-size:14px;line-height:1.55;color:#475569;text-wrap:pretty">{{ st.text }}</span></div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:24px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="margin:0;font-size:24px;letter-spacing:-.02em;font-weight:700">Parteneri</h2><span style="font-size:14px;font-weight:600;color:#2563EB">Toți partenerii</span></div>
+            <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px">
+              <sc-for list="{{ partners }}" as="pa" hint-placeholder-count="4">
+                <div style="height:104px;background:#fff;border:1px solid #E2E8F0;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;letter-spacing:-.01em;color:#334155">{{ pa.name }}</div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:24px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="margin:0;font-size:24px;letter-spacing:-.02em;font-weight:700">Noutăți</h2><span style="font-size:14px;font-weight:600;color:#2563EB">Toate noutățile</span></div>
+            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px">
+              <sc-for list="{{ news3 }}" as="nw" hint-placeholder-count="3">
+                <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden;display:flex;flex-direction:column">
+                  <div style="aspect-ratio:16/9;background:#F1F5F9;display:flex;align-items:center;justify-content:center;font-size:12px;color:#94A3B8">Imagine articol</div>
+                  <div style="padding:18px 20px 22px;display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;color:#64748B"><b style="color:#2563EB;font-weight:600">{{ nw.cat }}</b> · {{ nw.date }}</span><span style="font-size:17px;font-weight:600;line-height:1.35">{{ nw.title }}</span><span style="font-size:14px;line-height:1.55;color:#475569">{{ nw.ex }}</span></div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:48px;align-items:start">
+            <div style="display:flex;flex-direction:column;gap:10px"><h2 style="margin:0;font-size:32px;letter-spacing:-.02em;font-weight:700">Întrebări frecvente</h2><p style="margin:0;font-size:15px;line-height:1.55;color:#475569">Nu găsești răspunsul? Scrie-ne la suport@telemedconsult.md.</p></div>
+            <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden">
+              <sc-for list="{{ faq }}" as="q" hint-placeholder-count="5">
+                <div style="border-top:{{ q.border }}">
+                  <button onClick="{{ q.toggle }}" style="width:100%;min-height:60px;padding:0 22px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;gap:16px;text-align:left;font-size:16px;font-weight:600;color:#0F172A"><span style="flex:1">{{ q.q }}</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform:{{ q.rot }};flex:none"><path d="m6 9 6 6 6-6"></path></svg></button>
+                  <sc-if value="{{ q.open }}" hint-placeholder-val="{{ false }}"><p style="margin:0;padding:0 22px 20px;font-size:15px;line-height:1.6;color:#475569;text-wrap:pretty">{{ q.a }}</p></sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;padding-bottom:80px">
+            <sc-for list="{{ pros }}" as="pr" hint-placeholder-count="2">
+              <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:28px;display:flex;flex-direction:column;gap:14px">
+                <span style="font-size:12px;font-weight:600;color:#64748B;letter-spacing:.04em">{{ pr.eyebrow }}</span>
+                <span style="font-size:22px;font-weight:700;letter-spacing:-.01em">{{ pr.title }}</span>
+                <span style="font-size:15px;line-height:1.55;color:#475569;text-wrap:pretty">{{ pr.text }}</span>
+                <span style="align-self:flex-start;height:42px;padding:0 16px;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;margin-top:6px">{{ pr.cta }}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <dc-import name="Subsol public" mode="desktop" hint-size="100%,260px"></dc-import>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="hb">
+      <div class="dv-olabel"><a class="dv-oid" href="#hb">Hb</a>Împărțit, aplicația în prim-plan · 1280</div>
+      <div style="width:1280px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <dc-import name="Antet public" active="acasa" mode="desktop" logged-in="{{ loggedIn }}" hint-size="100%,68px"></dc-import>
+        <div style="background:#fff;border-bottom:1px solid #E2E8F0">
+          <div style="max-width:1200px;margin:0 auto;padding:64px 40px;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:56px;align-items:center">
+            <div style="display:flex;flex-direction:column;gap:22px">
+              <h1 style="margin:0;font-size:52px;line-height:1.06;letter-spacing:-.035em;font-weight:700;text-wrap:balance">Suntem mai aproape ca niciodată de sănătatea ta</h1>
+              <p style="margin:0;font-size:18px;line-height:1.55;color:#475569;text-wrap:pretty">Consultații video și în chat cu medici verificați, examinări la domiciliu și o fișă medicală digitală, datorită tehnologiei HIGO și TeleMedConsult.</p>
+              <div style="display:flex;flex-direction:column;gap:10px;margin-top:6px">
+                <div style="display:flex;gap:6px">
+                  <sc-for list="{{ types }}" as="t" hint-placeholder-count="3">
+                    <button onClick="{{ t.pick }}" style="height:36px;padding:0 14px;border-radius:999px;cursor:pointer;font-size:14px;font-weight:600;background:{{ t.bg }};color:{{ t.color }};border:{{ t.border }}">{{ t.label }}</button>
+                  </sc-for>
+                </div>
+                <div style="display:flex;gap:8px">
+                  <div style="flex:1;height:54px;padding:0 16px;border:1px solid #E2E8F0;border-radius:12px;background:#fff;display:flex;align-items:center;gap:10px;font-size:16px;color:#64748B"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>Specialitate sau numele medicului</div>
+                  <button style="height:54px;padding:0 24px;border:none;border-radius:12px;background:#2563EB;color:#fff;font-size:16px;font-weight:600;cursor:pointer">Caută</button>
+                </div>
+              </div>
+              <div style="display:flex;gap:20px;font-size:14px;color:#475569;flex-wrap:wrap">
+                <span style="display:flex;align-items:center;gap:6px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Medici verificați de administrator</span>
+                <span style="display:flex;align-items:center;gap:6px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Banii revin dacă medicul nu confirmă</span>
+              </div>
+            </div>
+            <div style="position:relative;height:480px;background:#EFF6FF;border-radius:24px">
+              <div style="position:absolute;top:36px;right:44px;width:320px"><dc-import name="Captura aplicatie" kind="now" hint-size="320px,300px" style="width:100%"></dc-import></div>
+              <div style="position:absolute;bottom:32px;left:36px;width:270px;box-shadow:0 16px 40px rgba(15,23,42,.14);border-radius:16px"><dc-import name="Captura aplicatie" kind="conclusion" hint-size="270px,220px" style="width:100%"></dc-import></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="max-width:1200px;margin:0 auto;padding:80px 40px 0;box-sizing:border-box;display:flex;flex-direction:column;gap:96px">
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:48px;align-items:start">
+            <div style="display:flex;flex-direction:column;gap:10px"><h2 style="margin:0;font-size:32px;letter-spacing:-.02em;font-weight:700">Servicii</h2><p style="margin:0;font-size:15px;line-height:1.55;color:#475569">Fiecare medic își alege serviciile și prețurile. Vezi totul înainte să programezi.</p></div>
+            <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden">
+              <sc-for list="{{ services }}" as="s" hint-placeholder-count="3">
+                <div style="display:flex;gap:18px;align-items:center;padding:22px 24px;border-top:{{ s.border }}">
+                  <div style="width:44px;height:44px;border-radius:12px;background:#EFF6FF;color:#2563EB;display:flex;align-items:center;justify-content:center;flex:none">
+                    <sc-if value="{{ s.isVideo }}" hint-placeholder-val="{{ true }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"></path><rect x="2" y="6" width="14" height="12" rx="2"></rect></svg></sc-if>
+                    <sc-if value="{{ s.isChat }}" hint-placeholder-val="{{ false }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></sc-if>
+                    <sc-if value="{{ s.isHome }}" hint-placeholder-val="{{ false }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2v2"></path><path d="M5 2v2"></path><path d="M5 3H4a2 2 0 0 0-2 2v4a6 6 0 0 0 12 0V5a2 2 0 0 0-2-2h-1"></path><path d="M8 15a6 6 0 0 0 12 0v-3"></path><circle cx="20" cy="10" r="2"></circle></svg></sc-if>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:0"><span style="font-size:17px;font-weight:600">{{ s.title }}</span><span style="font-size:14px;line-height:1.5;color:#475569">{{ s.desc }}</span></div>
+                  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex:none;width:120px"><span style="font-size:16px;font-weight:700">{{ s.from }}</span><span style="font-size:13px;color:#64748B">{{ s.meta }}</span></div>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="m9 18 6-6-6-6"></path></svg>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:28px">
+            <h2 style="margin:0;font-size:32px;letter-spacing:-.02em;font-weight:700">Cum funcționează</h2>
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:32px;align-items:stretch">
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <sc-for list="{{ stepsB }}" as="st" hint-placeholder-count="3">
+                  <button onClick="{{ st.pick }}" style="display:flex;gap:16px;align-items:flex-start;padding:22px;border-radius:16px;cursor:pointer;text-align:left;background:{{ st.bg }};border:{{ st.border }}">
+                    <span style="width:32px;height:32px;border-radius:50%;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none;background:{{ st.numBg }};color:{{ st.numColor }}">{{ st.n }}</span>
+                    <span style="display:flex;flex-direction:column;gap:4px"><span style="font-size:17px;font-weight:600;color:#0F172A">{{ st.title }}</span><span style="font-size:14px;line-height:1.55;color:#475569">{{ st.text }}</span></span>
+                  </button>
+                </sc-for>
+              </div>
+              <div style="background:#EFF6FF;border-radius:24px;display:flex;align-items:center;justify-content:center;padding:40px">
+                <div style="width:340px"><dc-import name="Captura aplicatie" kind="{{ hbKind }}" hint-size="340px,260px" style="width:100%"></dc-import></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="background:#0F172A;margin-top:96px">
+          <div style="max-width:1200px;margin:0 auto;padding:64px 40px;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);gap:40px">
+            <div style="display:flex;flex-direction:column;gap:10px"><span style="font-size:13px;font-weight:600;color:#93C5FD;letter-spacing:.04em">PENTRU PROFESIONIȘTI</span><h2 style="margin:0;font-size:30px;line-height:1.15;letter-spacing:-.02em;font-weight:700;color:#fff">Lucrezi în medicină?</h2></div>
+            <sc-for list="{{ pros }}" as="pr" hint-placeholder-count="2">
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <span style="font-size:18px;font-weight:600;color:#fff">{{ pr.title }}</span>
+                <span style="font-size:15px;line-height:1.55;color:#CBD5E1">{{ pr.text }}</span>
+                <span style="align-self:flex-start;height:42px;padding:0 16px;border-radius:10px;background:#fff;color:#0F172A;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;margin-top:4px">{{ pr.cta }}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="max-width:1200px;margin:0 auto;padding:96px 40px 96px;box-sizing:border-box;display:flex;flex-direction:column;gap:96px">
+          <div style="display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:48px;align-items:start">
+            <div style="display:flex;flex-direction:column;gap:18px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="margin:0;font-size:24px;letter-spacing:-.02em;font-weight:700">Noutăți</h2><span style="font-size:14px;font-weight:600;color:#2563EB">Toate noutățile</span></div>
+              <div style="display:flex;flex-direction:column">
+                <sc-for list="{{ news3 }}" as="nw" hint-placeholder-count="3">
+                  <div style="display:flex;gap:20px;padding:18px 0;border-top:1px solid #E2E8F0;align-items:flex-start">
+                    <span style="width:128px;flex:none;font-size:13px;color:#64748B;padding-top:2px">{{ nw.date }}</span>
+                    <div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:16px;font-weight:600;line-height:1.35">{{ nw.title }}</span><span style="font-size:14px;line-height:1.5;color:#475569">{{ nw.ex }}</span></div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:18px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="margin:0;font-size:24px;letter-spacing:-.02em;font-weight:700">Parteneri</h2><span style="font-size:14px;font-weight:600;color:#2563EB">Toți</span></div>
+              <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
+                <sc-for list="{{ partners }}" as="pa" hint-placeholder-count="4">
+                  <div style="height:92px;background:#fff;border:1px solid #E2E8F0;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;color:#334155;text-align:center;padding:0 10px">{{ pa.name }}</div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+          <div style="max-width:760px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:20px">
+            <h2 style="margin:0;font-size:32px;letter-spacing:-.02em;font-weight:700;text-align:center">Întrebări frecvente</h2>
+            <div style="display:flex;flex-direction:column">
+              <sc-for list="{{ faq }}" as="q" hint-placeholder-count="5">
+                <div style="border-bottom:1px solid #E2E8F0">
+                  <button onClick="{{ q.toggle }}" style="width:100%;min-height:64px;padding:0 4px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;gap:16px;text-align:left;font-size:17px;font-weight:600;color:#0F172A"><span style="flex:1">{{ q.q }}</span><span style="width:28px;height:28px;border-radius:50%;background:#F1F5F9;display:flex;align-items:center;justify-content:center;flex:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform:{{ q.rot }}"><path d="m6 9 6 6 6-6"></path></svg></span></button>
+                  <sc-if value="{{ q.open }}" hint-placeholder-val="{{ false }}"><p style="margin:0;padding:0 48px 22px 4px;font-size:15px;line-height:1.6;color:#475569;text-wrap:pretty">{{ q.a }}</p></sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        <dc-import name="Subsol public" mode="desktop" hint-size="100%,260px"></dc-import>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="dv-turn" id="hm">
+  <div class="dv-thd"><a class="dv-tid" href="#hm">HM</a><span class="dv-tname">Acasă · mobil</span></div>
+  <p class="dv-tdesc">Aceeași ordine ca pe desktop. Căutarea rămâne primul lucru de pe ecran, cu tipul serviciului deasupra.</p>
+  <div class="dv-opts">
+    <div class="dv-opt" id="ham">
+      <div class="dv-olabel"><a class="dv-oid" href="#ham">Ha</a>Mobil · pagina întreagă</div>
+      <div style="width:390px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <dc-import name="Antet public" mode="mobile" logged-in="{{ loggedIn }}" hint-size="100%,104px"></dc-import>
+        <div style="background:#fff;padding:32px 20px 28px;display:flex;flex-direction:column;gap:16px;border-bottom:1px solid #E2E8F0">
+          <h1 style="margin:0;font-size:34px;line-height:1.08;letter-spacing:-.03em;font-weight:700">Suntem mai aproape ca niciodată de <span style="color:#2563EB">sănătatea ta</span></h1>
+          <p style="margin:0;font-size:15px;line-height:1.55;color:#475569">Consultații video și în chat, examinări la domiciliu și fișă medicală digitală, datorită tehnologiei HIGO și TeleMedConsult.</p>
+          <div style="display:flex;flex-direction:column;gap:8px;padding:6px;border:1px solid #E2E8F0;border-radius:16px;box-shadow:0 8px 24px rgba(15,23,42,.06)">
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px">
+              <sc-for list="{{ types }}" as="t" hint-placeholder-count="3"><button onClick="{{ t.pick }}" style="height:40px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;background:{{ t.bg }};color:{{ t.color }}">{{ t.short }}</button></sc-for>
+            </div>
+            <div style="height:48px;padding:0 14px;border-radius:10px;background:#F8FAFC;display:flex;align-items:center;gap:8px;font-size:15px;color:#64748B"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>Specialitate sau medic</div>
+            <button style="height:48px;border:none;border-radius:10px;background:#2563EB;color:#fff;font-size:15px;font-weight:600">Caută medic</button>
+          </div>
+          <div style="display:flex;gap:6px;overflow:hidden"><sc-for list="{{ specs }}" as="s" hint-placeholder-count="4"><span style="flex:none;padding:6px 11px;border:1px solid #E2E8F0;border-radius:999px;font-size:13px;color:#334155">{{ s }}</span></sc-for></div>
+        </div>
+        <div style="padding:40px 16px 0;display:flex;flex-direction:column;gap:48px">
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <h2 style="margin:0 4px;font-size:24px;letter-spacing:-.02em;font-weight:700">Trei feluri de a ajunge la medic</h2>
+            <sc-for list="{{ services }}" as="s" hint-placeholder-count="3">
+              <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:16px;font-weight:600">{{ s.title }}</span><span style="font-size:14px;font-weight:700">{{ s.from }}</span></div>
+                <span style="font-size:14px;line-height:1.5;color:#475569">{{ s.desc }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:18px">
+            <h2 style="margin:0 4px;font-size:24px;letter-spacing:-.02em;font-weight:700">Cum funcționează</h2>
+            <sc-for list="{{ steps }}" as="st" hint-placeholder-count="3">
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <div style="background:#EFF6FF;border-radius:18px;padding:18px"><dc-import name="Captura aplicatie" kind="{{ st.kind }}" hint-size="100%,200px" style="width:100%"></dc-import></div>
+                <div style="display:flex;gap:12px;padding:0 4px"><span style="width:26px;height:26px;border-radius:50%;background:#2563EB;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none">{{ st.n }}</span><div style="display:flex;flex-direction:column;gap:3px"><span style="font-size:16px;font-weight:600">{{ st.title }}</span><span style="font-size:14px;line-height:1.5;color:#475569">{{ st.text }}</span></div></div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;padding:0 4px"><h2 style="margin:0;font-size:20px;font-weight:700">Parteneri</h2><span style="font-size:14px;font-weight:600;color:#2563EB">Toți</span></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><sc-for list="{{ partners }}" as="pa" hint-placeholder-count="4"><div style="height:76px;background:#fff;border:1px solid #E2E8F0;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#334155;text-align:center;padding:0 8px">{{ pa.name }}</div></sc-for></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;padding:0 4px"><h2 style="margin:0;font-size:20px;font-weight:700">Noutăți</h2><span style="font-size:14px;font-weight:600;color:#2563EB">Toate</span></div>
+            <sc-for list="{{ news2 }}" as="nw" hint-placeholder-count="2">
+              <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;color:#64748B"><b style="color:#2563EB;font-weight:600">{{ nw.cat }}</b> · {{ nw.date }}</span><span style="font-size:16px;font-weight:600;line-height:1.35">{{ nw.title }}</span></div>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <h2 style="margin:0 4px;font-size:24px;letter-spacing:-.02em;font-weight:700">Întrebări frecvente</h2>
+            <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden">
+              <sc-for list="{{ faq }}" as="q" hint-placeholder-count="5">
+                <div style="border-top:{{ q.border }}">
+                  <button onClick="{{ q.toggle }}" style="width:100%;min-height:56px;padding:12px 16px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;gap:12px;text-align:left;font-size:15px;font-weight:600;color:#0F172A"><span style="flex:1">{{ q.q }}</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform:{{ q.rot }};flex:none"><path d="m6 9 6 6 6-6"></path></svg></button>
+                  <sc-if value="{{ q.open }}" hint-placeholder-val="{{ false }}"><p style="margin:0;padding:0 16px 16px;font-size:14px;line-height:1.6;color:#475569">{{ q.a }}</p></sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px;padding-bottom:40px">
+            <sc-for list="{{ pros }}" as="pr" hint-placeholder-count="2">
+              <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:8px">
+                <span style="font-size:17px;font-weight:600">{{ pr.title }}</span>
+                <span style="font-size:14px;line-height:1.5;color:#475569">{{ pr.text }}</span>
+                <span style="height:44px;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;margin-top:6px">{{ pr.cta }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <dc-import name="Subsol public" mode="mobile" hint-size="100%,300px"></dc-import>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="hbm">
+      <div class="dv-olabel"><a class="dv-oid" href="#hbm">Hb</a>Mobil · pagina întreagă</div>
+      <div style="width:390px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <dc-import name="Antet public" mode="mobile" logged-in="{{ loggedIn }}" hint-size="100%,104px"></dc-import>
+        <div style="background:#fff;padding:28px 20px 24px;display:flex;flex-direction:column;gap:14px">
+          <h1 style="margin:0;font-size:32px;line-height:1.08;letter-spacing:-.03em;font-weight:700">Suntem mai aproape ca niciodată de sănătatea ta</h1>
+          <p style="margin:0;font-size:15px;line-height:1.55;color:#475569">Medici verificați, examinări la domiciliu și fișă digitală, datorită tehnologiei HIGO și TeleMedConsult.</p>
+          <div style="display:flex;gap:6px"><sc-for list="{{ types }}" as="t" hint-placeholder-count="3"><button onClick="{{ t.pick }}" style="height:36px;padding:0 12px;border-radius:999px;cursor:pointer;font-size:13px;font-weight:600;background:{{ t.bg }};color:{{ t.color }};border:{{ t.border }}">{{ t.short }}</button></sc-for></div>
+          <div style="display:flex;gap:8px"><div style="flex:1;height:48px;padding:0 12px;border:1px solid #E2E8F0;border-radius:10px;display:flex;align-items:center;gap:8px;font-size:15px;color:#64748B"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>Specialitate</div><button style="height:48px;padding:0 18px;border:none;border-radius:10px;background:#2563EB;color:#fff;font-size:15px;font-weight:600">Caută</button></div>
+        </div>
+        <div style="background:#EFF6FF;padding:24px 28px"><dc-import name="Captura aplicatie" kind="now" hint-size="100%,280px" style="width:100%"></dc-import></div>
+        <div style="padding:40px 16px 0;display:flex;flex-direction:column;gap:48px">
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <h2 style="margin:0 4px;font-size:24px;letter-spacing:-.02em;font-weight:700">Servicii</h2>
+            <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden">
+              <sc-for list="{{ services }}" as="s" hint-placeholder-count="3">
+                <div style="display:flex;gap:12px;align-items:center;padding:16px;border-top:{{ s.border }}"><div style="display:flex;flex-direction:column;gap:2px;flex:1"><span style="font-size:15px;font-weight:600">{{ s.title }}</span><span style="font-size:13px;color:#64748B">{{ s.meta }}</span></div><span style="font-size:14px;font-weight:700">{{ s.from }}</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <h2 style="margin:0 4px;font-size:24px;letter-spacing:-.02em;font-weight:700">Cum funcționează</h2>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px"><sc-for list="{{ stepsB }}" as="st" hint-placeholder-count="3"><button onClick="{{ st.pick }}" style="height:44px;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;background:{{ st.bg }};border:{{ st.border }};color:{{ st.pillColor }}">{{ st.n }}. {{ st.short }}</button></sc-for></div>
+            <div style="background:#EFF6FF;border-radius:18px;padding:18px"><dc-import name="Captura aplicatie" kind="{{ hbKind }}" hint-size="100%,220px" style="width:100%"></dc-import></div>
+            <span style="font-size:14px;line-height:1.55;color:#475569;padding:0 4px">{{ hbText }}</span>
+          </div>
+        </div>
+        <div style="background:#0F172A;margin-top:48px;padding:32px 20px;display:flex;flex-direction:column;gap:22px">
+          <span style="font-size:24px;font-weight:700;letter-spacing:-.02em;color:#fff">Lucrezi în medicină?</span>
+          <sc-for list="{{ pros }}" as="pr" hint-placeholder-count="2">
+            <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:16px;font-weight:600;color:#fff">{{ pr.title }}</span><span style="font-size:14px;line-height:1.5;color:#CBD5E1">{{ pr.text }}</span><span style="height:44px;border-radius:10px;background:#fff;color:#0F172A;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;margin-top:4px">{{ pr.cta }}</span></div>
+          </sc-for>
+        </div>
+        <div style="padding:40px 16px 40px;display:flex;flex-direction:column;gap:40px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;padding:0 4px 8px"><h2 style="margin:0;font-size:20px;font-weight:700">Noutăți</h2><span style="font-size:14px;font-weight:600;color:#2563EB">Toate</span></div>
+            <sc-for list="{{ news3 }}" as="nw" hint-placeholder-count="3"><div style="display:flex;flex-direction:column;gap:3px;padding:14px 4px;border-top:1px solid #E2E8F0"><span style="font-size:12px;color:#64748B">{{ nw.date }}</span><span style="font-size:15px;font-weight:600;line-height:1.35">{{ nw.title }}</span></div></sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <h2 style="margin:0 4px;font-size:20px;font-weight:700">Parteneri</h2>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><sc-for list="{{ partners }}" as="pa" hint-placeholder-count="4"><div style="height:72px;background:#fff;border:1px solid #E2E8F0;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#334155;text-align:center;padding:0 8px">{{ pa.name }}</div></sc-for></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <h2 style="margin:0 4px 8px;font-size:24px;letter-spacing:-.02em;font-weight:700">Întrebări frecvente</h2>
+            <sc-for list="{{ faq }}" as="q" hint-placeholder-count="5">
+              <div style="border-bottom:1px solid #E2E8F0">
+                <button onClick="{{ q.toggle }}" style="width:100%;min-height:56px;padding:12px 4px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;gap:12px;text-align:left;font-size:15px;font-weight:600;color:#0F172A"><span style="flex:1">{{ q.q }}</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform:{{ q.rot }};flex:none"><path d="m6 9 6 6 6-6"></path></svg></button>
+                <sc-if value="{{ q.open }}" hint-placeholder-val="{{ false }}"><p style="margin:0;padding:0 4px 16px;font-size:14px;line-height:1.6;color:#475569">{{ q.a }}</p></sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <dc-import name="Subsol public" mode="mobile" hint-size="100%,300px"></dc-import>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="dv-turn" id="m">
+  <div class="dv-thd"><a class="dv-tid" href="#m">M</a><span class="dv-tname">Catalog medici</span></div>
+  <p class="dv-tdesc">Se deschide din căutarea de pe Acasă, cu tipul serviciului deja ales. Filtrul de tip chiar filtrează lista. Cardul arată instituția, tipurile de servicii, prețul de la care pornește și prima oră liberă. Nu e nevoie de cont ca să vezi medicii.</p>
+  <div class="dv-opts">
+    <div class="dv-opt" id="m1">
+      <div class="dv-olabel"><a class="dv-oid" href="#m1">M1</a>Desktop · 1280</div>
+      <div style="width:1280px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <dc-import name="Antet public" active="medici" mode="desktop" logged-in="{{ loggedIn }}" hint-size="100%,68px"></dc-import>
+        <div style="max-width:1200px;margin:0 auto;padding:40px 40px 72px;box-sizing:border-box;display:flex;flex-direction:column;gap:28px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:24px">
+            <div style="display:flex;flex-direction:column;gap:6px"><h1 style="margin:0;font-size:36px;letter-spacing:-.025em;font-weight:700">Medici</h1><span style="font-size:15px;color:#475569">{{ catCount }}</span></div>
+            <div style="width:420px;height:48px;padding:0 14px;border:1px solid #E2E8F0;border-radius:12px;background:#fff;display:flex;align-items:center;gap:10px;font-size:15px;color:#64748B"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>Specialitate sau numele medicului</div>
+          </div>
+          <div style="display:grid;grid-template-columns:240px minmax(0,1fr);gap:32px;align-items:start">
+            <div style="display:flex;flex-direction:column;gap:28px">
+              <div style="display:flex;flex-direction:column;gap:10px"><span style="font-size:13px;font-weight:600;color:#64748B;letter-spacing:.04em">TIP SERVICIU</span>
+                <sc-for list="{{ catTypes }}" as="t" hint-placeholder-count="4"><button onClick="{{ t.pick }}" style="height:40px;padding:0 12px;border-radius:10px;cursor:pointer;text-align:left;font-size:14px;font-weight:{{ t.weight }};background:{{ t.bg }};color:{{ t.color }};border:none">{{ t.label }}</button></sc-for>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px"><span style="font-size:13px;font-weight:600;color:#64748B;letter-spacing:.04em">SPECIALITATE</span>
+                <sc-for list="{{ specsAll }}" as="s" hint-placeholder-count="6"><span style="display:flex;align-items:center;gap:10px;font-size:14px;color:#334155;height:28px"><span style="width:18px;height:18px;border-radius:5px;border:1.5px solid #CBD5E1;box-sizing:border-box"></span>{{ s }}</span></sc-for>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;font-size:14px;color:#334155">Liber azi<span style="width:36px;height:20px;border-radius:999px;background:#CBD5E1;position:relative"><span style="position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff"></span></span></div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">
+              <sc-for list="{{ docs }}" as="d" hint-placeholder-count="6">
+                <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:14px">
+                  <div style="display:flex;gap:14px;align-items:center"><div style="width:52px;height:52px;border-radius:50%;background:#DBEAFE;color:#1D4ED8;font-size:16px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none">{{ d.ini }}</div><div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:0"><span style="font-size:17px;font-weight:600">{{ d.name }}</span><span style="font-size:13px;color:#475569">{{ d.spec }} · {{ d.inst }}</span></div><span style="font-size:13px;color:#475569;white-space:nowrap">★ <b style="color:#0F172A">{{ d.rating }}</b> ({{ d.rev }})</span></div>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ d.types }}" as="t" hint-placeholder-count="2"><span style="font-size:12px;font-weight:500;padding:4px 10px;border-radius:999px;background:#F1F5F9;color:#334155">{{ t }}</span></sc-for></div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;padding-top:14px;border-top:1px solid #F1F5F9"><div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:16px;font-weight:700">de la {{ d.from }}</span><span style="font-size:12px;color:#64748B">Prima oră liberă: {{ d.next }}</span></div><a href="#p1" style="height:40px;padding:0 16px;border-radius:10px;background:#2563EB;color:#fff;font-size:14px;font-weight:600;display:flex;align-items:center;text-decoration:none">Vezi profilul</a></div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        <dc-import name="Subsol public" mode="desktop" hint-size="100%,260px"></dc-import>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="m2">
+      <div class="dv-olabel"><a class="dv-oid" href="#m2">M2</a>Mobil</div>
+      <div style="width:390px;height:844px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <dc-import name="Antet public" mode="mobile" logged-in="{{ loggedIn }}" hint-size="100%,104px"></dc-import>
+        <div style="padding:16px 16px 10px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;gap:8px"><div style="flex:1;height:44px;padding:0 12px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;display:flex;align-items:center;gap:8px;font-size:14px;color:#64748B"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>Specialitate sau medic</div><span style="height:44px;padding:0 12px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18"></path><path d="M7 12h10"></path><path d="M10 18h4"></path></svg>Filtre</span></div>
+          <div style="display:flex;gap:6px;overflow:hidden"><sc-for list="{{ catTypes }}" as="t" hint-placeholder-count="4"><button onClick="{{ t.pick }}" style="flex:none;height:36px;padding:0 12px;border-radius:999px;cursor:pointer;font-size:13px;font-weight:600;background:{{ t.pillBg }};color:{{ t.pillColor }};border:{{ t.pillBorder }}">{{ t.label }}</button></sc-for></div>
+          <span style="font-size:13px;color:#64748B;padding:0 2px">{{ catCount }}</span>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:0 16px 16px;display:flex;flex-direction:column;gap:12px">
+          <sc-for list="{{ docs }}" as="d" hint-placeholder-count="3">
+            <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;gap:12px;align-items:center"><div style="width:48px;height:48px;border-radius:50%;background:#DBEAFE;color:#1D4ED8;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none">{{ d.ini }}</div><div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0"><span style="font-size:16px;font-weight:600">{{ d.name }}</span><span style="font-size:12px;color:#64748B">{{ d.spec }} · {{ d.inst }}</span></div><span style="font-size:13px;color:#475569;white-space:nowrap">★ {{ d.rating }}</span></div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ d.types }}" as="t" hint-placeholder-count="2"><span style="font-size:12px;font-weight:500;padding:4px 10px;border-radius:999px;background:#F1F5F9;color:#334155">{{ t }}</span></sc-for></div>
+              <div style="display:flex;justify-content:space-between;align-items:center"><div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:16px;font-weight:700">de la {{ d.from }}</span><span style="font-size:12px;color:#64748B">Liber: {{ d.next }}</span></div><a href="#p2" style="height:44px;padding:0 16px;border-radius:10px;background:#2563EB;color:#fff;font-size:14px;font-weight:600;display:flex;align-items:center;text-decoration:none">Vezi profilul</a></div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="dv-turn" id="p">
+  <div class="dv-thd"><a class="dv-tid" href="#p">P</a><span class="dv-tname">Profil public medic</span></div>
+  <p class="dv-tdesc">Aceeași structură ca profilul din aplicație: serviciile în stânga, alegerea și prețul în dreapta. Fără cont, „Alege ora” cere autentificarea la pasul următor, iar alegerea se păstrează. Cu cont (Tweaks), apare și pentru cine e consultația.</p>
+  <div class="dv-opts">
+    <div class="dv-opt" id="p1">
+      <div class="dv-olabel"><a class="dv-oid" href="#p1">P1</a>Desktop · 1280</div>
+      <div style="width:1280px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <dc-import name="Antet public" active="medici" mode="desktop" logged-in="{{ loggedIn }}" hint-size="100%,68px"></dc-import>
+        <div style="max-width:1200px;margin:0 auto;padding:28px 40px 72px;box-sizing:border-box;display:flex;flex-direction:column;gap:20px">
+          <div style="display:flex;gap:8px;font-size:14px;color:#64748B"><span>Medici</span><span>/</span><span>Medic de familie</span><span>/</span><span style="color:#0F172A">Dr. Ana Ciobanu</span></div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:24px;align-items:start">
+            <div style="display:flex;flex-direction:column;gap:20px;min-width:0">
+              <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:28px;display:flex;flex-direction:column;gap:20px">
+                <div style="display:flex;gap:20px;align-items:center">
+                  <div style="width:88px;height:88px;border-radius:50%;background:#DBEAFE;color:#1D4ED8;font-size:28px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none">AC</div>
+                  <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:28px;font-weight:700;letter-spacing:-.02em">Dr. Ana Ciobanu</span><span style="font-size:15px;color:#475569">Medic de familie · 12 ani experiență</span><span style="font-size:14px;color:#475569">★ <b style="color:#0F172A">4,9</b> · 38 recenzii · Răspunde de obicei în 15 min</span></div>
+                </div>
+                <div style="display:flex;gap:12px;align-items:center;padding:14px 16px;background:#F8FAFC;border-radius:12px">
+                  <div style="width:40px;height:40px;border-radius:10px;background:#fff;border:1px solid #E2E8F0;display:flex;align-items:center;justify-content:center;color:#475569;flex:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"></path><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"></path><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"></path><path d="M10 6h4"></path><path d="M10 10h4"></path><path d="M10 14h4"></path><path d="M10 18h4"></path></svg></div>
+                  <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:12px;color:#64748B">Lucrează la</span><span style="font-size:15px;font-weight:600">IMSP Centrul Medicilor de Familie nr. 1</span><span style="font-size:13px;color:#64748B">str. Ion Creangă 8, Chișinău</span></div>
+                </div>
+                <p style="margin:0;font-size:15px;line-height:1.6;color:#334155;text-wrap:pretty">Consult adulți și copii peste 3 ani: infecții respiratorii, hipertensiune, diabet, control după tratament. Citesc analizele și ajustez schema de tratament.</p>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <span style="font-size:20px;font-weight:600">Alege serviciul</span>
+                <sc-for list="{{ pub }}" as="s" hint-placeholder-count="4">
+                  <button onClick="{{ s.pick }}" style="display:flex;gap:14px;align-items:center;padding:18px 20px;border-radius:14px;cursor:pointer;text-align:left;background:#fff;border:{{ s.border }};box-shadow:{{ s.shadow }}">
+                    <span style="width:20px;height:20px;border-radius:50%;flex:none;box-sizing:border-box;border:{{ s.radio }};display:flex;align-items:center;justify-content:center"><span style="width:10px;height:10px;border-radius:50%;background:{{ s.dot }}"></span></span>
+                    <span style="flex:1;display:flex;flex-direction:column;gap:4px;min-width:0"><span style="font-size:16px;font-weight:600;color:#0F172A">{{ s.name }}</span><span style="font-size:13px;color:#64748B">{{ s.meta }}</span></span>
+                    <span style="font-size:17px;font-weight:700;color:#0F172A;white-space:nowrap">{{ s.price }}</span>
+                  </button>
+                </sc-for>
+              </div>
+            </div>
+            <div style="position:sticky;top:0;background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:22px;display:flex;flex-direction:column;gap:16px">
+              <sc-if value="{{ loggedIn }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-direction:column;gap:8px;padding-bottom:16px;border-bottom:1px solid #F1F5F9"><span style="font-size:12px;font-weight:600;color:#64748B;letter-spacing:.04em">PENTRU</span><div style="display:flex;align-items:center;gap:10px"><div style="width:32px;height:32px;border-radius:50%;background:#EFF6FF;color:#1D4ED8;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center">AP</div><span style="font-size:14px;font-weight:600;flex:1">Ana Puscasu</span><a href="#" style="font-size:13px;font-weight:500">Schimbă</a></div></div>
+              </sc-if>
+              <div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;font-weight:600;color:#64748B;letter-spacing:.04em">SERVICIU</span><span style="font-size:16px;font-weight:600">{{ sel.name }}</span><span style="font-size:13px;color:#64748B">{{ sel.meta }}</span></div>
+              <div style="display:flex;align-items:center;gap:8px;font-size:14px;color:#475569"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>Prima oră liberă: mâine, 10:30</div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:14px;color:#475569">Total</span><span style="font-size:24px;font-weight:700">{{ sel.price }}</span></div>
+              <button style="height:50px;border:none;border-radius:10px;background:#2563EB;color:#fff;font-size:15px;font-weight:600;cursor:pointer">Alege ora</button>
+              <span style="font-size:12px;color:#64748B;line-height:1.5">{{ bookNote }}</span>
+            </div>
+          </div>
+        </div>
+        <dc-import name="Subsol public" mode="desktop" hint-size="100%,260px"></dc-import>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="p2">
+      <div class="dv-olabel"><a class="dv-oid" href="#p2">P2</a>Mobil</div>
+      <div style="width:390px;height:844px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <dc-import name="Antet public" mode="mobile" logged-in="{{ loggedIn }}" hint-size="100%,104px"></dc-import>
+        <div style="flex:1;overflow-y:auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:14px">
+          <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;gap:14px;align-items:center"><div style="width:60px;height:60px;border-radius:50%;background:#DBEAFE;color:#1D4ED8;font-size:19px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none">AC</div><div style="display:flex;flex-direction:column;gap:3px"><span style="font-size:19px;font-weight:700;letter-spacing:-.01em">Dr. Ana Ciobanu</span><span style="font-size:13px;color:#475569">Medic de familie · 12 ani</span><span style="font-size:13px;color:#475569">★ <b style="color:#0F172A">4,9</b> · 38 recenzii</span></div></div>
+            <div style="display:flex;gap:10px;align-items:center;padding:12px;background:#F8FAFC;border-radius:12px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"></path><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"></path><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"></path><path d="M10 6h4"></path><path d="M10 10h4"></path><path d="M10 14h4"></path><path d="M10 18h4"></path></svg><div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:14px;font-weight:600">IMSP CMF nr. 1</span><span style="font-size:12px;color:#64748B">str. Ion Creangă 8, Chișinău</span></div></div>
+          </div>
+          <span style="font-size:16px;font-weight:600;padding:2px 2px 0">Alege serviciul</span>
+          <sc-for list="{{ pub }}" as="s" hint-placeholder-count="4">
+            <button onClick="{{ s.pick }}" style="display:flex;gap:12px;align-items:flex-start;padding:14px;border-radius:14px;cursor:pointer;text-align:left;background:#fff;border:{{ s.border }};box-shadow:{{ s.shadow }}">
+              <span style="width:20px;height:20px;border-radius:50%;flex:none;margin-top:1px;box-sizing:border-box;border:{{ s.radio }};display:flex;align-items:center;justify-content:center"><span style="width:10px;height:10px;border-radius:50%;background:{{ s.dot }}"></span></span>
+              <span style="flex:1;display:flex;flex-direction:column;gap:3px;min-width:0"><span style="font-size:15px;font-weight:600;color:#0F172A">{{ s.name }}</span><span style="font-size:13px;color:#64748B">{{ s.meta }}</span></span>
+              <span style="font-size:15px;font-weight:700;color:#0F172A;white-space:nowrap">{{ s.price }}</span>
+            </button>
+          </sc-for>
+          <div style="display:flex;flex-direction:column;gap:6px;padding:4px 2px"><span style="font-size:16px;font-weight:600">Despre</span><p style="margin:0;font-size:14px;line-height:1.6;color:#334155">Consult adulți și copii peste 3 ani: infecții respiratorii, hipertensiune, diabet, control după tratament.</p></div>
+        </div>
+        <div style="padding:12px 16px 28px;background:#fff;border-top:1px solid #E2E8F0;display:flex;align-items:center;gap:12px">
+          <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0"><span style="font-size:13px;color:#64748B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ sel.name }}</span><span style="font-size:18px;font-weight:700">{{ sel.price }}</span></div>
+          <button style="height:48px;padding:0 22px;border:none;border-radius:10px;background:#2563EB;color:#fff;font-size:15px;font-weight:600;cursor:pointer">Alege ora</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="dv-turn" id="n">
+  <div class="dv-thd"><a class="dv-tid" href="#n">N</a><span class="dv-tname">Noutăți · listă și articol</span></div>
+  <p class="dv-tdesc">Lista pune ultimul articol mare, restul în grilă. Categoriile filtrează lista. Articolul are o coloană de citit de 720 px și se termină cu alte trei noutăți. Textele sunt exemple.</p>
+  <div class="dv-opts">
+    <div class="dv-opt" id="n1">
+      <div class="dv-olabel"><a class="dv-oid" href="#n1">N1</a>Listă · 1280</div>
+      <div style="width:1280px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <dc-import name="Antet public" active="noutati" mode="desktop" logged-in="{{ loggedIn }}" hint-size="100%,68px"></dc-import>
+        <div style="max-width:1200px;margin:0 auto;padding:48px 40px 80px;box-sizing:border-box;display:flex;flex-direction:column;gap:28px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:24px">
+            <h1 style="margin:0;font-size:40px;letter-spacing:-.03em;font-weight:700">Noutăți</h1>
+            <div style="display:flex;gap:6px"><sc-for list="{{ newsCats }}" as="c" hint-placeholder-count="5"><button onClick="{{ c.pick }}" style="height:36px;padding:0 14px;border-radius:999px;cursor:pointer;font-size:14px;font-weight:600;background:{{ c.bg }};color:{{ c.color }};border:{{ c.border }}">{{ c.label }}</button></sc-for></div>
+          </div>
+          <sc-if value="{{ hasFeat }}" hint-placeholder-val="{{ true }}">
+            <a href="#n2" style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);background:#fff;border:1px solid #E2E8F0;border-radius:20px;overflow:hidden;text-decoration:none;color:#0F172A">
+              <div style="min-height:340px;background:#F1F5F9;display:flex;align-items:center;justify-content:center;font-size:12px;color:#94A3B8">Imagine articol</div>
+              <div style="padding:40px;display:flex;flex-direction:column;gap:14px;justify-content:center"><span style="font-size:13px;color:#64748B"><b style="color:#2563EB;font-weight:600">{{ feat.cat }}</b> · {{ feat.date }}</span><span style="font-size:30px;line-height:1.15;letter-spacing:-.02em;font-weight:700;text-wrap:balance">{{ feat.title }}</span><span style="font-size:16px;line-height:1.6;color:#475569">{{ feat.ex }}</span><span style="font-size:15px;font-weight:600;color:#2563EB;display:flex;align-items:center;gap:6px;margin-top:6px">Citește<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></span></div>
+            </a>
+          </sc-if>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px">
+            <sc-for list="{{ newsRest }}" as="nw" hint-placeholder-count="3">
+              <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden;display:flex;flex-direction:column">
+                <div style="aspect-ratio:16/9;background:#F1F5F9;display:flex;align-items:center;justify-content:center;font-size:12px;color:#94A3B8">Imagine articol</div>
+                <div style="padding:18px 20px 22px;display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;color:#64748B"><b style="color:#2563EB;font-weight:600">{{ nw.cat }}</b> · {{ nw.date }}</span><span style="font-size:17px;font-weight:600;line-height:1.35">{{ nw.title }}</span><span style="font-size:14px;line-height:1.55;color:#475569">{{ nw.ex }}</span></div>
+              </div>
+            </sc-for>
+          </div>
+          <sc-if value="{{ newsEmpty }}" hint-placeholder-val="{{ false }}"><div style="padding:48px;text-align:center;font-size:15px;color:#64748B;background:#fff;border:1px solid #E2E8F0;border-radius:16px">Nicio noutate în această categorie.</div></sc-if>
+        </div>
+        <dc-import name="Subsol public" mode="desktop" hint-size="100%,260px"></dc-import>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="n2">
+      <div class="dv-olabel"><a class="dv-oid" href="#n2">N2</a>Articol · 1280</div>
+      <div style="width:1280px;background:#fff;border:1px solid #E2E8F0;border-radius:14px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <dc-import name="Antet public" active="noutati" mode="desktop" logged-in="{{ loggedIn }}" hint-size="100%,68px"></dc-import>
+        <article style="max-width:720px;margin:0 auto;padding:40px 0 64px;display:flex;flex-direction:column;gap:20px">
+          <a href="#n1" style="font-size:14px;font-weight:500;color:#475569;display:flex;align-items:center;gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>Noutăți</a>
+          <span style="font-size:14px;color:#64748B"><b style="color:#2563EB;font-weight:600">Platformă</b> · 4 noiembrie 2026 · 2 min de citit</span>
+          <h1 style="margin:0;font-size:44px;line-height:1.1;letter-spacing:-.03em;font-weight:700;text-wrap:balance">Notificări prin Telegram pentru pacienți</h1>
+          <p style="margin:0;font-size:20px;line-height:1.55;color:#334155;text-wrap:pretty">De azi poți primi pe Telegram mesajele importante despre consultații: confirmarea orei, propunerile medicului și concluzia.</p>
+          <div style="aspect-ratio:16/9;background:#F1F5F9;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#94A3B8;margin:12px 0">Imagine articol</div>
+          <h2 style="margin:12px 0 0;font-size:24px;letter-spacing:-.01em;font-weight:700">Ce primești</h2>
+          <ul style="margin:0;padding-left:22px;display:flex;flex-direction:column;gap:8px;font-size:17px;line-height:1.6;color:#334155">
+            <li>Confirmarea orei de către medic</li>
+            <li>Orele noi propuse de medic, cu termenul până la care poți răspunde</li>
+            <li>Mesajele noi din chat</li>
+            <li>Concluzia publicată, cu PDF-ul atașat</li>
+          </ul>
+          <h2 style="margin:12px 0 0;font-size:24px;letter-spacing:-.01em;font-weight:700">Cum activezi</h2>
+          <p style="margin:0;font-size:17px;line-height:1.7;color:#334155">Intră în Panoul meu, deschide Setări → Notificări și apasă „Conectează Telegram”. Se deschide botul telemedconsult.md. Apasă Start și contul e legat.</p>
+          <p style="margin:0;font-size:17px;line-height:1.7;color:#334155">Notificările din site rămân active. Poți opri Telegram oricând din aceeași pagină.</p>
+        </article>
+        <div style="background:#F8FAFC;border-top:1px solid #E2E8F0">
+          <div style="max-width:1200px;margin:0 auto;padding:48px 40px 64px;box-sizing:border-box;display:flex;flex-direction:column;gap:20px">
+            <h2 style="margin:0;font-size:22px;font-weight:700">Alte noutăți</h2>
+            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px">
+              <sc-for list="{{ newsOther }}" as="nw" hint-placeholder-count="3">
+                <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;color:#64748B"><b style="color:#2563EB;font-weight:600">{{ nw.cat }}</b> · {{ nw.date }}</span><span style="font-size:17px;font-weight:600;line-height:1.35">{{ nw.title }}</span></div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        <dc-import name="Subsol public" mode="desktop" hint-size="100%,260px"></dc-import>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="n3">
+      <div class="dv-olabel"><a class="dv-oid" href="#n3">N3</a>Listă · mobil</div>
+      <div style="width:390px;height:844px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <dc-import name="Antet public" mode="mobile" logged-in="{{ loggedIn }}" hint-size="100%,104px"></dc-import>
+        <div style="flex:1;overflow-y:auto;padding:20px 16px;display:flex;flex-direction:column;gap:14px">
+          <h1 style="margin:0 4px;font-size:30px;letter-spacing:-.02em;font-weight:700">Noutăți</h1>
+          <div style="display:flex;gap:6px;overflow:hidden"><sc-for list="{{ newsCats }}" as="c" hint-placeholder-count="5"><button onClick="{{ c.pick }}" style="flex:none;height:36px;padding:0 12px;border-radius:999px;cursor:pointer;font-size:13px;font-weight:600;background:{{ c.bg }};color:{{ c.color }};border:{{ c.border }}">{{ c.label }}</button></sc-for></div>
+          <sc-if value="{{ hasFeat }}" hint-placeholder-val="{{ true }}">
+            <a href="#n4" style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;text-decoration:none;color:#0F172A"><div style="aspect-ratio:16/9;background:#F1F5F9;display:flex;align-items:center;justify-content:center;font-size:12px;color:#94A3B8">Imagine articol</div><div style="padding:16px;display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;color:#64748B"><b style="color:#2563EB;font-weight:600">{{ feat.cat }}</b> · {{ feat.date }}</span><span style="font-size:19px;font-weight:700;line-height:1.25;letter-spacing:-.01em">{{ feat.title }}</span><span style="font-size:14px;line-height:1.5;color:#475569">{{ feat.ex }}</span></div></a>
+          </sc-if>
+          <sc-for list="{{ newsRest }}" as="nw" hint-placeholder-count="3">
+            <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:14px;display:flex;gap:12px;align-items:center"><div style="width:72px;height:72px;border-radius:10px;background:#F1F5F9;flex:none"></div><div style="display:flex;flex-direction:column;gap:4px;min-width:0"><span style="font-size:12px;color:#64748B">{{ nw.date }}</span><span style="font-size:15px;font-weight:600;line-height:1.3">{{ nw.title }}</span></div></div>
+          </sc-for>
+          <sc-if value="{{ newsEmpty }}" hint-placeholder-val="{{ false }}"><div style="padding:32px;text-align:center;font-size:14px;color:#64748B">Nicio noutate în această categorie.</div></sc-if>
+        </div>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="n4">
+      <div class="dv-olabel"><a class="dv-oid" href="#n4">N4</a>Articol · mobil</div>
+      <div style="width:390px;height:844px;background:#fff;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <dc-import name="Antet public" mode="mobile" logged-in="{{ loggedIn }}" hint-size="100%,104px"></dc-import>
+        <div style="flex:1;overflow-y:auto;padding:16px 20px 32px;display:flex;flex-direction:column;gap:14px">
+          <a href="#n3" style="font-size:14px;font-weight:500;color:#475569;display:flex;align-items:center;gap:6px;height:32px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>Noutăți</a>
+          <span style="font-size:13px;color:#64748B"><b style="color:#2563EB;font-weight:600">Platformă</b> · 4 noiembrie 2026</span>
+          <h1 style="margin:0;font-size:28px;line-height:1.12;letter-spacing:-.02em;font-weight:700">Notificări prin Telegram pentru pacienți</h1>
+          <p style="margin:0;font-size:17px;line-height:1.55;color:#334155">De azi poți primi pe Telegram mesajele importante despre consultații: confirmarea orei, propunerile medicului și concluzia.</p>
+          <div style="aspect-ratio:16/9;background:#F1F5F9;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#94A3B8">Imagine articol</div>
+          <h2 style="margin:8px 0 0;font-size:20px;font-weight:700">Ce primești</h2>
+          <ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:16px;line-height:1.6;color:#334155"><li>Confirmarea orei de către medic</li><li>Orele noi propuse de medic, cu termenul până la care poți răspunde</li><li>Mesajele noi din chat</li><li>Concluzia publicată, cu PDF-ul atașat</li></ul>
+          <h2 style="margin:8px 0 0;font-size:20px;font-weight:700">Cum activezi</h2>
+          <p style="margin:0;font-size:16px;line-height:1.7;color:#334155">Intră în Panoul meu, deschide Setări → Notificări și apasă „Conectează Telegram”. Se deschide botul telemedconsult.md. Apasă Start și contul e legat.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="dv-turn" id="r">
+  <div class="dv-thd"><a class="dv-tid" href="#r">R</a><span class="dv-tname">Parteneri</span></div>
+  <p class="dv-tdesc">Toate logo-urile stau în casete de aceeași mărime, pe fundal alb. Click pe o casetă: descrierea, adresa și linkul apar în panoul din dreapta (desktop) sau într-o foaie de jos (mobil). Casetele arată acum numele; se înlocuiesc cu logo-urile reale.</p>
+  <div class="dv-opts">
+    <div class="dv-opt" id="r1">
+      <div class="dv-olabel"><a class="dv-oid" href="#r1">R1</a>Desktop · 1280</div>
+      <div style="width:1280px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <dc-import name="Antet public" active="parteneri" mode="desktop" logged-in="{{ loggedIn }}" hint-size="100%,68px"></dc-import>
+        <div style="max-width:1200px;margin:0 auto;padding:48px 40px 80px;box-sizing:border-box;display:flex;flex-direction:column;gap:32px">
+          <div style="display:flex;flex-direction:column;gap:10px;max-width:680px"><h1 style="margin:0;font-size:40px;letter-spacing:-.03em;font-weight:700">Partenerii noștri</h1><p style="margin:0;font-size:17px;line-height:1.55;color:#475569">Colaborăm cu laboratoare, farmacii și furnizori de dispozitive medicale pentru a-ți oferi servicii complete de îngrijire.</p></div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:24px;align-items:start">
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">
+              <sc-for list="{{ partnersSel }}" as="pa" hint-placeholder-count="4">
+                <button onClick="{{ pa.pick }}" style="height:180px;background:#fff;border-radius:16px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;border:{{ pa.border }};box-shadow:{{ pa.shadow }}">
+                  <span style="width:200px;height:72px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;letter-spacing:-.01em;color:#334155">{{ pa.name }}</span>
+                  <span style="font-size:12px;font-weight:500;color:#64748B">{{ pa.cat }}</span>
+                </button>
+              </sc-for>
+            </div>
+            <div style="position:sticky;top:0;background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:28px;display:flex;flex-direction:column;gap:16px">
+              <div style="height:96px;background:#F8FAFC;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:#334155">{{ partner.name }}</div>
+              <div style="display:flex;flex-direction:column;gap:6px"><span style="align-self:flex-start;font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;background:#EFF6FF;color:#1D4ED8">{{ partner.cat }}</span><span style="font-size:22px;font-weight:700;letter-spacing:-.01em">{{ partner.name }}</span></div>
+              <p style="margin:0;font-size:15px;line-height:1.6;color:#334155;text-wrap:pretty">{{ partner.desc }}</p>
+              <span style="height:44px;border:1px solid #E2E8F0;border-radius:10px;font-size:14px;font-weight:600;color:#0F172A;display:flex;align-items:center;justify-content:center;gap:8px">Vizitează site-ul<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg></span>
+            </div>
+          </div>
+        </div>
+        <dc-import name="Subsol public" mode="desktop" hint-size="100%,260px"></dc-import>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="r2">
+      <div class="dv-olabel"><a class="dv-oid" href="#r2">R2</a>Mobil · foaie deschisă</div>
+      <div style="width:390px;height:844px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <dc-import name="Antet public" mode="mobile" logged-in="{{ loggedIn }}" hint-size="100%,104px"></dc-import>
+        <div style="flex:1;overflow-y:auto;padding:20px 16px;display:flex;flex-direction:column;gap:14px">
+          <h1 style="margin:0 4px;font-size:28px;letter-spacing:-.02em;font-weight:700">Partenerii noștri</h1>
+          <p style="margin:0 4px;font-size:15px;line-height:1.55;color:#475569">Colaborăm cu laboratoare, farmacii și furnizori de dispozitive medicale pentru a-ți oferi servicii complete de îngrijire.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <sc-for list="{{ partnersSel }}" as="pa" hint-placeholder-count="4">
+              <button onClick="{{ pa.pickMob }}" style="height:120px;background:#fff;border-radius:14px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:1px solid #E2E8F0;padding:0 8px"><span style="font-size:17px;font-weight:700;color:#334155;text-align:center">{{ pa.name }}</span><span style="font-size:11px;color:#64748B">{{ pa.cat }}</span></button>
+            </sc-for>
+          </div>
+        </div>
+        <sc-if value="{{ sheetOpen }}" hint-placeholder-val="{{ true }}">
+          <div onClick="{{ closeSheet }}" style="position:absolute;inset:0;background:rgba(15,23,42,.4)"></div>
+          <div style="position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:24px 24px 0 0;padding:10px 20px 32px;display:flex;flex-direction:column;gap:14px">
+            <div style="width:40px;height:4px;border-radius:2px;background:#CBD5E1;align-self:center"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;background:#EFF6FF;color:#1D4ED8">{{ partner.cat }}</span><button onClick="{{ closeSheet }}" style="width:44px;height:44px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#475569"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button></div>
+            <div style="height:80px;background:#F8FAFC;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#334155">{{ partner.name }}</div>
+            <span style="font-size:20px;font-weight:700">{{ partner.name }}</span>
+            <p style="margin:0;font-size:15px;line-height:1.6;color:#334155">{{ partner.desc }}</p>
+            <span style="height:48px;border-radius:10px;background:#2563EB;color:#fff;font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px">Vizitează site-ul</span>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;loggedIn&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Stare&quot;}}">
+const TYPES = [['video', 'Consultație video', 'Video'], ['chat', 'Chat', 'Chat'], ['home', 'La domiciliu', 'Domiciliu']];
+const SPECS = ['Medic de familie', 'Pediatru', 'Cardiolog', 'Endocrinolog', 'Dermatolog'];
+const SERVICES = [
+  { k: 'video', title: 'Consultație video', desc: 'Vorbești cu medicul față în față, de pe telefon sau calculator.', from: 'de la 200 MDL', meta: '15–30 min' },
+  { k: 'chat', title: 'Întrebare în chat', desc: 'Scrii întrebarea și atașezi analize sau poze. Medicul răspunde în scris.', from: 'de la 150 MDL', meta: 'răspuns în 24 h' },
+  { k: 'home', title: 'Vizită la domiciliu', desc: 'Un operator vine acasă cu dispozitive HIGO pentru ECG, tensiune și pulsoximetrie. Medicul citește rezultatele.', from: 'de la 600 MDL', meta: '60 min' }
+];
+const STEPS = [
+  { n: 1, title: 'Găsește medicul', short: 'Caută', text: 'Caută după specialitate sau nume. Vezi instituția, serviciile și prețul.', kind: 'search' },
+  { n: 2, title: 'Alege serviciul și ora', short: 'Alege', text: 'Suma se rezervă din portofel. Dacă medicul nu confirmă, revine integral.', kind: 'service' },
+  { n: 3, title: 'Primești concluzia', short: 'Concluzie', text: 'Diagnosticul, recomandările și PDF-ul rămân în fișa medicală.', kind: 'conclusion' }
+];
+const PARTNERS = [
+  { name: 'Higo', cat: 'Dispozitive medicale', desc: 'Dispozitive medicale acreditate UE pentru examinarea clinică în condiții de domiciliu.' },
+  { name: 'Clinica Pediatru', cat: 'Clinică', desc: 'Centrul Medical Consultativ Diagnostic, oferă servicii de ultrasonografie și consultații medicale, bd.Renașterii Naționale 6, of.79.' },
+  { name: 'Fiscal Partner', cat: 'Servicii', desc: 'Servicii fiscale digitale.' },
+  { name: 'Doamne Ajută', cat: 'Susținător', desc: 'Acest Proiect este Realizat cu Ajutorul Lui Dumnezeu!' }
+];
+const NEWS = [
+  { cat: 'Platformă', date: '4 noiembrie 2026', title: 'Notificări prin Telegram pentru pacienți', ex: 'Primești pe Telegram confirmarea orei, propunerile medicului și concluzia.' },
+  { cat: 'Servicii', date: '21 octombrie 2026', title: 'Vizitele la domiciliu ajung și în Bălți', ex: 'Operatorii cu dispozitive HIGO acoperă acum Bălțiul și localitățile din jur.' },
+  { cat: 'Sfaturi', date: '9 octombrie 2026', title: 'Cum te pregătești pentru o consultație video', ex: 'Verifică camera, pregătește analizele și lista de medicamente.' },
+  { cat: 'Parteneri', date: '25 septembrie 2026', title: 'Clinica Pediatru se alătură platformei', ex: 'Medicii clinicii oferă consultații video și în chat pentru copii.' }
+];
+const FAQ = [
+  ['Cât costă o consultație?', 'Fiecare medic își stabilește serviciile și prețurile. Vezi prețul exact în profilul medicului, înainte să alegi ora.'],
+  ['Ce se întâmplă cu banii dacă medicul nu confirmă?', 'Suma se rezervă din portofel când trimiți cererea. Dacă medicul refuză sau cererea expiră, banii revin integral în portofel.'],
+  ['Pot programa pentru copil sau pentru părinți?', 'Da. Adaugi membrii familiei în cont și alegi pentru cine e fiecare consultație. Fiecare are fișa lui.'],
+  ['Cum funcționează vizita la domiciliu?', 'Un operator vine la adresa ta cu dispozitive HIGO și face investigațiile incluse în serviciu. Medicul vede rezultatele și scrie concluzia.'],
+  ['Cine îmi vede datele medicale?', 'Doar tu și medicii cu care ai consultații. Operatorul vede doar datele necesare vizitei.']
+];
+const PROS = [
+  { eyebrow: 'PENTRU MEDICI', title: 'Pentru medici', text: 'Oferă consultații la distanță, îți setezi disponibilitatea și ajungi la pacienți din toată țara.', cta: 'Înscrie-te ca medic' },
+  { eyebrow: 'PENTRU OPERATORI', title: 'Pentru operatori', text: 'Te deplasezi la pacienți pentru recoltări și examinări cu dispozitive medicale conectate la platforma TeleMedConsult.', cta: 'Înscrie-te ca operator' }
+];
+const DOCS = [
+  { ini: 'AC', name: 'Dr. Ana Ciobanu', spec: 'Medic de familie', inst: 'IMSP CMF nr. 1', rating: '4,9', rev: 38, t: ['video', 'chat', 'home'], from: '150 MDL', next: 'mâine, 10:30' },
+  { ini: 'IP', name: 'Dr. Ion Popescu', spec: 'Pediatru', inst: 'Clinica Pediatru', rating: '4,8', rev: 52, t: ['video', 'chat'], from: '200 MDL', next: 'azi, 16:00' },
+  { ini: 'MR', name: 'Dr. Maria Rusu', spec: 'Medic de familie', inst: 'IMSP CMF nr. 4', rating: '4,7', rev: 21, t: ['video', 'home'], from: '200 MDL', next: 'azi, 18:30' },
+  { ini: 'VC', name: 'Dr. Victor Cebotari', spec: 'Cardiolog', inst: 'Medpark', rating: '4,9', rev: 64, t: ['video', 'home'], from: '350 MDL', next: 'joi, 09:00' },
+  { ini: 'ES', name: 'Dr. Elena Sârbu', spec: 'Endocrinolog', inst: 'IMSP SCR', rating: '4,8', rev: 17, t: ['video', 'chat'], from: '250 MDL', next: 'mâine, 14:00' },
+  { ini: 'NG', name: 'Dr. Natalia Guțu', spec: 'Pediatru', inst: 'Clinica Pediatru', rating: '5,0', rev: 9, t: ['chat'], from: '150 MDL', next: 'răspuns în 24 h' }
+];
+const TL = { video: 'Video', chat: 'Chat', home: 'La domiciliu' };
+const PUB = [['Consultație video', 'Video · 30 min', '250 MDL'], ['Consultație video scurtă', 'Video · 15 min', '180 MDL'], ['Întrebare în chat', 'Chat · răspuns în 24 h', '150 MDL'], ['Vizită la domiciliu', 'La domiciliu · 60 min · include ECG, tensiune', '600 MDL']];
+const NCATS = ['Toate', 'Platformă', 'Servicii', 'Sfaturi', 'Parteneri'];
+const pill = on => ({ bg: on ? '#0F172A' : '#fff', color: on ? '#fff' : '#334155', border: on ? '1px solid #0F172A' : '1px solid #E2E8F0' });
+
+class Component extends DCLogic {
+  state = { type: 'video', faq: 1, step: 0, catType: 'all', prof: 0, partner: 0, sheet: true, ncat: 'Toate' };
+  renderVals() {
+    const s = this.state, set = o => () => this.setState(o);
+    const loggedIn = !!this.props.loggedIn;
+    const types = TYPES.map(([k, label, short]) => { const on = s.type === k; return { label, short, isVideo: k === 'video', isChat: k === 'chat', isHome: k === 'home', pick: set({ type: k }), bg: on ? '#EFF6FF' : (k ? 'transparent' : ''), color: on ? '#1D4ED8' : '#475569', border: on ? '1px solid #BFDBFE' : '1px solid #E2E8F0' }; });
+    const services = SERVICES.map((x, i) => ({ ...x, isVideo: x.k === 'video', isChat: x.k === 'chat', isHome: x.k === 'home', border: i ? '1px solid #F1F5F9' : 'none' }));
+    const stepsB = STEPS.map((x, i) => { const on = s.step === i; return { ...x, pick: set({ step: i }), bg: on ? '#fff' : 'transparent', border: on ? '1.5px solid #2563EB' : '1px solid transparent', numBg: on ? '#2563EB' : '#E2E8F0', numColor: on ? '#fff' : '#334155', pillColor: on ? '#1D4ED8' : '#475569' }; });
+    const faq = FAQ.map(([q, a], i) => ({ q, a, open: s.faq === i, rot: s.faq === i ? 'rotate(180deg)' : 'none', border: i ? '1px solid #F1F5F9' : 'none', toggle: () => this.setState({ faq: s.faq === i ? -1 : i }) }));
+    const docs = DOCS.filter(d => s.catType === 'all' || d.t.includes(s.catType)).map(d => ({ ...d, types: d.t.map(k => TL[k]) }));
+    const catTypes = [['all', 'Toate serviciile'], ['video', 'Video'], ['chat', 'Chat'], ['home', 'La domiciliu']].map(([k, label]) => { const on = s.catType === k; return { label, pick: set({ catType: k }), bg: on ? '#EFF6FF' : 'transparent', color: on ? '#1D4ED8' : '#334155', weight: on ? 600 : 500, pillBg: on ? '#0F172A' : '#fff', pillColor: on ? '#fff' : '#334155', pillBorder: on ? '1px solid #0F172A' : '1px solid #E2E8F0' }; });
+    const pub = PUB.map(([name, meta, price], i) => { const on = s.prof === i; return { name, meta, price, pick: set({ prof: i }), border: on ? '1.5px solid #2563EB' : '1px solid #E2E8F0', shadow: on ? '0 0 0 3px rgba(37,99,235,.12)' : 'none', radio: on ? '6px solid #2563EB' : '1.5px solid #CBD5E1', dot: on ? '#fff' : 'transparent' }; });
+    const nf = NEWS.filter(n => s.ncat === 'Toate' || n.cat === s.ncat);
+    const partnersSel = PARTNERS.map((p, i) => { const on = s.partner === i; return { ...p, pick: set({ partner: i }), pickMob: set({ partner: i, sheet: true }), border: on ? '1.5px solid #2563EB' : '1px solid #E2E8F0', shadow: on ? '0 0 0 3px rgba(37,99,235,.12)' : 'none' }; });
+    return {
+      loggedIn, types, specs: SPECS, specsAll: [...SPECS, 'Neurolog'], services, steps: STEPS, stepsB,
+      hbKind: STEPS[s.step].kind, hbText: STEPS[s.step].text,
+      partners: PARTNERS, partnersSel, partner: PARTNERS[s.partner], sheetOpen: s.sheet, closeSheet: set({ sheet: false }),
+      news3: NEWS.slice(0, 3), news2: NEWS.slice(0, 2), newsOther: NEWS.slice(1, 4),
+      newsCats: NCATS.map(c => ({ label: c, pick: set({ ncat: c }), ...pill(s.ncat === c) })),
+      feat: nf[0] || NEWS[0], hasFeat: nf.length > 0, newsRest: nf.slice(1), newsEmpty: nf.length === 0,
+      faq, pros: PROS, docs, catTypes, catCount: docs.length === 1 ? '1 medic' : `${docs.length} medici`,
+      pub, sel: pub[s.prof],
+      bookNote: loggedIn ? 'Suma se rezervă din portofel când trimiți cererea. Dacă medicul refuză sau cererea expiră, revine integral.' : 'La pasul următor intri în cont sau îți creezi unul. Serviciul ales se păstrează. Suma se rezervă abia când trimiți cererea.'
+    };
+  }
+}
+</script>
+</body>
+</html>

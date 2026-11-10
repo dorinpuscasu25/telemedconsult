@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px;box-sizing:border-box;width:100%;font-family:Geist,system-ui,sans-serif;color:#0F172A">
+  <sc-if value="{{ isSearch }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;gap:8px;align-items:center;height:38px;padding:0 12px;background:#fff;border:1px solid #E2E8F0;border-radius:10px;font-size:13px;color:#0F172A"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>Pediatru</div>
+    <sc-for list="{{ docs }}" as="d" hint-placeholder-count="2">
+      <div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:12px;display:flex;gap:10px;align-items:center">
+        <div style="width:38px;height:38px;border-radius:50%;background:#DBEAFE;color:#1D4ED8;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none">{{ d.ini }}</div>
+        <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0"><span style="font-size:13px;font-weight:600">{{ d.name }}</span><span style="font-size:11px;color:#64748B">{{ d.inst }}</span></div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px"><span style="font-size:10px;color:#64748B">de la</span><span style="font-size:13px;font-weight:700">{{ d.from }}</span></div>
+      </div>
+    </sc-for>
+  </sc-if>
+  <sc-if value="{{ isService }}" hint-placeholder-val="{{ false }}">
+    <span style="font-size:13px;font-weight:600;padding:2px 2px 0">Alege serviciul</span>
+    <sc-for list="{{ svcs }}" as="s" hint-placeholder-count="3">
+      <div style="background:#fff;border:{{ s.border }};border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:center">
+        <span style="width:16px;height:16px;border-radius:50%;box-sizing:border-box;border:{{ s.radio }};display:flex;align-items:center;justify-content:center;flex:none"><span style="width:8px;height:8px;border-radius:50%;background:{{ s.dot }}"></span></span>
+        <div style="display:flex;flex-direction:column;gap:1px;flex:1"><span style="font-size:12px;font-weight:600">{{ s.name }}</span><span style="font-size:11px;color:#64748B">{{ s.meta }}</span></div>
+        <span style="font-size:12px;font-weight:700">{{ s.price }}</span>
+      </div>
+    </sc-for>
+    <div style="height:36px;border-radius:9px;background:#2563EB;color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center">Alege ora</div>
+  </sc-if>
+  <sc-if value="{{ isConclusion }}" hint-placeholder-val="{{ false }}">
+    <div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:999px;background:#F0FDF4;color:#15803D">Concluzie publicată</span><span style="font-size:11px;color:#64748B">Dr. Ion Popescu</span></div>
+      <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:10px;font-weight:600;color:#64748B;letter-spacing:.04em">DIAGNOSTIC</span><span style="font-size:13px;font-weight:600">Rinofaringită acută</span></div>
+      <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:#334155;line-height:1.4"><span>· Lichide calde, repaus 3 zile</span><span>· Paracetamol la febră peste 38,5°</span><span>· Revenire dacă febra trece de 3 zile</span></div>
+      <div style="display:flex;gap:8px;align-items:center;padding:8px 10px;background:#F8FAFC;border-radius:8px;font-size:12px;color:#334155"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path></svg>Concluzie-Ana-10.11.pdf</div>
+    </div>
+  </sc-if>
+  <sc-if value="{{ isNow }}" hint-placeholder-val="{{ false }}">
+    <span style="font-size:17px;font-weight:700;letter-spacing:-.01em;padding:2px 2px 0">Bună, Dorin</span>
+    <div style="background:#fff;border:1px solid #BFDBFE;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:0 4px 16px rgba(37,99,235,.08)">
+      <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:999px;background:#EFF6FF;color:#1D4ED8">Azi, 14:30 · peste 40 min</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"></path><rect x="2" y="6" width="14" height="12" rx="2"></rect></svg></div>
+      <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:14px;font-weight:700;line-height:1.3">Consultație video cu Dr. Ion Popescu</span><span style="font-size:12px;color:#64748B">pentru Ana · Pediatru</span></div>
+      <div style="height:36px;border-radius:9px;background:#2563EB;color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center">Verifică camera și microfonul</div>
+    </div>
+    <div style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:12px;display:flex;gap:10px;align-items:center">
+      <div style="width:32px;height:32px;border-radius:9px;background:#F0FDF4;color:#15803D;display:flex;align-items:center;justify-content:center;flex:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path></svg></div>
+      <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:12px;font-weight:600">Concluzie nouă de la Dr. Ana Ciobanu</span><span style="font-size:11px;color:#64748B">Ieri · PDF în fișa Anei</span></div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:320,&quot;height&quot;:260},&quot;kind&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;search&quot;,&quot;service&quot;,&quot;conclusion&quot;,&quot;now&quot;],&quot;default&quot;:&quot;search&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const k = this.props.kind ?? 'search';
+    const sel = 0;
+    return {
+      isSearch: k === 'search', isService: k === 'service', isConclusion: k === 'conclusion', isNow: k === 'now',
+      docs: [{ ini: 'IP', name: 'Dr. Ion Popescu', inst: 'Clinica Pediatru', from: '250 MDL' }, { ini: 'MR', name: 'Dr. Maria Rusu', inst: 'IMSP CMF nr. 4', from: '200 MDL' }],
+      svcs: [['Consultație video', 'Video · 30 min', '250 MDL'], ['Întrebare în chat', 'Chat · răspuns în 24 h', '150 MDL'], ['Vizită la domiciliu', 'Include ECG, tensiune', '600 MDL']].map(([name, meta, price], i) => ({
+        name, meta, price, border: i === sel ? '1.5px solid #2563EB' : '1px solid #E2E8F0', radio: i === sel ? '5px solid #2563EB' : '1.5px solid #CBD5E1', dot: i === sel ? '#fff' : 'transparent'
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

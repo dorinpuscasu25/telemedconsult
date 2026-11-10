@@ -25,6 +25,7 @@ class UpsertPartnerRequest extends FormRequest
             'remove_logo' => ['nullable', 'boolean'],
             'website_url' => ['nullable', 'url', 'max:2000'],
             'description' => ['nullable', 'string', 'max:1000'],
+            'category' => ['nullable', 'string', 'max:60'],
             'sort_order' => ['nullable', 'integer', 'min:0', 'max:1000'],
             'is_active' => ['nullable', 'boolean'],
         ];

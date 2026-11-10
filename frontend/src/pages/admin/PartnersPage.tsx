@@ -11,6 +11,7 @@ import { apiRequest } from '../../lib/api';
 type Partner = {
   id?: number;
   name: string;
+  category: string;
   logo_url: string;
   website_url: string;
   description: string;
@@ -22,6 +23,7 @@ type Partner = {
 
 const emptyPartner: Partner = {
   name: '',
+  category: '',
   logo_url: '',
   website_url: '',
   description: '',
@@ -47,6 +49,7 @@ export function AdminPartnersPage() {
         logo_url: partner.logo_url ?? '',
         website_url: partner.website_url ?? '',
         description: partner.description ?? '',
+        category: partner.category ?? '',
         logo_file: null,
         remove_logo: false
       }))))
@@ -69,6 +72,7 @@ export function AdminPartnersPage() {
   const formPayload = (partner: Partner) => {
     const form = new FormData();
     form.append('name', partner.name.trim());
+    form.append('category', partner.category.trim());
     form.append('website_url', partner.website_url.trim());
     form.append('description', partner.description.trim());
     form.append('sort_order', String(partner.sort_order));
@@ -189,6 +193,7 @@ function PartnerForm({ partner, onChange, onSave, isSaving }: {
         <NumberField label="Ordine" value={partner.sort_order} onChange={(value) => onChange({ ...partner, sort_order: value })} />
       </div>
       <div className="grid gap-4">
+        <TextField label="Categorie (ex: Clinică, Dispozitive medicale)" value={partner.category} onChange={(value) => onChange({ ...partner, category: value })} />
         <TextField label="URL site" value={partner.website_url} onChange={(value) => onChange({ ...partner, website_url: value })} />
       </div>
       <PartnerLogoUpload partner={partner} onChange={onChange} />

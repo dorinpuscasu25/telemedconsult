@@ -227,6 +227,7 @@ class CatalogController extends Controller
                 'slug' => $post->slug,
                 'excerpt' => $post->excerpt,
                 'body' => $post->body,
+                'category' => $post->category,
                 'cover_image_url' => $post->cover_image_url,
                 'author_name' => $post->author_name,
                 'published_at' => $post->published_at,
@@ -246,6 +247,7 @@ class CatalogController extends Controller
                 'logo_url' => $partner->logo_url,
                 'website_url' => $partner->website_url,
                 'description' => $partner->description,
+                'category' => $partner->category,
             ]);
 
         return response()->json(['data' => $partners]);
