@@ -9,7 +9,7 @@ export const LIST_PROMPTS: Record<string, { question: string; chips: string[]; n
   chronic_conditions: { question: 'Are boli cronice active?', chips: ['Hipertensiune arterială', 'Diabet zaharat', 'Astm bronșic', 'Hipotiroidism', 'Gastrită cronică'], noText: (name) => `Medicul vede că ${name} nu are boli cronice active.` },
   surgeries: { question: 'A avut intervenții chirurgicale?', chips: ['Apendicectomie', 'Amigdalectomie', 'Cezariană', 'Colecistectomie', 'Hernie'], noText: (name) => `Medicul vede că ${name} nu a avut intervenții chirurgicale.` },
   disease_history: { question: 'A avut boli grave, accidente sau traumatisme?', chips: ['Pneumonie', 'Fractură', 'Comoție cerebrală', 'Hepatită'], noText: (name) => `Medicul vede că ${name} nu a avut boli grave sau traumatisme.` },
-  family_history: { question: 'Există boli cronice sau genetice în familie?', chips: ['Hipertensiune', 'Diabet', 'Infarct', 'AVC', 'Cancer', 'Astm'], noText: () => 'Medicul vede că nu sunt boli cunoscute în familie.' },
+  family_history: { question: 'Există boli cronice sau genetice în familie?', chips: ['Diabet', 'Hipertensiune', 'Infarct', 'AVC', 'Cancer', 'Astm bronșic'], noText: () => 'Medicul vede că nu sunt boli cunoscute în familie.' },
   vaccinations: { question: 'Ce vaccinuri a făcut?', chips: ['BCG', 'Hepatita B', 'DTP', 'Polio', 'ROR', 'Gripă', 'COVID-19'], noText: () => '' }
 };
 

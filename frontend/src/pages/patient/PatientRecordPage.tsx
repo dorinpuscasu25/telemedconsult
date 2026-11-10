@@ -97,7 +97,8 @@ export function PatientRecordPage() {
   const closeSection = () => setParam({ section: null });
   const menu = <MoreMenu items={[{ label: 'Exportă datele', onSelect: () => void exportProfile() }, { label: 'Șterge profilul', onSelect: () => void deleteProfile(), danger: true }]} />;
   const editor = sectionOpen && openSection
-    ? <SectionEditor key={openSection} profileId={profile.id} sectionKey={openSection} record={record} patientName={name} birthDate={profile.birth_date} onRecordChange={setRecord} onClose={closeSection} />
+    ? <SectionEditor key={openSection} profileId={profile.id} sectionKey={openSection} record={record} patientName={name} birthDate={profile.birth_date} onRecordChange={setRecord} onClose={closeSection}
+        footer={isDesktop ? undefined : <button type="button" onClick={closeSection} className="h-12 w-full rounded-[10px] bg-blue-600 text-[15px] font-semibold text-white hover:bg-blue-700">Gata</button>} />
     : null;
 
   return (
@@ -164,8 +165,8 @@ export function PatientRecordPage() {
             </div>
           )}
 
-          {tab === 'date' && <div className="rounded-2xl border border-slate-200 bg-white p-4 lg:max-w-3xl lg:p-6"><PersonalDataForm key={profile.id} profile={profile} regions={regions} onSaved={() => void loadProfile()} /></div>}
-          {tab === 'documente' && <div className="lg:max-w-4xl"><DocumentsPanel profileId={profile.id} documents={documents} onChanged={() => void loadRecord()} /></div>}
+          {tab === 'date' && <div className="-m-4 bg-white p-5 lg:m-0 lg:max-w-2xl lg:rounded-2xl lg:border lg:border-slate-200 lg:p-6"><PersonalDataForm key={profile.id} profile={profile} regions={regions} onSaved={() => void loadProfile()} /></div>}
+          {tab === 'documente' && <div className="lg:max-w-[1040px]"><DocumentsPanel profileId={profile.id} documents={documents} onChanged={() => void loadRecord()} /></div>}
           {tab === 'consultatii' && (
             <div className="rounded-2xl border border-slate-200 bg-white p-4 lg:max-w-4xl lg:p-6">
               <PatientMedicalRecord profile={profile} regions={regions} only="consultations" requestedConsultationId={searchParams.get('request')} onSaved={() => void loadRecord()} onDirtyChange={() => undefined} />
