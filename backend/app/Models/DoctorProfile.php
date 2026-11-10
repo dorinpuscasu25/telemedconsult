@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['clinic_logo_path', 'clinic_logo_mime', 'signature_path', 'signature_mime', 'clinic_name', 'clinic_details', 'user_id', 'higo_doctor_id', 'specialty_id', 'license_number', 'bio', 'experience_years', 'consultation_price', 'video_price', 'video_duration_minutes', 'google_meet_account', 'platforms', 'service_catalog', 'required_investigations', 'affiliate_code', 'rating', 'reviews_count', 'is_available', 'is_approved', 'accepts_points', 'medical_institution_id', 'institution_share_percent', 'institution_joined_at', 'payout_bank', 'payout_iban'])]
+#[Fillable(['clinic_logo_path', 'clinic_logo_mime', 'signature_path', 'signature_mime', 'clinic_name', 'clinic_details', 'user_id', 'higo_doctor_id', 'specialty_id', 'license_number', 'bio', 'experience_years', 'consultation_price', 'video_price', 'video_duration_minutes', 'google_meet_account', 'platforms', 'service_catalog', 'required_investigations', 'affiliate_code', 'rating', 'reviews_count', 'is_available', 'is_approved', 'accepts_points', 'medical_institution_id', 'institution_share_percent', 'institution_joined_at', 'payout_bank', 'payout_iban', 'requested_institution_id', 'institution_chosen_at'])]
 class DoctorProfile extends Model
 {
     use StoresDatesInAppTimezone;
@@ -48,6 +48,11 @@ class DoctorProfile extends Model
         return $this->hasMany(DoctorInvestigationRequirement::class, 'doctor_id', 'user_id');
     }
 
+    public function requestedInstitution(): BelongsTo
+    {
+        return $this->belongsTo(MedicalInstitution::class, 'requested_institution_id');
+    }
+
     public function medicalInstitution(): BelongsTo
     {
         return $this->belongsTo(MedicalInstitution::class);
@@ -75,6 +80,7 @@ class DoctorProfile extends Model
             'accepts_points' => 'boolean',
             'institution_share_percent' => 'float',
             'institution_joined_at' => 'datetime',
+            'institution_chosen_at' => 'datetime',
             'rating' => 'decimal:1',
         ];
     }

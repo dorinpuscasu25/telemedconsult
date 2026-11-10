@@ -177,6 +177,41 @@ class AuthController extends Controller
         ));
     }
 
+    /**
+     * Pasul 3 al înregistrării medicului: alege instituția la care vrea să
+     * lucreze sau că lucrează independent. Poate schimba alegerea cât timp
+     * contul așteaptă aprobarea.
+     */
+    public function chooseInstitution(Request $request): JsonResponse
+    {
+        $user = $request->user()->loadMissing('doctorProfile');
+        abort_unless($user->status === 'pending' && $user->doctorProfile, 422, 'Instituția se alege doar în timpul înregistrării.');
+        abort_unless($user->email_verified_at, 422, 'Confirmă mai întâi adresa de email.');
+
+        $validated = $request->validate([
+            'institution_id' => ['nullable', 'integer', Rule::exists('medical_institutions', 'id')->where('status', 'active')],
+        ], ['institution_id.exists' => 'Instituția aleasă nu mai este disponibilă.']);
+
+        $first = ! $user->doctorProfile->institution_chosen_at;
+        $user->doctorProfile->forceFill([
+            'requested_institution_id' => $validated['institution_id'] ?? null,
+            'institution_chosen_at' => now(),
+        ])->save();
+
+        if ($first) {
+            $institution = $user->doctorProfile->requestedInstitution()->first();
+            $admins = User::whereHas('roles', fn ($query) => $query->where('name', 'admin'))->get();
+            Notification::send($admins, new AppEventNotification(
+                'Medic gata de aprobare',
+                $user->name.($institution ? ' vrea să lucreze la '.$institution->name.'.' : ' lucrează independent.').' Verifică și aprobă din panoul de administrare.',
+                '/admin/registrations',
+                'info',
+            ));
+        }
+
+        return response()->json(['message' => 'Alegerea a fost salvată.', 'user' => $this->serializeUser($user->refresh())]);
+    }
+
     public function verifyEmailOtp(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -542,6 +577,7 @@ class AuthController extends Controller
             'patientProfile',
             'doctorProfile.specialty',
             'doctorProfile.medicalInstitution',
+            'doctorProfile.requestedInstitution',
             'operatorProfile',
             'coordinatorProfile',
             'medicalInstitutions',
@@ -571,6 +607,14 @@ class AuthController extends Controller
                     'status' => $managedInstitution->status,
                 ] : null,
             ],
+            'doctor_registration' => $user->status === 'pending' && $user->doctorProfile ? [
+                'institution_chosen' => (bool) $user->doctorProfile->institution_chosen_at,
+                'requested_institution' => $user->doctorProfile->requestedInstitution ? [
+                    'id' => $user->doctorProfile->requestedInstitution->id,
+                    'name' => $user->doctorProfile->requestedInstitution->name,
+                    'address' => $user->doctorProfile->requestedInstitution->address,
+                ] : null,
+            ] : null,
             'doctor_institution' => $doctorInstitution ? [
                 'id' => $doctorInstitution->id,
                 'name' => $doctorInstitution->name,

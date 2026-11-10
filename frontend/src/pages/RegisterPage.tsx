@@ -1,3 +1,4 @@
+import { DoctorRegistrationSteps } from '../components/auth/DoctorRegistrationSteps';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Activity, ArrowLeft, CheckCircle2, Eye, EyeOff, Gift, Mail, RotateCw, ShieldCheck, Stethoscope, Users } from 'lucide-react';
@@ -199,6 +200,7 @@ export function RegisterPage({ audience = 'patient' }: { audience?: 'patient' | 
           </Link>
 
           <Card className="border-0 bg-white shadow-none sm:border sm:border-slate-200 sm:shadow-xl sm:shadow-slate-200/70">
+            {!isPatientForm && accountType === 'doctor' && <DoctorRegistrationSteps current={step === 'details' ? 1 : 2} />}
             {step === 'details' ? (
               <form onSubmit={handleRegister}>
                 <CardHeader className={isPatientForm ? 'space-y-2' : 'space-y-2 text-center'}>
@@ -209,7 +211,9 @@ export function RegisterPage({ audience = 'patient' }: { audience?: 'patient' | 
                   <CardDescription>
                     {isPatientForm
                       ? 'Consultații video sau acasă, pentru tine și familia ta.'
-                      : 'Contul se activează după confirmarea emailului și aprobarea unui administrator.'}
+                      : accountType === 'doctor'
+                        ? 'Întâi datele tale. Apoi confirmi emailul, alegi instituția la care lucrezi și aștepți aprobarea.'
+                        : 'Contul se activează după confirmarea emailului și aprobarea unui administrator.'}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">

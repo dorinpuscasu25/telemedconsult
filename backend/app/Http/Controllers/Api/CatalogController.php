@@ -8,6 +8,7 @@ use App\Models\DoctorInvestigationRequirement;
 use App\Models\DoctorProfile;
 use App\Models\InvestigationType;
 use App\Models\Locality;
+use App\Models\MedicalInstitution;
 use App\Models\OperatorProfile;
 use App\Models\Partner;
 use App\Models\PlatformSetting;
@@ -88,6 +89,16 @@ class CatalogController extends Controller
             });
 
         return response()->json(['data' => $doctors]);
+    }
+
+    /** Instituțiile active, pentru medicul care se înregistrează. */
+    public function institutions(): JsonResponse
+    {
+        return response()->json(['data' => MedicalInstitution::where('status', 'active')
+            ->orderBy('name')
+            ->get(['id', 'name', 'address'])
+            ->map(fn (MedicalInstitution $institution) => ['id' => $institution->id, 'name' => $institution->name, 'address' => $institution->address])
+            ->values()]);
     }
 
     public function operators(): JsonResponse

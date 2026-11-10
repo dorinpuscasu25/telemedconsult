@@ -13,7 +13,7 @@ type Registration = {
   active_role: string | null;
   created_at: string | null;
   profiles?: {
-    doctor?: { license_number?: string | null; specialty?: { name?: string } | null } | null;
+    doctor?: { license_number?: string | null; specialty?: { name?: string } | null; institution_chosen_at?: string | null; requested_institution?: { id: number; name: string } | null } | null;
     operator?: { region?: string | null } | null;
   };
 };
@@ -34,6 +34,9 @@ export function RegistrationsPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [institutions, setInstitutions] = useState<Array<{ id: number; name: string }>>([]);
+  // Instituția cu care e aprobat medicul: cea aleasă de el, dacă administratorul n-o schimbă.
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
 
   const load = () => {
     apiRequest<{ data: Registration[] }>('/admin/registrations')
@@ -43,6 +46,7 @@ export function RegistrationsPage() {
 
   useEffect(() => {
     load();
+    apiRequest<{ data: Array<{ id: number; name: string }> }>('/catalog/institutions', { auth: false }).then((response) => setInstitutions(response.data ?? [])).catch(() => undefined);
   }, []);
 
   const act = async (item: Registration, action: 'approve' | 'reject') => {
@@ -51,7 +55,8 @@ export function RegistrationsPage() {
     setError('');
     setMessage('');
     try {
-      await apiRequest(`/admin/users/${item.id}/${action}`, { method: 'POST' });
+      const override = overrides[item.id];
+      await apiRequest(`/admin/users/${item.id}/${action}`, { method: 'POST', body: action === 'approve' && override !== undefined ? JSON.stringify({ institution_id: override ? Number(override) : null }) : undefined });
       setMessage(action === 'approve' ? `${item.name} a fost aprobat.` : `Cererea lui ${item.name} a fost respinsă.`);
       setItems((current) => current.filter((row) => row.id !== item.id));
     } catch (err) {
@@ -111,6 +116,22 @@ export function RegistrationsPage() {
                       {item.created_at && <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5" />{formatDate(item.created_at)}</span>}
                     </div>
                     {detail && <p className="mt-1 text-sm text-slate-600">{detail}</p>}
+                    {role === 'doctor' && (
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                        <span className={item.profiles?.doctor?.institution_chosen_at ? 'text-slate-600' : 'font-medium text-amber-700'}>
+                          {!item.profiles?.doctor?.institution_chosen_at ? 'Încă nu a ales instituția.' : item.profiles.doctor.requested_institution ? `A ales: ${item.profiles.doctor.requested_institution.name}` : 'A ales: lucrează independent'}
+                        </span>
+                        <label className="flex items-center gap-2 text-slate-500">
+                          Aprobă în
+                          <select aria-label="Instituția la aprobare" value={overrides[item.id] ?? String(item.profiles?.doctor?.requested_institution?.id ?? '')}
+                            onChange={(event) => setOverrides((current) => ({ ...current, [item.id]: event.target.value }))}
+                            className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900">
+                            <option value="">Independent (fără instituție)</option>
+                            {institutions.map((institution) => <option key={institution.id} value={institution.id}>{institution.name}</option>)}
+                          </select>
+                        </label>
+                      </div>
+                    )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <Button className="rounded-xl bg-emerald-600 hover:bg-emerald-700" disabled={busyId === item.id} onClick={() => act(item, 'approve')}>

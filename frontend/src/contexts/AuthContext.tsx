@@ -22,6 +22,8 @@ export interface User {
   profiles?: Record<string, unknown> & { institution?: { id: number; name: string; status: string } | null };
   /** Instituția medicală prin care lucrează medicul (null pentru medicii independenți). */
   doctor_institution?: { id: number; name: string } | null;
+  /** Medicul în curs de înregistrare: dacă a ales instituția și care. */
+  doctor_registration?: { institution_chosen: boolean; requested_institution: { id: number; name: string; address?: string | null } | null } | null;
   avatar?: string;
 }
 export interface OtpRequiredError extends Error {

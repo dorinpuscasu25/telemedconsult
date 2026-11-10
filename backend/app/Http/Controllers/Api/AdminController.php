@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\SyncHigoEntity;
 use App\Models\CoordinatorProfile;
 use App\Models\DoctorProfile;
+use App\Models\MedicalInstitution;
 use App\Models\OperatorCapability;
 use App\Models\OperatorCoverage;
 use App\Models\OperatorProfile;
@@ -17,6 +18,7 @@ use App\Models\Specialty;
 use App\Models\User;
 use App\Notifications\AppEventNotification;
 use App\Rules\ValidPhoneNumber;
+use App\Services\InstitutionMembership;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -259,11 +261,20 @@ class AdminController extends Controller
         $this->authorizeAdmin($request);
 
         abort_unless($user->status === 'pending', 422, 'Acest cont nu este în așteptare.');
+        $validated = $request->validate([
+            'institution_id' => ['sometimes', 'nullable', 'integer', Rule::exists('medical_institutions', 'id')],
+        ]);
 
-        DB::transaction(function () use ($user) {
+        DB::transaction(function () use ($user, $validated) {
             $user->forceFill(['status' => 'active'])->save();
             $user->doctorProfile?->forceFill(['is_approved' => true])->save();
             $user->operatorProfile?->forceFill(['is_approved' => true])->save();
+
+            // Medicul intră în instituția aleasă la înregistrare (sau în cea pusă de administrator).
+            $institutionId = array_key_exists('institution_id', $validated) ? $validated['institution_id'] : $user->doctorProfile?->requested_institution_id;
+            if ($user->doctorProfile && $institutionId) {
+                app(InstitutionMembership::class)->attachDoctor(MedicalInstitution::findOrFail($institutionId), $user);
+            }
         });
 
         $user->notify(new AppEventNotification(
@@ -563,7 +574,7 @@ class AdminController extends Controller
     private function serializeUser(User $user): array
     {
         $user->loadMissing([
-            'roles', 'activeRole', 'doctorProfile.specialty',
+            'roles', 'activeRole', 'doctorProfile.specialty', 'doctorProfile.requestedInstitution',
             'operatorProfile.coverage.region', 'operatorProfile.coverage.locality',
             'operatorProfile.capabilities.investigationType',
             'operatorProfile.travelFees.region', 'operatorProfile.travelFees.locality',
@@ -582,7 +593,10 @@ class AdminController extends Controller
             'created_at' => $user->created_at,
             'profiles' => [
                 'patient' => $user->patientProfile,
-                'doctor' => $user->doctorProfile,
+                'doctor' => $user->doctorProfile ? [
+                    ...$user->doctorProfile->toArray(),
+                    'requested_institution' => $user->doctorProfile->requestedInstitution?->only(['id', 'name', 'address']),
+                ] : null,
                 'operator' => $user->operatorProfile ? $this->serializeOperatorProfile($user->operatorProfile) : null,
                 'coordinator' => $user->coordinatorProfile,
             ],

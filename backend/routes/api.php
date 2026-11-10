@@ -52,6 +52,7 @@ Route::prefix('v1')->group(function () {
 
     Route::get('/catalog/specialties', [CatalogController::class, 'specialties']);
     Route::get('/catalog/doctors', [CatalogController::class, 'doctors']);
+    Route::get('/catalog/institutions', [CatalogController::class, 'institutions']);
     Route::get('/catalog/doctors/{doctor}/reviews', [PatientEngagementController::class, 'doctorReviews']);
     Route::get('/catalog/doctors/{doctor}/slots', [CatalogController::class, 'doctorSlots']);
     Route::post('/catalog/doctors/{doctor}/view', [PatientEngagementController::class, 'storeDoctorProfileView']);
@@ -100,6 +101,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/requests/{consultationRequest}/documents/preview', [ConsultationDocumentController::class, 'preview']);
         Route::post('/requests/{consultationRequest}/documents/addendum', [ConsultationDocumentController::class, 'addendum']);
         Route::get('/auth/me', [AuthController::class, 'me']);
+        Route::post('/auth/registration/institution', [AuthController::class, 'chooseInstitution']);
         Route::post('/auth/switch-role', [AuthController::class, 'switchRole']);
         Route::post('/auth/logout', [AuthController::class, 'logout']);
 
