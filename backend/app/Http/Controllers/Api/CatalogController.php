@@ -15,6 +15,7 @@ use App\Models\Region;
 use App\Models\Specialty;
 use App\Models\User;
 use App\Services\DoctorSchedule;
+use App\Services\DoctorServiceCatalog;
 use App\Services\FeatureFlags;
 use App\Services\ObjectiveDataSchema;
 use Illuminate\Http\JsonResponse;
@@ -42,11 +43,12 @@ class CatalogController extends Controller
             return response()->json(['data' => []]);
         }
 
-        $doctors = DoctorProfile::with(['user', 'specialty', 'investigationRequirements.investigationType'])
+        $catalog = app(DoctorServiceCatalog::class);
+        $doctors = DoctorProfile::with(['user.doctorServices', 'specialty', 'investigationRequirements.investigationType', 'medicalInstitution'])
             ->where('is_approved', true)
             ->latest()
             ->get()
-            ->map(function (DoctorProfile $profile) {
+            ->map(function (DoctorProfile $profile) use ($catalog) {
                 $isOnVacation = $profile->user->doctorVacations()
                     ->whereDate('starts_on', '<=', now()->toDateString())
                     ->whereDate('ends_on', '>=', now()->toDateString())
@@ -70,6 +72,12 @@ class CatalogController extends Controller
                         'required' => $this->investigationRequirements($profile, 'required'),
                         'optional' => $this->investigationRequirements($profile, 'optional'),
                     ],
+                    'services' => $catalog->serialize($profile->user->doctorServices->where('is_active', true)->values()),
+                    'institution' => $profile->medicalInstitution ? [
+                        'name' => $profile->medicalInstitution->name,
+                        'address' => $profile->medicalInstitution->address,
+                    ] : null,
+                    'bio' => $profile->bio,
                     'rating' => $profile->rating,
                     'reviews_count' => $profile->reviews_count,
                     'is_available' => $profile->is_available && ! $isOnVacation,

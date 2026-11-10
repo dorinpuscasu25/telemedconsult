@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\DoctorInvestigationRequirement;
+use App\Models\DoctorService;
 use App\Models\InvestigationType;
 use App\Models\OperatorProfile;
 use App\Models\PatientProfile;
@@ -26,13 +27,14 @@ class ConsultationCostEstimator
      *     total: int
      * }
      */
-    public function estimate(?User $doctor, PatientProfile $patient, ?int $operatorId, array $selectedOptionalIds = []): array
+    public function estimate(?User $doctor, PatientProfile $patient, ?int $operatorId, array $selectedOptionalIds = [], ?DoctorService $service = null): array
     {
-        $doctorBase = (int) ($doctor?->doctorProfile?->consultation_price ?? 0);
+        $doctorBase = $service ? (int) $service->price : (int) ($doctor?->doctorProfile?->consultation_price ?? 0);
 
-        $requirements = $doctor
-            ? DoctorInvestigationRequirement::where('doctor_id', $doctor->id)->get()
-            : collect();
+        // Serviciul ales poartă propriile investigații; altfel, cele din profil.
+        $requirements = $service
+            ? collect($service->investigationMap())->map(fn (string $requirement, int $id) => ['investigation_type_id' => $id, 'requirement' => $requirement])->values()
+            : ($doctor ? DoctorInvestigationRequirement::where('doctor_id', $doctor->id)->get() : collect());
 
         $requiredIds = $requirements->where('requirement', 'required')->pluck('investigation_type_id')->map(fn ($id) => (int) $id);
         $optionalIds = $requirements->where('requirement', 'optional')->pluck('investigation_type_id')->map(fn ($id) => (int) $id);

@@ -19,6 +19,7 @@ use App\Models\WithdrawalRequest;
 use App\Notifications\AppEventNotification;
 use App\Rules\ValidPhoneNumber;
 use App\Services\DoctorPerformance;
+use App\Services\DoctorServiceCatalog;
 use App\Services\InstitutionLedger;
 use App\Services\PlatformConfig;
 use Carbon\CarbonImmutable;
@@ -133,6 +134,13 @@ class DoctorOperationsController extends Controller
                 ->orderBy('starts_at')
                 ->get(),
             'specialties' => Specialty::orderBy('name')->get(),
+            'services' => app(DoctorServiceCatalog::class)->serialize($doctor->doctorServices()->get()),
+            'institution' => $doctor->doctorProfile?->medicalInstitution ? [
+                'name' => $doctor->doctorProfile->medicalInstitution->name,
+                'address' => $doctor->doctorProfile->medicalInstitution->address,
+            ] : null,
+            'has_signature' => (bool) $doctor->doctorProfile?->signature_path,
+            'has_clinic_logo' => (bool) $doctor->doctorProfile?->clinic_logo_path,
         ]);
     }
 
@@ -362,6 +370,24 @@ class DoctorOperationsController extends Controller
             })
             ->values();
 
+        // Venitul lunii pe servicii: câte consultații și cât au adus.
+        $monthConsultations = $consultations
+            ->filter(fn (Consultation $consultation) => $consultation->completed_at?->betweenIncluded($now->startOfMonth(), $now->endOfMonth()));
+        $requests = ConsultationRequest::whereIn('id', $monthConsultations->pluck('consultation_request_id')->filter())->get()->keyBy('id');
+        $byService = $monthConsultations
+            ->groupBy(function (Consultation $consultation) use ($requests) {
+                $item = $requests->get($consultation->consultation_request_id);
+
+                return $item?->pricing_snapshot['service']['name'] ?? match ($item?->consultation_kind) {
+                    'with_exam' => 'Consultație cu examinare la domiciliu',
+                    'preliminary' => 'Consultație prin chat',
+                    default => 'Consultație video',
+                };
+            })
+            ->map(fn ($group, string $name) => ['name' => $name, 'count' => $group->count(), 'total' => (float) $group->sum('price')])
+            ->sortByDesc('total')
+            ->values();
+
         $weeklyConsultations = collect(range(6, 0))
             ->map(function (int $daysBack) use ($consultations, $now) {
                 $day = $now->subDays($daysBack);
@@ -391,6 +417,11 @@ class DoctorOperationsController extends Controller
             ],
             'institution' => $this->institutionSummary($doctor),
             'revenue' => $monthlyRevenue,
+            'by_service' => $byService,
+            'current_month_consultations' => $monthConsultations->count(),
+            'previous_month_consultations' => $consultations
+                ->filter(fn (Consultation $consultation) => $consultation->completed_at?->betweenIncluded($now->subMonth()->startOfMonth(), $now->subMonth()->endOfMonth()))
+                ->count(),
             'consultations' => $weeklyConsultations,
             'withdrawals' => $withdrawals->map(fn (WithdrawalRequest $withdrawal) => [
                 'id' => $withdrawal->id,

@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\ConsultationDocumentController;
 use App\Http\Controllers\Api\ConsultationVideoController;
 use App\Http\Controllers\Api\CoordinatorController;
 use App\Http\Controllers\Api\DoctorOperationsController;
+use App\Http\Controllers\Api\DoctorServiceController;
 use App\Http\Controllers\Api\ExamMediaController;
 use App\Http\Controllers\Api\HigoExamController;
 use App\Http\Controllers\Api\InstitutionController;
@@ -189,6 +190,10 @@ Route::prefix('v1')->group(function () {
         Route::post('/requests/{consultationRequest}/cancel', [WorkflowController::class, 'cancel']);
         Route::post('/requests/{consultationRequest}/propose-time', [WorkflowController::class, 'proposeTime']);
         Route::post('/requests/{consultationRequest}/accept-proposed-time', [WorkflowController::class, 'acceptProposedTime']);
+        Route::post('/requests/{consultationRequest}/request-other-times', [WorkflowController::class, 'requestOtherTimes']);
+        Route::post('/requests/{consultationRequest}/withdraw-proposal', [WorkflowController::class, 'withdrawProposal']);
+        Route::get('/requests/{consultationRequest}/conclusion-draft', [WorkflowController::class, 'conclusionDraft']);
+        Route::put('/requests/{consultationRequest}/conclusion-draft', [WorkflowController::class, 'saveConclusionDraft']);
         Route::post('/requests/{consultationRequest}/forward-to-doctor', [WorkflowController::class, 'forwardToDoctor']);
         Route::post('/requests/{consultationRequest}/anamnesis', [WorkflowController::class, 'completeAnamnesis']);
         Route::post('/requests/{consultationRequest}/objective-data', [WorkflowController::class, 'storeObjectiveData']);
@@ -249,6 +254,11 @@ Route::prefix('v1')->group(function () {
         Route::delete('/doctor/vacations/{doctorVacation}', [DoctorOperationsController::class, 'destroyVacation']);
         Route::get('/doctor/dashboard', [DoctorOperationsController::class, 'dashboard']);
         Route::get('/doctor/stats', [DoctorOperationsController::class, 'stats']);
+        Route::get('/doctor/services', [DoctorServiceController::class, 'index']);
+        Route::post('/doctor/services', [DoctorServiceController::class, 'store']);
+        Route::put('/doctor/services/order', [DoctorServiceController::class, 'reorder']);
+        Route::put('/doctor/services/{doctorService}', [DoctorServiceController::class, 'update']);
+        Route::delete('/doctor/services/{doctorService}', [DoctorServiceController::class, 'destroy']);
 
         Route::get('/admin/institutions', [AdminInstitutionController::class, 'index']);
         Route::post('/admin/institutions', [AdminInstitutionController::class, 'store']);

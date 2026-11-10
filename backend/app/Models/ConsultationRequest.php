@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['promo_amount_minor', 'promo_grant_id', 'higo_proposal', 'current_illness_history', 'patient_id', 'patient_profile_id', 'doctor_id', 'operator_id', 'declined_operator_ids', 'coordinator_id', 'specialty_id', 'type', 'consultation_kind', 'status', 'symptoms', 'selected_services', 'triage_notes', 'scheduled_at', 'proposed_scheduled_at', 'proposed_by', 'accepted_at', 'operator_accepted_at', 'anamnesis_completed_at', 'objective_data_completed_at', 'doctor_started_at', 'conclusion_sent_at', 'doctor_response_minutes', 'completed_at', 'amount_minor', 'real_amount_minor', 'points_amount_minor', 'points_percent', 'platform_fee_minor', 'provider_amount_minor', 'pricing_snapshot', 'payment_status', 'acceptance_expires_at', 'chat_expires_at', 'free_chat_until', 'chat_reactivated_until', 'cancelled_at', 'refunded_at', 'rating_required_after', 'closed_at', 'cancellation_reason'])]
+#[Fillable(['doctor_reply_due_at', 'proposed_slots', 'proposal_note', 'proposal_expires_at', 'proposal_is_reschedule', 'patient_asked_at', 'patient_time_note', 'conclusion_draft', 'conclusion_draft_saved_at', 'doctor_service_id', 'promo_amount_minor', 'promo_grant_id', 'higo_proposal', 'current_illness_history', 'patient_id', 'patient_profile_id', 'doctor_id', 'operator_id', 'declined_operator_ids', 'coordinator_id', 'specialty_id', 'type', 'consultation_kind', 'status', 'symptoms', 'selected_services', 'triage_notes', 'scheduled_at', 'proposed_scheduled_at', 'proposed_by', 'accepted_at', 'operator_accepted_at', 'anamnesis_completed_at', 'objective_data_completed_at', 'doctor_started_at', 'conclusion_sent_at', 'doctor_response_minutes', 'completed_at', 'amount_minor', 'real_amount_minor', 'points_amount_minor', 'points_percent', 'platform_fee_minor', 'provider_amount_minor', 'pricing_snapshot', 'payment_status', 'acceptance_expires_at', 'chat_expires_at', 'free_chat_until', 'chat_reactivated_until', 'cancelled_at', 'refunded_at', 'rating_required_after', 'closed_at', 'cancellation_reason'])]
 class ConsultationRequest extends Model
 {
     use StoresDatesInAppTimezone;
@@ -63,6 +63,13 @@ class ConsultationRequest extends Model
         return [
             'scheduled_at' => 'datetime',
             'proposed_scheduled_at' => 'datetime',
+            'doctor_reply_due_at' => 'datetime',
+            'proposed_slots' => 'array',
+            'proposal_expires_at' => 'datetime',
+            'proposal_is_reschedule' => 'boolean',
+            'patient_asked_at' => 'datetime',
+            'conclusion_draft' => 'array',
+            'conclusion_draft_saved_at' => 'datetime',
             'accepted_at' => 'datetime',
             'operator_accepted_at' => 'datetime',
             'declined_operator_ids' => 'array',
