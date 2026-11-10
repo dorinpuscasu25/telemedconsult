@@ -17,6 +17,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../componen
 import { useAuth } from '../../contexts/AuthContext';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '../../components/ui/sheet';
 import { dateOnly } from '../../lib/format';
+import { cn } from '../../components/ui/utils';
+import { ConclusionDialog, type ConclusionRequest } from '../../components/doctor/ConclusionEditor';
+import { mdl, stageOf, STAGE_LABEL, whenLabel, type Proposal, type RequestService, type Stage } from '../../lib/doctor';
 
 interface ChatUser {
   id: number;
@@ -81,6 +84,8 @@ interface Conversation {
 }
 
 type Participant = ChatUser & { role: string };
+/** Ce afișează cardul consultației din fir: serviciul, prețul și etapa. */
+type RequestSummary = ConclusionRequest & { status: string; stage?: Stage; proposal?: Proposal | null; doctor_started_at?: string | null; scheduled_at?: string | null; created_at: string; service?: RequestService; has_conclusion_draft?: boolean };
 type ChatPeer = { key: string; id: number; role: 'patient' | 'doctor' | 'operator'; name: string; unread: number; latest: Conversation };
 
 export function ChatView({ emptyTitle = 'Nu ai conversații încă', patientProfileId }: { emptyTitle?: string; patientProfileId?: number }) {
@@ -167,6 +172,16 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă', patientProf
     return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); };
   }, [loadConversations]);
 
+  const [requestsById, setRequestsById] = useState<Record<string, RequestSummary>>({});
+  const [conclusionFor, setConclusionFor] = useState<RequestSummary | null>(null);
+  const loadRequests = useCallback(() => {
+    if (role !== 'doctor' && role !== 'operator') return;
+    apiRequest<{ data: RequestSummary[] }>('/requests')
+      .then((response) => setRequestsById(Object.fromEntries((response.data ?? []).map((item) => [String(item.id), item]))))
+      .catch(() => undefined);
+  }, [role]);
+  useEffect(() => { loadRequests(); }, [loadRequests, conversations.length]);
+
   const requestedPatient = Number(patientProfileId || searchParams.get('patient_profile'));
   const requestedAccount = Number(searchParams.get('account'));
   const requestedDoctor = Number(searchParams.get('doctor'));
@@ -186,6 +201,10 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă', patientProf
     !requestedPatient || Number(item.patient_profile_id) === requestedPatient), [peerConversations, requestedPatient]);
   const activeChat = filteredConversations.find((item) => item.id === activeId) || filteredConversations[0];
   const activePatientConversations = channelChat ? peerConversations.filter((item) => (item.patient_profile_id ?? null) === (activeChat?.patient_profile_id ?? null)) : filteredConversations;
+  // În firul unui pacient se scrie în consultația deschisă cea mai recentă.
+  const composeChat = channelChat && role !== 'patient' && activeChat && !activeChat.is_direct
+    ? [...activePatientConversations].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).find((item) => item.chat?.can_write) ?? activeChat
+    : activeChat;
   const directConversations = peerConversations.filter((item) => item.is_direct);
   const directUnread = directConversations.reduce((total, item) => total + (item.unread_count || 0), 0);
   const patientGroups = Array.from(new Map(peerConversations.map((item) => [item.patient_profile_id, item.patient_profile])).entries()).filter(([id]) => id);
@@ -243,6 +262,23 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă', patientProf
       window.dispatchEvent(new Event('conversation-read'));
     }).catch(() => undefined);
   }, [readConversationId, readMessageId]);
+
+  // În firul pacientului se văd toate consultațiile lui; le marcăm citite pe toate.
+  const mergedUnread = channelChat && activeChat && !activeChat.is_direct
+    ? activePatientConversations.filter((item) => item.id !== activeChat.id && (item.unread_count || 0) > 0 && item.messages.length)
+    : [];
+  const mergedUnreadKey = mergedUnread.map((item) => item.id).join(',');
+  useEffect(() => {
+    if (!mergedUnreadKey) return;
+    mergedUnread.forEach((item) => {
+      apiRequest(`/conversations/${item.id}/read`, { method: 'POST', body: JSON.stringify({ last_message_id: item.messages[item.messages.length - 1].id }) })
+        .then(() => {
+          setConversations((current) => current.map((conversation) => conversation.id === item.id ? { ...conversation, unread_count: 0 } : conversation));
+          window.dispatchEvent(new Event('conversation-read'));
+        })
+        .catch(() => undefined);
+    });
+  }, [mergedUnreadKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     window.setTimeout(() => {
@@ -338,11 +374,11 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă', patientProf
 
   const handleSend = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!newMessage.trim() || !activeChat) return;
+    if (!newMessage.trim() || !composeChat) return;
 
     setIsSending(true);
     try {
-      await apiRequest(`/conversations/${activeChat.id}/messages`, {
+      await apiRequest(`/conversations/${composeChat.id}/messages`, {
         method: 'POST',
         body: JSON.stringify({ body: newMessage })
       });
@@ -365,14 +401,14 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă', patientProf
 
   const handleAttachment = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !activeChat) return;
+    if (!file || !composeChat) return;
 
     const formData = new FormData();
     formData.append('file', file);
 
     setIsSending(true);
     try {
-      await apiRequest(`/conversations/${activeChat.id}/attachments`, {
+      await apiRequest(`/conversations/${composeChat.id}/attachments`, {
         method: 'POST',
         body: formData
       });
@@ -430,6 +466,177 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă', patientProf
   const subtitle = role === 'patient'
     ? [activeParticipant.role === 'Medic' ? `Dr. ${activeParticipant.name}` : activeParticipant.name, !activeChat.is_direct && activeChat.patient_profile?.display_name ? `pentru ${activeChat.patient_profile.display_name}` : null].filter(Boolean).join(' · ')
     : [activeChat.patient?.name && `Titular: ${activeChat.patient.name}`, activeChat.patient_profile?.patient_code && `Cod ${activeChat.patient_profile.patient_code}`].filter(Boolean).join(' · ');
+
+  if (channelChat && role !== 'patient') {
+    const composeState: ChatState = composeChat?.chat ?? chat;
+    const timeline = activeChat.is_direct
+      ? [activeChat]
+      : [...activePatientConversations].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    const requestOf = (conversation: Conversation) => (conversation.consultation_request_id ? requestsById[String(conversation.consultation_request_id)] : undefined);
+    const ownerName = activeChat.patient?.name || activeParticipant.name;
+    const headerTitle = activeChat.is_direct ? 'Discuție directă' : activeChat.patient_profile?.display_name || ownerName;
+    const headerSub = activeChat.is_direct
+      ? `cu ${ownerName} · fără pacient`
+      : [activeChat.patient?.name && activeChat.patient.name !== activeChat.patient_profile?.display_name ? `titular ${activeChat.patient.name}` : null, activeChat.patient_profile?.patient_code ? `Cod ${activeChat.patient_profile.patient_code}` : null].filter(Boolean).join(' · ');
+    const videoRequest = timeline.map(requestOf).reverse().find((item) => item && ['conf', 'live'].includes(stageOf(item)) && item.service?.type !== 'chat');
+    const channelState = (id: number | null | undefined) => {
+      const list = peerConversations.filter((item) => item.patient_profile_id === id);
+      const latest = list.map(requestOf).filter(Boolean).sort((a, b) => new Date(b!.created_at).getTime() - new Date(a!.created_at).getTime())[0];
+      const age = list[0]?.patient_profile?.birth_date ? Math.floor((Date.now() - new Date(list[0].patient_profile.birth_date).getTime()) / 31557600000) : null;
+      return [age !== null ? `${age} ani` : null, latest ? STAGE_LABEL[stageOf(latest)].toLowerCase() : null].filter(Boolean).join(' · ');
+    };
+
+    return (
+      <div className="flex h-[calc(100dvh-72px-env(safe-area-inset-bottom))] min-h-[420px] lg:h-dvh">
+        <section className={cn(showListOnMobile ? 'flex' : 'hidden', 'w-full shrink-0 flex-col border-r border-slate-200 bg-white lg:flex lg:w-[270px]')} aria-label="Titulari">
+          <div className="flex flex-col gap-3 px-4 pb-3 pt-[18px]">
+            <h1 className="text-lg font-semibold text-slate-950">Mesaje</h1>
+            <label className="flex h-[38px] items-center gap-2 rounded-[10px] border border-slate-200 px-3 focus-within:border-blue-600">
+              <Search className="h-4 w-4 shrink-0 text-slate-400" />
+              <input aria-label="Caută pacient sau titular" placeholder="Caută pacient sau titular" value={peerSearch} onChange={(event) => setPeerSearch(event.target.value)} className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-slate-400" />
+            </label>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {visiblePeers.map((account) => {
+              const last = account.latest.messages[account.latest.messages.length - 1];
+              const active = activePeerKey === account.key;
+              const mine = last && Number(last.sender_id) === currentUserId;
+              return (
+                <button key={account.key} type="button" onClick={() => { selectPeer(account.key); setMobileView('chat'); }} aria-pressed={active}
+                  className={cn('flex w-full gap-2.5 border-t border-slate-100 px-4 py-3 text-left', active ? 'bg-blue-50 shadow-[inset_3px_0_0_#2563EB]' : 'bg-white hover:bg-slate-50')}>
+                  <span className={cn('grid h-[38px] w-[38px] shrink-0 place-items-center rounded-full text-xs font-semibold', active ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700')}>{initialsOf(account.name)}</span>
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="flex justify-between gap-2"><span className="truncate text-sm font-semibold text-slate-950">{account.name}</span>{last && <span className="shrink-0 text-[11px] text-slate-400">{shortTime(last.created_at)}</span>}</span>
+                    <span className="flex justify-between gap-1.5">
+                      <span className="truncate text-[13px] text-slate-500">{mine ? 'Tu: ' : ''}{last?.type === 'image' ? 'Imagine' : last?.type === 'file' ? 'Fișier atașat' : last?.body || 'Conversație nouă'}</span>
+                      {account.unread > 0 && <span className="grid h-[18px] min-w-[18px] shrink-0 place-items-center rounded-full bg-blue-600 px-[5px] text-[10px] font-bold text-white">{account.unread}</span>}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+            {peerSearch && visiblePeers.length === 0 && <p className="p-4 text-center text-sm text-slate-500">Niciun pacient găsit.</p>}
+          </div>
+        </section>
+
+        <aside aria-label="Pacienți" className={cn(showListOnMobile ? 'hidden lg:flex' : 'hidden md:flex', 'w-[220px] shrink-0 flex-col gap-1 overflow-y-auto border-r border-slate-200 bg-slate-50 px-2.5 py-3.5')}>
+          <span className="px-2 py-1 text-[11px] font-semibold tracking-[.06em] text-slate-400">PACIENȚI</span>
+          {patientGroups.map(([id, patient]) => {
+            const list = peerConversations.filter((item) => item.patient_profile_id === id);
+            const unread = list.reduce((total, item) => total + (item.unread_count || 0), 0);
+            const on = !activeChat.is_direct && activeChat.patient_profile_id === id;
+            return (
+              <SideChannel key={id} on={on} unread={on ? 0 : unread} onClick={() => selectConversation(list[0])}
+                icon={<span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg bg-blue-100 text-[11px] font-semibold text-blue-700">{initialsOf(patient?.display_name || 'P')}</span>}
+                title={patient?.display_name || `Pacient ${id}`} sub={channelState(id)} />
+            );
+          })}
+          {patientGroups.length === 0 && <p className="px-2 py-2 text-xs text-slate-500">Pacienții apar după prima consultație.</p>}
+          <div className="mx-1 my-2 h-px bg-slate-200" />
+          <SideChannel on={Boolean(activeChat.is_direct)} unread={activeChat.is_direct ? 0 : directUnread} onClick={() => void openDirectConversation()}
+            icon={<span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg bg-slate-200 text-slate-600"><MessageSquare className="h-4 w-4" /></span>}
+            title="Discuție directă" sub="cu titularul" />
+        </aside>
+
+        <section className={cn(showListOnMobile ? 'hidden lg:flex' : 'flex', 'min-w-0 flex-1 flex-col bg-white')} aria-label="Conversația">
+          <header className="flex h-16 shrink-0 items-center gap-3 border-b border-slate-200 px-3 sm:px-5">
+            <button type="button" className="grid h-9 w-9 place-items-center text-slate-600 lg:hidden" aria-label="Înapoi la conversații" onClick={() => setMobileView('list')}><ChevronLeft className="h-5 w-5" /></button>
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5"><span className="truncate text-[15px] font-semibold text-slate-950">{headerTitle}</span>{headerSub && <span className="truncate text-xs text-slate-500">{headerSub}</span>}</div>
+            {activeChat.patient_profile_id && <button type="button" onClick={() => setShowChart(true)} className="hidden h-[38px] items-center gap-2 rounded-[10px] px-3 text-[13px] font-medium text-slate-600 hover:bg-slate-50 sm:flex"><Stethoscope className="h-4 w-4" />Fișa</button>}
+            {videoRequest ? (
+              <Link to={`/consultations/${videoRequest.id}/video`} state={{ returnTo: window.location.pathname + window.location.search }} className="flex h-[38px] items-center gap-2 rounded-[10px] border border-slate-200 bg-white px-3.5 text-[13px] font-medium text-slate-950 hover:bg-slate-50"><Video className="h-4 w-4" /><span className="hidden sm:inline">Apel video</span></Link>
+            ) : (
+              <button type="button" disabled title="Apelul video e disponibil pentru o consultație confirmată." className="flex h-[38px] items-center gap-2 rounded-[10px] border border-slate-200 bg-white px-3.5 text-[13px] font-medium text-slate-400"><Video className="h-4 w-4" /><span className="hidden sm:inline">Apel video</span></button>
+            )}
+          </header>
+
+          <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-slate-100 bg-slate-50 px-3 py-2 [scrollbar-width:none] md:hidden">
+            {patientGroups.map(([id, patient]) => {
+              const list = peerConversations.filter((item) => item.patient_profile_id === id);
+              return <ChannelChip key={id} active={!activeChat.is_direct && activeChat.patient_profile_id === id} unread={list.reduce((total, item) => total + (item.unread_count || 0), 0)} onClick={() => selectConversation(list[0])}>{patient?.display_name || `Pacient ${id}`}</ChannelChip>;
+            })}
+            <ChannelChip active={Boolean(activeChat.is_direct)} disabled={openingDirect} unread={directUnread} onClick={() => void openDirectConversation()}>Discuție directă</ChannelChip>
+          </div>
+
+          {error && <p role="alert" className="shrink-0 bg-red-50 px-5 py-2 text-sm text-red-700">{error}</p>}
+
+          <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50">
+            <div className="flex flex-col gap-3 p-4 sm:p-5">
+              {timeline.map((conversation, episodeIndex) => {
+                const request = requestOf(conversation);
+                const stage = request ? stageOf(request) : null;
+                const past = stage === 'done' || stage === 'cancel' || stage === 'expired';
+                const when = request?.scheduled_at && new Date(request.scheduled_at).getTime() > Date.now() - 864e5 ? whenLabel(request.scheduled_at) : new Date(request?.scheduled_at ?? conversation.created_at).toLocaleDateString('ro-RO', { day: 'numeric', month: 'short' }).replace('.', '');
+                return (
+                  <React.Fragment key={conversation.id}>
+                    {conversation.consultation_request_id && (
+                      <div className={cn('flex items-center justify-between gap-3 self-stretch rounded-xl border border-slate-200 bg-white px-3.5 py-2.5', past && 'opacity-[.55]')}>
+                        <div className="flex min-w-0 flex-col gap-0.5">
+                          <span className="text-[13px] font-semibold text-slate-950">Consultația #{episodeIndex + 1} · {when}</span>
+                          {request?.service && <span className="truncate text-xs text-slate-500">{request.service.name} · {mdl(request.service.price)}</span>}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          {stage === 'live' && role === 'doctor' && <button type="button" onClick={() => setConclusionFor(request!)} className="h-8 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700">{request?.has_conclusion_draft ? 'Continuă concluzia' : 'Scrie concluzia'}</button>}
+                          {stage && <span className={cn('rounded-full px-[9px] py-[3px] text-xs font-semibold', past ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-800')}>{STAGE_LABEL[stage]}</span>}
+                          {role === 'doctor' && request && <Link to={`/doctor/consultations?request=${request.id}`} aria-label="Deschide consultația" className="text-slate-400 hover:text-slate-600"><ChevronRight className="h-4 w-4" /></Link>}
+                        </div>
+                      </div>
+                    )}
+                    {conversation.messages.map((message, index) => {
+                      const previous = conversation.messages[index - 1];
+                      const mine = currentUserId === Number(message.sender_id);
+                      const newDay = !previous || dayKey(previous.created_at) !== dayKey(message.created_at);
+                      return (
+                        <React.Fragment key={message.id}>
+                          {newDay && conversation.is_direct && <span className="self-center text-xs text-slate-500">{dayLabel(message.created_at)}</span>}
+                          {message.type === 'system' ? (
+                            <span className="self-center text-center text-xs text-slate-500">{message.body}</span>
+                          ) : (
+                            <div className={cn('max-w-[85%] whitespace-pre-wrap break-words px-3.5 py-2.5 text-sm leading-normal sm:max-w-[70%]', mine ? 'self-end rounded-[14px_14px_4px_14px] bg-blue-600 text-white' : 'self-start rounded-[14px_14px_14px_4px] border border-slate-200 bg-white text-slate-950')} title={shortTime(message.created_at)}>
+                              {message.type === 'image' && message.metadata?.url ? (
+                                <a href={message.metadata.url} target="_blank" rel="noreferrer" className="block"><img src={message.metadata.url} alt={message.metadata.file_name || 'Atașament'} className="max-h-64 rounded-lg object-cover" />{message.body && <span className="mt-2 block">{message.body}</span>}</a>
+                              ) : message.type === 'file' && message.metadata?.url ? (
+                                <a href={message.metadata.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:underline"><FileText className="h-5 w-5 shrink-0" /><span className="min-w-0 break-all">{message.metadata.file_name || message.body}</span></a>
+                              ) : message.body}
+                            </div>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </React.Fragment>
+                );
+              })}
+              {typingName && <span className="self-start rounded-full bg-white px-3 py-1.5 text-xs font-medium text-slate-500">{typingName} scrie…</span>}
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+
+          <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-3">
+            {composeState.can_write ? (
+              <form onSubmit={handleSend} className="flex items-end gap-2.5">
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isSending} aria-label="Atașează un fișier" className="grid h-[42px] w-8 shrink-0 place-items-center text-slate-500 hover:text-blue-600"><Paperclip className="h-5 w-5" /></button>
+                <input ref={fileInputRef} type="file" accept="image/*,.pdf,.doc,.docx" className="hidden" onChange={handleAttachment} />
+                <textarea id="chat-message" ref={composerRef} rows={1} value={newMessage} aria-label="Mesaj"
+                  onChange={(event) => { handleTyping(event.target.value); autoGrow(event.target); }}
+                  onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}
+                  placeholder="Scrie un mesaj…"
+                  className="max-h-40 min-h-[42px] flex-1 resize-none rounded-[10px] border border-slate-200 px-3.5 py-[11px] text-sm leading-5 outline-none placeholder:text-slate-400 focus:border-blue-600 focus:ring-[3px] focus:ring-blue-600/15" />
+                <button type="submit" disabled={isSending || !newMessage.trim()} aria-label="Trimite mesajul" className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-[10px] bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"><Send className="h-[18px] w-[18px]" /></button>
+              </form>
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-3 text-center sm:flex-row">
+                <p className="text-sm text-slate-500">{composeState.message ?? 'Această conversație nu este activă.'}</p>
+                {composeState.can_reactivate && <Button size="sm" onClick={reactivateChat}><CheckCircle2 className="h-4 w-4" />Reactivează chatul</Button>}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <Dialog open={showChart} onOpenChange={setShowChart}><DialogContent className="max-h-[85vh] max-w-3xl overflow-auto"><DialogHeader><DialogTitle>Fișa pacientului</DialogTitle></DialogHeader>{activeChat.patient_profile_id && <ChatPatientRecord id={activeChat.patient_profile_id} name={activeChat.patient_profile?.display_name} />}</DialogContent></Dialog>
+        <ConclusionDialog request={conclusionFor} open={Boolean(conclusionFor)} onOpenChange={(open) => { if (!open) setConclusionFor(null); }} onPublished={() => { setConclusionFor(null); loadRequests(); loadConversations(); }} />
+      </div>
+    );
+  }
 
   const heightClass = patientProfileId
     ? 'h-[640px]'
@@ -719,6 +926,17 @@ function ChannelRow({ icon, active, unread = 0, disabled = false, detail, onClic
         {detail && <span className="block truncate text-xs text-slate-400">{detail}</span>}
       </span>
       {unread > 0 && <span aria-label={`${unread} mesaje necitite`} className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-primary px-1.5 text-[11px] font-bold text-white">{unread}</span>}
+    </button>
+  );
+}
+
+function SideChannel({ on, unread, onClick, icon, title, sub }: { on: boolean; unread: number; onClick: () => void; icon: React.ReactNode; title: string; sub?: string }) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={on}
+      className={cn('flex items-center gap-2.5 rounded-[10px] border p-2.5 text-left', on ? 'border-blue-200 bg-white shadow-[0_1px_3px_rgba(15,23,42,.08),inset_3px_0_0_#2563EB]' : 'border-transparent hover:bg-white')}>
+      {icon}
+      <span className="flex min-w-0 flex-1 flex-col gap-px"><span className={cn('truncate text-[13px] font-semibold', on ? 'text-blue-700' : 'text-slate-950')}>{title}</span>{sub && <span className="truncate text-[11px] text-slate-500">{sub}</span>}</span>
+      {unread > 0 && <span className="grid h-[18px] min-w-[18px] place-items-center rounded-full bg-blue-600 px-[5px] text-[10px] font-bold text-white">{unread}</span>}
     </button>
   );
 }
