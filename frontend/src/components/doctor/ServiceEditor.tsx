@@ -75,7 +75,7 @@ export function ServiceEditor({ service, open, catalog, onOpenChange, onSaved }:
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!busy) onOpenChange(next); }}>
-      <DialogContent showCloseButton={false} className="flex h-dvh max-h-dvh w-full max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 sm:h-auto sm:max-h-[820px] sm:w-[540px] sm:max-w-[540px] sm:rounded-2xl">
+      <DialogContent showCloseButton={false} className="flex h-dvh max-h-dvh w-full max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 sm:h-auto sm:max-h-[820px] sm:p-0 sm:w-[540px] sm:max-w-[540px] sm:rounded-2xl">
         <div className="flex items-center gap-1 border-b border-slate-100 px-2 pb-2.5 pt-[max(12px,env(safe-area-inset-top))] sm:border-0 sm:px-6 sm:pb-0 sm:pt-5">
           <button type="button" aria-label="Închide" onClick={() => onOpenChange(false)} className="grid h-10 w-10 place-items-center text-slate-600 sm:order-last sm:h-8 sm:w-8 sm:text-slate-500"><X className="h-5 w-5" /></button>
           <DialogTitle className="flex-1 text-lg font-semibold">{isNew ? 'Serviciu nou' : 'Editează serviciul'}</DialogTitle>

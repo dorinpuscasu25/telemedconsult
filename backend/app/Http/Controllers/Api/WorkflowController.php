@@ -1434,6 +1434,26 @@ class WorkflowController extends Controller
         ]);
     }
 
+    /** La o reprogramare, pacientul poate păstra ora confirmată. */
+    public function keepCurrentTime(Request $request, ConsultationRequest $consultationRequest): JsonResponse
+    {
+        abort_unless((int) $request->user()->id === (int) $consultationRequest->patient_id, 403);
+        abort_unless($consultationRequest->status === 'rescheduled' && $consultationRequest->proposal_is_reschedule, 422, 'Nu există o reprogramare activă.');
+
+        $this->clearProposal($consultationRequest, 'accepted');
+        $this->postSystemMessage($consultationRequest, $request->user(), 'Pacientul păstrează ora confirmată.');
+        $consultationRequest->doctor?->notify(new AppEventNotification(
+            'Pacientul păstrează ora',
+            'Consultația rămâne '.$consultationRequest->scheduled_at?->setTimezone('Europe/Chisinau')->format('d.m, H:i').'.',
+            '/doctor/consultations?request='.$consultationRequest->id,
+        ));
+
+        return response()->json([
+            'message' => 'Rămâne ora confirmată.',
+            'request' => $this->serializeRequest($consultationRequest->refresh()->load(['patient', 'doctor', 'operator', 'specialty'])),
+        ]);
+    }
+
     /** Medicul își retrage propunerea: cererea revine la starea dinainte. */
     public function withdrawProposal(Request $request, ConsultationRequest $consultationRequest): JsonResponse
     {
@@ -2460,7 +2480,9 @@ class WorkflowController extends Controller
         $stale = ConsultationRequest::query()
             ->where(fn ($query) => $query
                 ->where(fn ($new) => $new->where('status', 'new')->whereNotNull('doctor_reply_due_at')->where('doctor_reply_due_at', '<', now()))
-                ->orWhere(fn ($proposal) => $proposal->where('status', 'rescheduled')->whereNotNull('proposal_expires_at')->where('proposal_expires_at', '<', now())))
+                ->orWhere(fn ($proposal) => $proposal->where('status', 'rescheduled')->whereNotNull('proposal_expires_at')->where('proposal_expires_at', '<', now()))
+                // Propunerile de dinainte de termene expiră când ora propusă a trecut.
+                ->orWhere(fn ($legacy) => $legacy->where('status', 'rescheduled')->whereNull('proposal_expires_at')->where('proposed_scheduled_at', '<', now())))
             ->limit(50)
             ->get();
 
@@ -2471,7 +2493,8 @@ class WorkflowController extends Controller
                     return;
                 }
 
-                if ($item->status === 'rescheduled' && $item->proposal_expires_at?->isPast()) {
+                $proposalPassed = $item->proposal_expires_at?->isPast() || (! $item->proposal_expires_at && $item->proposed_scheduled_at?->isPast());
+                if ($item->status === 'rescheduled' && $proposalPassed) {
                     if ($item->proposal_is_reschedule && ! $item->patient_asked_at) {
                         $this->clearProposal($item, 'accepted');
 

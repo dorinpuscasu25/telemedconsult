@@ -1,3 +1,4 @@
+import { ProposalResponse } from '../../components/patient/ProposalResponse';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Check, CheckCircle2, ChevronDown, ClipboardList, Clock, Folder, Home, MessageSquare, MessagesSquare, Paperclip, Search, Send, Video } from 'lucide-react';
@@ -465,7 +466,7 @@ function Timeline({ episodes, requests, currentUserId, newFrom, onChanged }: { e
               );
             })}
             {request?.status === 'completed' && <ConclusionCard requestId={request.id} />}
-            {isCurrent && request?.status === 'rescheduled' && request.proposed_scheduled_at && <ProposalCard request={request} onChanged={onChanged} />}
+            {isCurrent && request?.status === 'rescheduled' && <ProposalResponse request={request} onChanged={onChanged} className="my-3 w-full max-w-md" />}
           </Fragment>
         );
       })}
@@ -498,31 +499,6 @@ function useDocuments(requestId: string): ConsultationDoc[] {
     return () => { alive = false; };
   }, [requestId]);
   return docs;
-}
-
-/** Propunerea de oră a medicului, în cronologie, cu răspunsul pe loc (C3b). */
-function ProposalCard({ request, onChanged }: { request: PatientConsultation; onChanged: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const accept = async () => {
-    setBusy(true);
-    setError('');
-    try { await apiRequest(`/requests/${request.id}/accept-proposed-time`, { method: 'POST' }); onChanged(); }
-    catch (err) { setError(err instanceof Error ? err.message : 'Nu am putut accepta ora.'); }
-    finally { setBusy(false); }
-  };
-  return (
-    <div className="my-3 flex max-w-md flex-col gap-1 rounded-[14px] border border-slate-200 bg-white p-3.5">
-      <span className="text-xs text-slate-500">Medicul propune altă oră</span>
-      <span className="text-[17px] font-bold tracking-tight text-slate-950">{capitalize(longWhen(request.proposed_scheduled_at!))}</span>
-      {request.scheduled_at && <span className="text-[13px] text-slate-500">Ora cerută de tine ({timeOf(request.scheduled_at)}) nu mai e liberă.</span>}
-      {error && <span role="alert" className="text-[13px] text-red-700">{error}</span>}
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        <Button disabled={busy} onClick={() => void accept()} className="h-11 rounded-[10px]">{busy ? 'Se confirmă…' : 'Accept'}</Button>
-        <Button variant="outline" className="h-11 rounded-[10px] bg-white" onClick={() => document.getElementById('patient-chat-message')?.focus()}>Altă oră</Button>
-      </div>
-    </div>
-  );
 }
 
 /** Concluzia publicată, ca un card în cronologie. */

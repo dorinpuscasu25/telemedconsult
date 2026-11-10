@@ -90,7 +90,7 @@ export function ProposeTimeDialog({ request, open, onOpenChange, onSent }: {
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!sending) onOpenChange(next); }}>
-      <DialogContent showCloseButton={false} className="flex max-h-[96dvh] w-[calc(100%-1rem)] max-w-[620px] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-[620px]">
+      <DialogContent showCloseButton={false} className="flex max-h-[96dvh] w-[calc(100%-1rem)] max-w-[620px] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-[620px] sm:p-0">
         <div className="flex items-start justify-between px-6 pt-5">
           <div className="flex flex-col gap-1">
             <DialogTitle className="text-lg font-semibold">{title}</DialogTitle>

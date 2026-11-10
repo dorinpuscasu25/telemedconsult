@@ -192,6 +192,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/requests/{consultationRequest}/accept-proposed-time', [WorkflowController::class, 'acceptProposedTime']);
         Route::post('/requests/{consultationRequest}/request-other-times', [WorkflowController::class, 'requestOtherTimes']);
         Route::post('/requests/{consultationRequest}/withdraw-proposal', [WorkflowController::class, 'withdrawProposal']);
+        Route::post('/requests/{consultationRequest}/keep-current-time', [WorkflowController::class, 'keepCurrentTime']);
         Route::get('/requests/{consultationRequest}/conclusion-draft', [WorkflowController::class, 'conclusionDraft']);
         Route::put('/requests/{consultationRequest}/conclusion-draft', [WorkflowController::class, 'saveConclusionDraft']);
         Route::post('/requests/{consultationRequest}/forward-to-doctor', [WorkflowController::class, 'forwardToDoctor']);

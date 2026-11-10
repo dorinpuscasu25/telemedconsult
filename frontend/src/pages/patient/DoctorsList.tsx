@@ -1,15 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Check, ChevronDown, ChevronLeft, CreditCard, Home, Info, Lock, MapPin, Send, Star, Stethoscope, Video, X } from 'lucide-react';
-import { Avatar, AvatarFallback } from '../../components/ui/avatar';
-import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
-  DialogHeader,
   DialogTitle
 } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
@@ -21,6 +17,9 @@ import { ConsultationComplaintFields } from '../../components/ConsultationCompla
 import { BonusSlider, PrepareDoctorCard, ShortfallNotice, SlotPicker, longDateTime, mdl } from '../../components/patient/BookingParts';
 import { apiRequest } from '../../lib/api';
 import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
+import { investigationsText, serviceMeta, SERVICE_TYPE_LABEL, mdl as formatMdl, type DoctorServiceItem } from '../../lib/doctor';
+import { PublicDoctorHeader, ServiceChoices } from '../../components/doctor/DoctorPublicProfile';
+import { Building2 } from 'lucide-react';
 
 interface Doctor {
   id: string;
@@ -40,6 +39,14 @@ interface Doctor {
   reviews_count: number;
   is_available: boolean;
   accepts_points?: boolean;
+  services?: DoctorServiceItem[];
+  institution?: { name: string; address?: string | null } | null;
+  bio?: string | null;
+}
+
+/** Serviciile pe care pacientul le poate programa acum (după comutatoarele platformei). */
+function bookableServices(doctor: Doctor | null, videoEnabled: boolean, withExamEnabled: boolean): DoctorServiceItem[] {
+  return (doctor?.services ?? []).filter((service) => (service.type === 'home' ? withExamEnabled : videoEnabled));
 }
 
 interface InvestigationLine {
@@ -131,6 +138,8 @@ export function DoctorsList() {
   const [doctorReviews, setDoctorReviews] = useState<DoctorReview[]>([]);
   const [patientProfileId, setPatientProfileId] = useState('');
   const [consultationKind, setConsultationKind] = useState<'with_exam' | 'video'>('video');
+  const [serviceId, setServiceId] = useState<string | null>(null);
+  const [detailServiceId, setDetailServiceId] = useState<string | null>(null);
   const [pendingReview, setPendingReview] = useState<{ id: string; doctor_name?: string | null } | null>(null);
   const effectiveKind = consultationKind === 'with_exam' && withExamEnabled ? 'with_exam' : consultationKind === 'video' && videoEnabled ? 'video' : videoEnabled ? 'video' : withExamEnabled ? 'with_exam' : null;
   const [symptoms, setSymptoms] = useState('');
@@ -190,7 +199,11 @@ export function DoctorsList() {
       .catch(() => setDoctorReviews([]));
   }, [detailDoctor, isDetailOpen]);
 
-  const openRequestDialog = (doctor: Doctor, kind: 'with_exam' | 'video' = 'video') => {
+  const openRequestDialog = (doctor: Doctor, kind: 'with_exam' | 'video' = 'video', chosenServiceId: string | null = null) => {
+    const services = bookableServices(doctor, videoEnabled, withExamEnabled);
+    const chosen = services.find((service) => service.id === chosenServiceId) ?? services[0] ?? null;
+    setServiceId(chosen?.id ?? null);
+    if (chosen) kind = chosen.type === 'home' ? 'with_exam' : 'video';
     const availableKind = kind === 'with_exam' && withExamEnabled
       ? 'with_exam'
       : kind === 'video' && videoEnabled
@@ -245,6 +258,7 @@ export function DoctorsList() {
         consultation_kind: effectiveKind,
         patient_profile_id: Number(patientProfileId),
         doctor_id: selectedDoctor.id,
+        service_id: serviceId ? Number(serviceId) : null,
         selected_services: effectiveKind === 'with_exam' ? selectedOptionalIds : [],
         points_percent: pointsPercent
       })
@@ -254,7 +268,7 @@ export function DoctorsList() {
       .finally(() => { if (!cancelled) setPreviewLoading(false); });
 
     return () => { cancelled = true; };
-  }, [isRequestOpen, selectedDoctor, patientProfileId, effectiveKind, selectedOptionalIds, pointsPercent, previewVersion]);
+  }, [isRequestOpen, selectedDoctor, patientProfileId, effectiveKind, serviceId, selectedOptionalIds, pointsPercent, previewVersion]);
 
   const toggleOptional = (id: number) => {
     setSelectedOptionalIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
@@ -282,6 +296,7 @@ export function DoctorsList() {
           consultation_kind: effectiveKind,
           patient_profile_id: patientProfileId ? Number(patientProfileId) : null,
           doctor_id: selectedDoctor.id,
+          service_id: serviceId ? Number(serviceId) : null,
           specialty_id: selectedDoctor.specialty_id,
           symptoms,
           current_illness_history: illnessHistory,
@@ -355,10 +370,32 @@ export function DoctorsList() {
   const selectedProfile = requestablePatientProfiles.find((profile) => String(profile.id) === patientProfileId);
   const pinnedProfile = !isRequestOpen || selectedProfile ? selectedProfile : undefined;
   const fromWizard = searchParams.get('from') === 'start';
-  const optionalInvestigations = selectedDoctor?.investigation_requirements?.optional ?? [];
+  const selectedService = bookableServices(selectedDoctor, videoEnabled, withExamEnabled).find((service) => service.id === serviceId) ?? null;
+  const optionalInvestigations = selectedService
+    ? selectedService.investigations.filter((item) => item.requirement === 'optional').map((item) => ({ id: item.id, name: item.name ?? '', default_price: item.price }))
+    : selectedDoctor?.investigation_requirements?.optional ?? [];
+  const pickService = (service: DoctorServiceItem) => {
+    setServiceId(service.id);
+    setConsultationKind(service.type === 'home' ? 'with_exam' : 'video');
+    setSelectedOptionalIds([]);
+  };
   const canContinueStep1 = Boolean(patientProfileId && effectiveKind);
   const needsAddress = effectiveKind === 'with_exam' && Boolean(selectedProfile) && selectedProfile?.has_complete_address === false;
   const missingRegion = needsAddress && (!selectedProfile?.region_id || !selectedProfile?.locality_id);
+  const addressBlock = selectedProfile ? (
+                            <div className="flex flex-col gap-3 border-t border-blue-100 p-3.5">
+                              <p className="flex items-center gap-1.5 text-[13px] text-slate-600"><MapPin className="h-4 w-4" />Unde vine operatorul?{selectedProfile.locality ? ` ${[selectedProfile.locality, selectedProfile.region].filter(Boolean).join(', ')}` : ''}</p>
+                              {missingRegion ? (
+                                <p className="text-sm text-amber-800">Profilul nu are raionul și localitatea. <Link to={`/patient/patients/${selectedProfile.id}`} className="font-semibold underline">Completează-le în fișă</Link>, apoi revino.</p>
+                              ) : (
+                                <>
+                                  <label className="flex flex-col gap-1.5"><span className="text-sm font-medium text-slate-900">Strada și numărul</span><Input autoComplete="street-address" placeholder="str. Cartușa 12, ap. 4" value={street} onChange={(event) => setStreet(event.target.value)} className="h-11 rounded-[10px] text-[15px]" /></label>
+                                  <label className="flex flex-col gap-1.5"><span className="text-sm font-medium text-slate-900">Telefon</span><Input type="tel" autoComplete="tel" placeholder="+373 __ ___ ___" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} className="h-11 rounded-[10px] text-[15px]" /></label>
+                                  <span className="text-xs text-slate-500">Se salvează în profil, ca să nu le completezi data viitoare.</span>
+                                </>
+                              )}
+                            </div>
+  ) : null;
   const shortfall = preview?.wallet?.shortfall ?? 0;
   const canContinueStep2 = Boolean(symptoms.trim() && scheduledAt);
   const maxPointsPercent = preview?.payment?.max_points_percent ?? 100;
@@ -461,81 +498,118 @@ export function DoctorsList() {
       ) : (
         <div className="grid grid-cols-1 gap-3 pt-4 lg:grid-cols-2 lg:gap-4 lg:pt-6">
           {doctors.map((doctor) => {
-            const exam = withExamEnabled ? `${doctor.consultation_price} MDL` : null;
-            const video = videoEnabled ? `${doctor.video_price ?? 500} MDL` : null;
+            const services = bookableServices(doctor, videoEnabled, withExamEnabled);
+            const legacy = !doctor.services?.length;
+            const exam = legacy && withExamEnabled ? `${doctor.consultation_price} MDL` : null;
+            const video = legacy && videoEnabled ? `${doctor.video_price ?? 500} MDL` : null;
+            const types = [...new Set(services.map((service) => SERVICE_TYPE_LABEL[service.type]))];
+            const from = services.length ? Math.min(...services.map((service) => service.price)) : null;
+            const openProfile = () => { setDetailDoctor(doctor); setDetailServiceId(services[0]?.id ?? null); setIsDetailOpen(true); };
             const book = () => openRequestDialog(doctor, videoEnabled ? 'video' : 'with_exam');
             return (
-              <article key={doctor.id} className="flex flex-col gap-3.5 rounded-2xl border border-slate-200 bg-white p-4 lg:gap-4 lg:p-5">
-                <button type="button" className="flex items-center gap-3 text-left lg:gap-3.5" onClick={() => { setDetailDoctor(doctor); setIsDetailOpen(true); }}>
-                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-slate-200 text-[15px] font-semibold text-slate-700 lg:h-[52px] lg:w-[52px] lg:text-base">{initialsOf(doctor.name)}</span>
+              <article key={doctor.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 lg:gap-3.5 lg:p-5">
+                <button type="button" className="flex items-center gap-3 text-left lg:gap-3.5" onClick={openProfile}>
+                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-blue-100 font-semibold text-blue-700 lg:h-[52px] lg:w-[52px] lg:text-base">{initialsOf(doctor.name)}</span>
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="truncate text-base font-semibold text-slate-950">{doctor.name}</span>
-                    <span className="truncate text-[13px] text-slate-500">{doctor.specialty || 'Medic'}<span className="hidden lg:inline">{doctor.experience_years > 0 ? ` · ${doctor.experience_years} ani experiență` : ''}</span></span>
+                    {doctor.institution
+                      ? <span className="flex items-center gap-[5px] truncate text-xs text-slate-500"><Building2 className="h-3.5 w-3.5 shrink-0" />{doctor.institution.name}</span>
+                      : <span className="truncate text-[13px] text-slate-500">{doctor.specialty || 'Medic'}{doctor.experience_years > 0 ? ` · ${doctor.experience_years} ani` : ''}</span>}
                   </span>
-                  <span className="flex shrink-0 items-center gap-1 text-sm font-semibold text-slate-950"><Star className="h-4 w-4 fill-amber-400 text-amber-400" />{Number(doctor.rating || 0).toFixed(1)}<span className="text-xs font-normal text-slate-400">({doctor.reviews_count})</span></span>
+                  <span className="shrink-0 whitespace-nowrap text-[13px] text-slate-600">★ {Number(doctor.rating || 0).toLocaleString('ro-RO', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
                 </button>
-                <div className="grid grid-cols-2 gap-2 lg:flex lg:items-stretch lg:gap-2.5">
-                  {video && <PriceTile label="Video" value={video} />}
-                  {exam && <PriceTile label="Cu examinare acasă" value={exam} />}
-                  {(video || exam) && <button type="button" onClick={book} className="hidden rounded-[10px] bg-blue-600 px-[18px] text-sm font-semibold text-white hover:bg-blue-700 lg:block">Programează</button>}
-                </div>
-                {(video || exam) && <button type="button" onClick={book} className="h-11 rounded-[10px] bg-blue-600 text-sm font-semibold text-white hover:bg-blue-700 lg:hidden">Programează</button>}
-                {!video && !exam && <p className="text-sm text-slate-500">Consultațiile sunt momentan dezactivate.</p>}
+                {legacy ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-2 lg:flex lg:items-stretch lg:gap-2.5">
+                      {video && <PriceTile label="Video" value={video} />}
+                      {exam && <PriceTile label="Cu examinare acasă" value={exam} />}
+                    </div>
+                    {(video || exam) ? <button type="button" onClick={book} className="h-11 rounded-[10px] bg-blue-600 text-sm font-semibold text-white hover:bg-blue-700">Programează</button> : <p className="text-sm text-slate-500">Consultațiile sunt momentan dezactivate.</p>}
+                  </>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap gap-1.5">{types.map((type) => <span key={type} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">{type}</span>)}</div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex flex-col gap-px">
+                        <span className="text-xs text-slate-500">{services.length} {services.length === 1 ? 'serviciu' : 'servicii'}</span>
+                        <span className="text-base font-bold text-slate-950">{from !== null ? `de la ${formatMdl(from)}` : '—'}</span>
+                      </div>
+                      <button type="button" onClick={openProfile} disabled={!services.length} className="flex h-10 items-center rounded-[10px] bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:bg-blue-300">Vezi serviciile</button>
+                    </div>
+                  </>
+                )}
               </article>
             );
           })}
         </div>
       )}
 
-      {/* Profilul medicului */}
+      {/* Profilul medicului (V1 pe desktop, V2a pe telefon) */}
       <Dialog open={isDetailOpen} onOpenChange={(open) => !open && setIsDetailOpen(false)}>
-        <DialogContent className="sm:max-w-[600px]">
-          {detailDoctor && (
-            <>
-              <DialogHeader>
-                <div className="flex items-center gap-4">
-                  <Avatar className="size-16 shrink-0"><AvatarFallback className="bg-primary/10 text-lg font-semibold text-primary">{initialsOf(detailDoctor.name)}</AvatarFallback></Avatar>
-                  <div className="min-w-0">
-                    <DialogTitle className="text-2xl">{detailDoctor.name}</DialogTitle>
-                    <DialogDescription className="font-medium text-primary">{detailDoctor.specialty || 'Medic'}</DialogDescription>
-                  </div>
+        <DialogContent className="flex h-dvh max-h-dvh w-full max-w-none flex-col gap-0 overflow-hidden rounded-none bg-slate-50 p-0 sm:h-auto sm:max-h-[92dvh] sm:max-w-[1000px] sm:p-0 sm:rounded-2xl [&>button:last-child]:hidden">
+          {detailDoctor && (() => {
+            const services = bookableServices(detailDoctor, videoEnabled, withExamEnabled);
+            const chosen = services.find((service) => service.id === detailServiceId) ?? services[0] ?? null;
+            const legacy = !detailDoctor.services?.length;
+            const choose = () => { setIsDetailOpen(false); openRequestDialog(detailDoctor, chosen?.type === 'home' ? 'with_exam' : videoEnabled ? 'video' : 'with_exam', chosen?.id ?? null); };
+            const forWhom = requestablePatientProfiles.find((profile) => String(profile.id) === (requestedProfileId ?? patientProfileId)) ?? requestablePatientProfiles[0];
+            return (
+              <>
+                <div className="flex shrink-0 items-center gap-1 border-b border-slate-200 bg-white px-2 pb-2.5 pt-[max(12px,env(safe-area-inset-top))] sm:px-5 sm:py-3">
+                  <button type="button" aria-label="Înapoi" onClick={() => setIsDetailOpen(false)} className="grid h-10 w-10 place-items-center text-slate-700"><ChevronLeft className="h-5 w-5" /></button>
+                  <DialogTitle className="flex-1 text-base font-semibold">Profil medic</DialogTitle>
+                  <DialogDescription className="sr-only">Serviciile, prețurile și instituția medicului.</DialogDescription>
                 </div>
-              </DialogHeader>
-              <div className="space-y-5">
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <Stat value={Number(detailDoctor.rating || 0).toFixed(1)} label="rating" />
-                  <Stat value={String(detailDoctor.reviews_count)} label="recenzii" />
-                  <Stat value={detailDoctor.experience_years ? `${detailDoctor.experience_years} ani` : '—'} label="experiență" />
-                </div>
-                <div className="space-y-2 rounded-xl border border-slate-200 p-4 text-sm">
-                  {withExamEnabled && <PriceRow icon={Home} label="Consultație cu examinare la domiciliu" value={`${detailDoctor.consultation_price} MDL`} />}
-                  {videoEnabled && <PriceRow icon={Video} label={`Consultație video · ${detailDoctor.video_duration_minutes ?? 10} min`} value={`${detailDoctor.video_price ?? 500} MDL`} />}
-                  {!withExamEnabled && !videoEnabled && <p className="text-slate-500">Consultațiile sunt momentan dezactivate.</p>}
-                  {withExamEnabled && <p className="pt-1 text-xs text-slate-500">La examinarea la domiciliu se adaugă investigațiile și deplasarea operatorului. Vezi costul exact înainte de confirmare.</p>}
-                </div>
-                <InfoList title="Investigații incluse la examinare" items={normalizeList(detailDoctor.required_investigations)} empty="Nu sunt setate." />
-                <InfoList title="Servicii oferite" items={normalizeList(detailDoctor.service_catalog)} empty="Nu sunt setate." />
-                <div>
-                  <h4 className="mb-2 text-sm font-semibold text-slate-900">Recenzii recente</h4>
-                  {doctorReviews.length === 0 ? <p className="text-sm text-slate-500">Nu există recenzii încă.</p> : (
-                    <ul className="space-y-2">
-                      {doctorReviews.slice(0, 4).map((review) => (
-                        <li key={review.id} className="rounded-xl bg-slate-50 p-3 text-sm">
+                <div className="grid min-h-0 flex-1 overflow-y-auto sm:grid-cols-[minmax(0,1fr)_320px] sm:gap-6 sm:p-7">
+                  <div className="flex min-w-0 flex-col gap-3.5 p-4 sm:gap-5 sm:p-0">
+                    <div className="sm:hidden"><PublicDoctorHeader compact doctor={{ ...detailDoctor, services }} /></div>
+                    <div className="hidden sm:block"><PublicDoctorHeader doctor={{ ...detailDoctor, services }} /></div>
+                    <span className="px-0.5 pt-0.5 text-base font-semibold text-slate-950 sm:text-lg">Alege serviciul</span>
+                    {legacy ? (
+                      <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-4 text-sm">
+                        {withExamEnabled && <PriceRow icon={Home} label="Consultație cu examinare la domiciliu" value={`${detailDoctor.consultation_price} MDL`} />}
+                        {videoEnabled && <PriceRow icon={Video} label={`Consultație video · ${detailDoctor.video_duration_minutes ?? 10} min`} value={`${detailDoctor.video_price ?? 500} MDL`} />}
+                      </div>
+                    ) : (
+                      <>
+                        <div className="sm:hidden"><ServiceChoices compact services={services} selectedId={chosen?.id ?? null} onSelect={setDetailServiceId} /></div>
+                        <div className="hidden sm:block"><ServiceChoices services={services} selectedId={chosen?.id ?? null} onSelect={setDetailServiceId} /></div>
+                      </>
+                    )}
+                    {detailDoctor.bio && <div className="flex flex-col gap-1.5 px-0.5 sm:hidden"><span className="text-base font-semibold text-slate-950">Despre</span><p className="text-sm leading-relaxed text-slate-700">{detailDoctor.bio}</p></div>}
+                    <div className="flex flex-col gap-2">
+                      <span className="text-base font-semibold text-slate-950">Recenzii recente</span>
+                      {doctorReviews.length === 0 ? <p className="text-sm text-slate-500">Nu există recenzii încă.</p> : doctorReviews.slice(0, 4).map((review) => (
+                        <div key={review.id} className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
                           <span className="flex items-center gap-1">{Array.from({ length: 5 }).map((_, index) => <Star key={index} className={cn('h-3.5 w-3.5', index < review.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300')} />)}</span>
                           {review.comment && <p className="mt-1 text-slate-700">{review.comment}</p>}
-                          {review.patient && <p className="mt-1 text-xs text-slate-400">{review.patient}</p>}
-                        </li>
+                        </div>
                       ))}
-                    </ul>
-                  )}
+                    </div>
+                  </div>
+                  <aside className="hidden flex-col gap-4 self-start rounded-2xl border border-slate-200 bg-white p-5 sm:sticky sm:top-0 sm:flex">
+                    {forWhom && (
+                      <>
+                        <div className="flex flex-col gap-2">
+                          <span className="text-xs font-semibold tracking-[.04em] text-slate-500">PENTRU</span>
+                          <div className="flex items-center gap-2.5"><span className="grid h-8 w-8 place-items-center rounded-full bg-blue-50 text-xs font-semibold text-blue-700">{initials(patientProfileName(forWhom))}</span><span className="flex-1 text-sm font-semibold text-slate-950">{patientProfileName(forWhom)}</span></div>
+                        </div>
+                        <div className="h-px bg-slate-100" />
+                      </>
+                    )}
+                    <div className="flex flex-col gap-1"><span className="text-xs font-semibold tracking-[.04em] text-slate-500">SERVICIU</span><span className="text-[15px] font-semibold text-slate-950">{chosen?.name ?? '—'}</span>{chosen && <span className="text-[13px] text-slate-500">{serviceMeta(chosen)}</span>}</div>
+                    <div className="flex items-baseline justify-between"><span className="text-sm text-slate-600">Total</span><span className="text-[22px] font-bold text-slate-950">{chosen ? formatMdl(chosen.price) : '—'}</span></div>
+                    <button type="button" onClick={choose} disabled={!chosen && !legacy} className="h-12 rounded-[10px] bg-blue-600 text-[15px] font-semibold text-white hover:bg-blue-700 disabled:bg-blue-300">Alege ora</button>
+                    <span className="text-xs leading-normal text-slate-500">Suma se rezervă din portofel când trimiți cererea. Dacă medicul refuză sau cererea expiră, revine integral.</span>
+                  </aside>
                 </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Închide</Button>
-                {(withExamEnabled || videoEnabled) && <Button onClick={() => { setIsDetailOpen(false); openRequestDialog(detailDoctor, videoEnabled ? 'video' : 'with_exam'); }}>Programează o consultație</Button>}
-              </DialogFooter>
-            </>
-          )}
+                <div className="flex shrink-0 items-center gap-3 border-t border-slate-200 bg-white px-4 pb-[max(28px,env(safe-area-inset-bottom))] pt-3 sm:hidden">
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5"><span className="truncate text-[13px] text-slate-500">{chosen?.name ?? 'Alege un serviciu'}</span><span className="text-lg font-bold text-slate-950">{chosen ? formatMdl(chosen.price) : '—'}</span></div>
+                  <button type="button" onClick={choose} disabled={!chosen && !legacy} className="h-12 rounded-[10px] bg-blue-600 px-[22px] text-[15px] font-semibold text-white disabled:bg-blue-300">Alege ora</button>
+                </div>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
@@ -591,27 +665,20 @@ export function DoctorsList() {
                     </div>
 
                     <div className="flex flex-col gap-2" role="radiogroup" aria-label="Tipul consultației">
-                      <span className="text-sm font-medium text-slate-900">Tipul consultației</span>
+                      <span className="text-sm font-medium text-slate-900">{selectedDoctor.services?.length ? 'Serviciul' : 'Tipul consultației'}</span>
                       {!withExamEnabled && !videoEnabled && <p className="text-sm text-slate-500">Consultațiile sunt momentan dezactivate.</p>}
-                      {videoEnabled && (
+                      {bookableServices(selectedDoctor, videoEnabled, withExamEnabled).map((service) => (
+                        <KindCard key={service.id} selected={serviceId === service.id} onSelect={() => pickService(service)} title={service.name}
+                          description={serviceMeta(service) + (service.type === 'home' ? ` · ${investigationsText(service.investigations)}` : '')} price={formatMdl(service.price)}>
+                          {service.type === 'home' && serviceId === service.id && needsAddress && selectedProfile && addressBlock}
+                        </KindCard>
+                      ))}
+                      {!selectedDoctor.services?.length && videoEnabled && (
                         <KindCard selected={effectiveKind === 'video'} onSelect={() => setConsultationKind('video')} title="Video" description="Discuți cu medicul de acasă, pe telefon sau calculator." price={`${selectedDoctor.video_price ?? 500} MDL`} />
                       )}
-                      {withExamEnabled && (
+                      {!selectedDoctor.services?.length && withExamEnabled && (
                         <KindCard selected={effectiveKind === 'with_exam'} onSelect={() => setConsultationKind('with_exam')} title="Cu examinare la domiciliu" description="Vine un operator cu aparatul medical, apoi medicul dă concluzia." price={`${selectedDoctor.consultation_price} MDL`}>
-                          {needsAddress && selectedProfile && (
-                            <div className="flex flex-col gap-3 border-t border-blue-100 p-3.5">
-                              <p className="flex items-center gap-1.5 text-[13px] text-slate-600"><MapPin className="h-4 w-4" />Unde vine operatorul?{selectedProfile.locality ? ` ${[selectedProfile.locality, selectedProfile.region].filter(Boolean).join(', ')}` : ''}</p>
-                              {missingRegion ? (
-                                <p className="text-sm text-amber-800">Profilul nu are raionul și localitatea. <Link to={`/patient/patients/${selectedProfile.id}`} className="font-semibold underline">Completează-le în fișă</Link>, apoi revino.</p>
-                              ) : (
-                                <>
-                                  <label className="flex flex-col gap-1.5"><span className="text-sm font-medium text-slate-900">Strada și numărul</span><Input autoComplete="street-address" placeholder="str. Cartușa 12, ap. 4" value={street} onChange={(event) => setStreet(event.target.value)} className="h-11 rounded-[10px] text-[15px]" /></label>
-                                  <label className="flex flex-col gap-1.5"><span className="text-sm font-medium text-slate-900">Telefon</span><Input type="tel" autoComplete="tel" placeholder="+373 __ ___ ___" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} className="h-11 rounded-[10px] text-[15px]" /></label>
-                                  <span className="text-xs text-slate-500">Se salvează în profil, ca să nu le completezi data viitoare.</span>
-                                </>
-                              )}
-                            </div>
-                          )}
+                          {needsAddress && selectedProfile && addressBlock}
                         </KindCard>
                       )}
                     </div>
@@ -747,40 +814,13 @@ function PriceRow({ icon: Icon, label, value }: { icon: React.ElementType; label
   );
 }
 
-function Stat({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="rounded-xl bg-slate-50 px-2 py-3">
-      <p className="tabular text-lg font-bold text-slate-950">{value}</p>
-      <p className="text-xs text-slate-500">{label}</p>
-    </div>
-  );
-}
 
 
-function InfoList({ title, items, empty }: { title: string; items: string[]; empty: string }) {
-  return (
-    <div>
-      <h4 className="mb-2 text-sm font-semibold text-slate-900">{title}</h4>
-      <div className="flex flex-wrap gap-2">
-        {items.length === 0 && <span className="text-sm text-slate-500">{empty}</span>}
-        {items.map((item) => <Badge key={item} variant="secondary">{item}</Badge>)}
-      </div>
-    </div>
-  );
-}
 
 function initialsOf(name: string) {
   return name.replace(/^dr\.?\s*/i, '').split(' ').map((part) => part.charAt(0)).slice(0, 2).join('').toUpperCase();
 }
 
-function normalizeList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.map((item) => {
-    if (typeof item === 'string') return item;
-    if (item && typeof item === 'object' && 'name' in item) return String((item as { name?: unknown }).name || '');
-    return '';
-  }).filter(Boolean);
-}
 
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('');

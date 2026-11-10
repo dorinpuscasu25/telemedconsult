@@ -10,6 +10,8 @@ export interface PatientConsultation {
   symptoms?: string | null;
   scheduled_at?: string | null;
   proposed_scheduled_at?: string | null;
+  proposal?: import('./doctor').Proposal | null;
+  service?: import('./doctor').RequestService;
   doctor_started_at?: string | null;
   created_at: string;
   amount?: number | null;

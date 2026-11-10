@@ -115,6 +115,24 @@ class ConsultationProposalFlowTest extends TestCase
         $this->assertSame(95000, $this->balance());
     }
 
+    public function test_patient_keeps_the_confirmed_time_when_a_reschedule_is_proposed(): void
+    {
+        $item = $this->book('2026-11-12 10:30');
+        Sanctum::actingAs($this->doctor);
+        $this->postJson("/api/v1/requests/{$item->id}/accept")->assertOk();
+        $this->postJson("/api/v1/requests/{$item->id}/propose-time", ['slots' => $this->slots('2026-11-13 11:00')])->assertOk();
+
+        Sanctum::actingAs($this->patientUser);
+        $this->postJson("/api/v1/requests/{$item->id}/keep-current-time")->assertOk()->assertJsonPath('request.stage', 'conf');
+        $this->assertSame('2026-11-12 10:30', $item->fresh()->scheduled_at->setTimezone('Europe/Chisinau')->format('Y-m-d H:i'));
+
+        $other = $this->book('2026-11-11 10:30');
+        Sanctum::actingAs($this->doctor);
+        $this->postJson("/api/v1/requests/{$other->id}/propose-time", ['slots' => $this->slots('2026-11-13 12:00')])->assertOk();
+        Sanctum::actingAs($this->patientUser);
+        $this->postJson("/api/v1/requests/{$other->id}/keep-current-time")->assertUnprocessable();
+    }
+
     public function test_doctor_withdraws_a_proposal_and_can_cancel_a_confirmed_consultation(): void
     {
         $item = $this->book('2026-11-11 10:30');
@@ -136,6 +154,16 @@ class ConsultationProposalFlowTest extends TestCase
 
         Sanctum::actingAs($this->patientUser);
         $this->getJson("/api/v1/requests/{$item->id}/conclusion-draft")->assertForbidden();
+    }
+
+    public function test_old_proposal_without_deadline_expires_when_the_proposed_time_has_passed(): void
+    {
+        $item = $this->book('2026-11-11 10:30');
+        $item->forceFill(['status' => 'rescheduled', 'proposed_scheduled_at' => now()->subHour(), 'doctor_reply_due_at' => null])->save();
+
+        Sanctum::actingAs($this->patientUser);
+        $this->getJson('/api/v1/requests')->assertOk()->assertJsonPath('data.0.stage', 'expired');
+        $this->assertSame(125000, $this->balance());
     }
 
     public function test_doctor_slots_mark_taken_times_except_the_request_being_moved(): void

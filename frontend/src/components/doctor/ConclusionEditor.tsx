@@ -294,7 +294,7 @@ export function ConclusionDialog({ request, open, onOpenChange, onPublished }: {
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!busy) onOpenChange(next); }}>
-      <DialogContent showCloseButton={false} className="flex h-[min(800px,96dvh)] w-[calc(100%-1rem)] max-w-[1200px] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-[1200px]">
+      <DialogContent showCloseButton={false} className="flex h-[min(800px,96dvh)] w-[calc(100%-1rem)] max-w-[1200px] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-[1200px] sm:p-0">
         <div className="flex h-[60px] shrink-0 items-center gap-3 border-b border-slate-200 pl-6 pr-5">
           <DialogTitle className="flex-1 truncate text-[17px] font-semibold">Concluzie · {name}</DialogTitle>
           <span className="flex items-center gap-1.5 text-xs text-slate-500"><Check className="h-3.5 w-3.5 text-green-600" />{savedAt ? `Ciornă salvată · ${hm(savedAt)}` : 'Ciornă salvată automat'}</span>

@@ -10,6 +10,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 import { apiRequest } from '../../lib/api';
 import { patientAge } from '../../lib/medical-record';
+import { ProposalResponse } from '../../components/patient/ProposalResponse';
 import { buildHomeAlerts, countdown, formatTime, readDismissed, recordProgress, writeDismissed, type AlertLevel, type HomeAlert, type HomeProfile, type ReviewableRequest } from '../../lib/patient-alerts';
 import type { PatientConsultation } from '../../lib/patient-consultations';
 
@@ -91,8 +92,10 @@ export function PatientHome() {
   const requestableProfiles = profiles.filter((profile) => profile.can_request_consultation);
   const canAddPatient = !packagesRequired || availableSlots > 0;
 
+  // Propunerile de oră au cardul lor cu alegerea orei (P1b), deasupra celorlalte.
+  const proposals = useMemo(() => requests.filter((request) => request.status === 'rescheduled'), [requests]);
   const alerts = useMemo(
-    () => buildHomeAlerts({ requests, reviewable, profiles, needsPackage, now }).filter((alert) => !dismissed.includes(alert.id)),
+    () => buildHomeAlerts({ requests, reviewable, profiles, needsPackage, now }).filter((alert) => !dismissed.includes(alert.id) && alert.kind !== 'proposal'),
     [requests, reviewable, profiles, needsPackage, now, dismissed]
   );
   const [current, ...rest] = alerts;
@@ -145,6 +148,8 @@ export function PatientHome() {
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex min-w-0 flex-col gap-6">
           <h1 className="text-[26px] font-bold tracking-tight text-slate-950 lg:text-[28px]">Bună, {firstName}</h1>
+
+          {proposals.map((request) => <ProposalResponse key={request.id} request={request} onChanged={load} />)}
 
           {isLoading ? <Skeleton className="h-44 w-full rounded-2xl" /> : current ? (
             <NowCard alert={current} now={now} needsPackage={needsPackage} onChanged={load} onDismiss={dismiss} />

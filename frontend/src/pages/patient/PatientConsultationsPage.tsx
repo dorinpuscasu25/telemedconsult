@@ -15,6 +15,7 @@ import { useDialogs } from '../../components/app/DialogProvider';
 import { apiRequest } from '../../lib/api';
 import { dateTime } from '../../lib/format';
 import { CLOSED_STATUSES } from '../../lib/status';
+import { ProposalResponse } from '../../components/patient/ProposalResponse';
 import { consultationTitle, patientNextStep, type PatientConsultation } from '../../lib/patient-consultations';
 
 const ACTIVE = ['new', 'accepted', 'rescheduled'];
@@ -25,7 +26,6 @@ export function PatientConsultationsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [tab, setTab] = useState<'active' | 'history'>('active');
-  const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const dialogs = useDialogs();
 
@@ -47,18 +47,6 @@ export function PatientConsultationsPage() {
   const history = useMemo(() => requests.filter((request) => !ACTIVE.includes(request.status)), [requests]);
   const list = tab === 'active' ? active : history;
 
-  const acceptProposal = async (request: PatientConsultation) => {
-    setAcceptingId(request.id);
-    try {
-      await apiRequest(`/requests/${request.id}/accept-proposed-time`, { method: 'POST' });
-      toast.success('Ora propusă a fost acceptată.');
-      await load();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Nu am putut accepta ora propusă.');
-    } finally {
-      setAcceptingId(null);
-    }
-  };
 
   const cancelRequest = async (request: PatientConsultation) => {
     const confirmed = await dialogs.confirm({
@@ -118,8 +106,7 @@ export function PatientConsultationsPage() {
             <ConsultationCard
               key={request.id}
               request={request}
-              accepting={acceptingId === request.id}
-              onAcceptProposal={() => void acceptProposal(request)}
+              onChanged={() => void load()}
               cancelling={cancellingId === request.id}
               onCancel={() => void cancelRequest(request)}
             />
@@ -134,7 +121,7 @@ function Count({ value, muted = false }: { value: number; muted?: boolean }) {
   return <span className={`tabular rounded-full px-1.5 text-xs ${muted ? 'bg-slate-200 text-slate-600' : 'bg-primary text-white'}`}>{value}</span>;
 }
 
-function ConsultationCard({ request, accepting, onAcceptProposal, cancelling, onCancel }: { request: PatientConsultation; accepting: boolean; onAcceptProposal: () => void; cancelling: boolean; onCancel: () => void }) {
+function ConsultationCard({ request, onChanged, cancelling, onCancel }: { request: PatientConsultation; onChanged: () => void; cancelling: boolean; onCancel: () => void }) {
   const [showDocuments, setShowDocuments] = useState(false);
   const isOperator = request.type === 'operator';
   const Icon = isOperator ? Activity : Stethoscope;
@@ -168,11 +155,7 @@ function ConsultationCard({ request, accepting, onAcceptProposal, cancelling, on
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 px-4 py-3 sm:px-5">
-        {request.status === 'rescheduled' && request.proposed_scheduled_at && (
-          <Button size="sm" onClick={onAcceptProposal} disabled={accepting}>
-            {accepting ? 'Se confirmă…' : 'Acceptă ora propusă'}
-          </Button>
-        )}
+        {request.status === 'rescheduled' && <ProposalResponse request={request} onChanged={onChanged} className="w-full" />}
         {request.status === 'accepted' && <ConsultationVideoButton requestId={request.id} label="Intră în apel" onlyWhenStarted />}
         {!closed && (
           <Button asChild size="sm" variant="outline">
