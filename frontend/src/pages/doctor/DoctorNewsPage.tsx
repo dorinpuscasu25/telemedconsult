@@ -18,7 +18,7 @@ export function DoctorNewsPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiRequest<{ data: Post[] }>('/catalog/blog', { auth: false })
+    apiRequest<{ data: Post[] }>('/catalog/blog?audience=doctors', { auth: false })
       .then((response) => { setPosts(response.data ?? []); markNewsSeen(); })
       .catch((err) => { setPosts([]); setError(err instanceof Error ? err.message : 'Nu am putut încărca noutățile.'); });
   }, []);

@@ -1480,7 +1480,41 @@ class WorkflowController extends Controller
         return response()->json([
             'draft' => $consultationRequest->conclusion_draft ?? (object) [],
             'saved_at' => $consultationRequest->conclusion_draft_saved_at,
+            'context' => $this->conclusionContext($consultationRequest),
         ]);
+    }
+
+    /**
+     * Ce vede medicul lângă concluzie: ultima greutate și înălțime măsurate și
+     * consultațiile anterioare ale pacientului, cu diagnosticul.
+     *
+     * @return array{weight: ?float, height: ?float, previous: list<array{date: mixed, kind: ?string, service: ?string, diagnosis: ?string}>}
+     */
+    private function conclusionContext(ConsultationRequest $item): array
+    {
+        $measurements = ConsultationObjectiveData::where('patient_profile_id', $item->patient_profile_id)->latest()->limit(20)->pluck('payload');
+        $latest = fn (string $key) => $measurements->map(fn ($payload) => is_array($payload) ? ($payload[$key] ?? null) : null)->filter(fn ($value) => is_numeric($value))->first();
+
+        $previous = Consultation::where('patient_profile_id', $item->patient_profile_id)
+            ->where('status', 'completed')
+            ->where('consultation_request_id', '!=', $item->id)
+            ->latest('completed_at')
+            ->limit(5)
+            ->get()
+            ->map(function (Consultation $consultation) {
+                $request = ConsultationRequest::find($consultation->consultation_request_id);
+
+                return [
+                    'date' => $consultation->completed_at,
+                    'kind' => $request?->consultation_kind,
+                    'service' => $request?->pricing_snapshot['service']['name'] ?? null,
+                    'diagnosis' => $consultation->diagnosis,
+                ];
+            })
+            ->values()
+            ->all();
+
+        return ['weight' => $latest('weight') !== null ? (float) $latest('weight') : null, 'height' => $latest('height') !== null ? (float) $latest('height') : null, 'previous' => $previous];
     }
 
     /** Ciorna se salvează singură, din Consultații, din apel sau din Mesaje. */
@@ -2481,6 +2515,8 @@ class WorkflowController extends Controller
             ->where(fn ($query) => $query
                 ->where(fn ($new) => $new->where('status', 'new')->whereNotNull('doctor_reply_due_at')->where('doctor_reply_due_at', '<', now()))
                 ->orWhere(fn ($proposal) => $proposal->where('status', 'rescheduled')->whereNotNull('proposal_expires_at')->where('proposal_expires_at', '<', now()))
+                // Cererile noi de dinainte de termene expiră când ora cerută a trecut.
+                ->orWhere(fn ($legacyNew) => $legacyNew->where('status', 'new')->whereNull('doctor_reply_due_at')->where('consultation_kind', '!=', 'with_exam')->whereNotNull('scheduled_at')->where('scheduled_at', '<', now()))
                 // Propunerile de dinainte de termene expiră când ora propusă a trecut.
                 ->orWhere(fn ($legacy) => $legacy->where('status', 'rescheduled')->whereNull('proposal_expires_at')->where('proposed_scheduled_at', '<', now())))
             ->limit(50)
@@ -2501,7 +2537,8 @@ class WorkflowController extends Controller
                         return;
                     }
                     $reason = $item->patient_asked_at ? 'Medicul nu a propus alte ore la timp.' : 'Propunerea medicului a expirat fără răspuns.';
-                } elseif ($item->status === 'new' && $item->doctor_reply_due_at?->isPast()) {
+                } elseif ($item->status === 'new' && ($item->doctor_reply_due_at?->isPast()
+                    || (! $item->doctor_reply_due_at && $item->consultation_kind !== 'with_exam' && $item->scheduled_at?->isPast()))) {
                     $reason = 'Medicul nu a răspuns la timp.';
                 } else {
                     return;

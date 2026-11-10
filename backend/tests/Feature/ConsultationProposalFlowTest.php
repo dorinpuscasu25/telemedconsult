@@ -166,6 +166,16 @@ class ConsultationProposalFlowTest extends TestCase
         $this->assertSame(125000, $this->balance());
     }
 
+    public function test_old_new_request_without_deadline_expires_when_its_time_has_passed(): void
+    {
+        $item = $this->book('2026-11-11 10:30');
+        $item->forceFill(['doctor_reply_due_at' => null, 'scheduled_at' => now()->subHour()])->save();
+
+        Sanctum::actingAs($this->doctor);
+        $this->getJson('/api/v1/requests')->assertOk()->assertJsonPath('data.0.stage', 'expired');
+        $this->assertSame(125000, $this->balance());
+    }
+
     public function test_doctor_slots_mark_taken_times_except_the_request_being_moved(): void
     {
         $item = $this->book('2026-11-11 10:30');

@@ -256,6 +256,8 @@ Route::prefix('v1')->group(function () {
         Route::get('/doctor/dashboard', [DoctorOperationsController::class, 'dashboard']);
         Route::get('/doctor/stats', [DoctorOperationsController::class, 'stats']);
         Route::get('/doctor/slots', [DoctorOperationsController::class, 'slots']);
+        Route::post('/doctor/avatar', [DoctorOperationsController::class, 'uploadAvatar']);
+        Route::post('/doctor/institution-request', [DoctorOperationsController::class, 'requestInstitutionChange'])->middleware('throttle:5,1');
         Route::get('/doctor/services', [DoctorServiceController::class, 'index']);
         Route::post('/doctor/services', [DoctorServiceController::class, 'store']);
         Route::put('/doctor/services/order', [DoctorServiceController::class, 'reorder']);

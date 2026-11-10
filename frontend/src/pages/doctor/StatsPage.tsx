@@ -17,6 +17,7 @@ interface DoctorStats {
     rating: number;
     reviews_count: number;
     available_balance: number;
+    payout_account?: string | null;
   };
   revenue: Array<{ name: string; total: number }>;
   by_service?: Array<{ name: string; count: number; total: number }>;
@@ -223,7 +224,7 @@ function WithdrawDialog({ open, onOpenChange, data, onSent }: { open: boolean; o
           </div>
           <span className={cn('text-xs', amount && !valid ? 'text-red-600' : 'text-slate-500')}>{hint}</span>
         </label>
-        <span className="text-[13px] text-slate-500">{fromInstitution ? `Plătește ${institution?.name}.` : 'În contul bancar comunicat administratorului.'}</span>
+        <span className="text-[13px] text-slate-500">{fromInstitution ? `Plătește ${institution?.name}.` : data?.summary.payout_account ? `În contul ${data.summary.payout_account}` : 'Adaugă IBAN-ul în Profil, la Plăți, ca să știm unde trimitem banii.'}</span>
         {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         <div className="flex justify-end gap-2.5">
           <button type="button" onClick={() => onOpenChange(false)} className="h-[42px] rounded-[10px] border border-slate-200 bg-white px-4 text-sm font-medium hover:bg-slate-50">Anulează</button>

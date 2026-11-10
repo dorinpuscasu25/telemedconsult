@@ -38,14 +38,21 @@ export function VideoConsultationPage() {
   // P2a: medicul scrie concluzia din apel; aceeași ciornă ca în Consultații.
   const [conclusionOpen, setConclusionOpen] = useState(false);
   const [conclusionRequest, setConclusionRequest] = useState<ConclusionRequest | null>(null);
-  const openConclusion = useCallback(() => {
-    if (conclusionOpen) { setConclusionOpen(false); return; }
-    setConclusionOpen(true);
-    if (conclusionRequest) return;
+  const darkCall = role === 'doctor' && Boolean(connection);
+  useEffect(() => {
+    if (!darkCall || conclusionRequest) return;
     apiRequest<{ data: ConclusionRequest[] }>('/requests')
       .then((response) => setConclusionRequest(response.data.find((item) => String(item.id) === String(requestId)) ?? null))
-      .catch(() => setError('Nu am putut deschide concluzia.'));
-  }, [conclusionOpen, conclusionRequest, requestId]);
+      .catch(() => undefined);
+  }, [darkCall, conclusionRequest, requestId]);
+  const openConclusion = useCallback(() => setConclusionOpen((open) => !open), []);
+  // Cronometrul din antetul apelului: de la începutul consultației, față de durata serviciului.
+  const [tick, setTick] = useState(() => Date.now());
+  useEffect(() => {
+    if (!darkCall) return;
+    const timer = window.setInterval(() => setTick(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [darkCall]);
   const onDeviceError = useCallback(() => setError('Permite accesul la cameră și microfon. Poți intra și cu acestea oprite.'), []);
   const onDisconnected = useCallback(() => {
     if (connection?.attemptId !== attempt.current) return;
@@ -151,6 +158,48 @@ export function VideoConsultationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state?.answerCallId, status?.available, status?.configured]);
 
+  if (darkCall && status?.participant && status.consultation) {
+    const consultation = status.consultation;
+    const owner = consultation.participants.find((person) => person.role === 'patient');
+    const startedAt = consultation.doctor_started_at ? new Date(consultation.doctor_started_at).getTime() : null;
+    const elapsed = startedAt ? Math.max(0, Math.floor((tick - startedAt) / 1000)) : 0;
+    const clock = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+    const service = (conclusionRequest as (ConclusionRequest & { service?: { name: string; duration: number | null; type: string } }) | null)?.service;
+    const patientName = consultation.patient_profile?.display_name ?? owner?.name ?? 'Pacient';
+    return (
+      <div className="fixed inset-0 z-50 flex bg-[#0B1220] text-slate-200">
+        <div className="flex min-w-0 flex-1 flex-col gap-3 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <span className="truncate text-[15px] font-semibold text-white">{patientName}{service ? ` · ${service.name}` : ''}</span>
+              {owner && owner.name !== patientName && <span className="text-xs text-slate-400">cu {owner.name}</span>}
+            </div>
+            <div className="flex items-center gap-2">
+              {startedAt && <span className="rounded-lg bg-white/10 px-2.5 py-1.5 font-mono text-sm">{clock(elapsed)}{service?.duration && service.type !== 'chat' ? ` / ${clock(service.duration * 60)}` : ''}</span>}
+              <Link to={returnTo} className="rounded-lg px-2.5 py-1.5 text-sm text-slate-300 hover:bg-white/10">Înapoi</Link>
+            </div>
+          </div>
+          {error && <p role="alert" className="rounded-lg bg-red-500/15 px-3 py-2 text-sm text-red-200">{error}</p>}
+          {requestId && <div className="[&>*]:rounded-xl"><OutgoingVideoCall requestId={requestId} /></div>}
+          <div className="min-h-0 flex-1">
+            <Suspense fallback={<p className="p-12 text-center text-slate-400">Se încarcă interfața video...</p>}>
+              <VideoCallPanel dark connection={connection} joining={joining} onJoin={join} participant={status.participant} context={consultation} rejoining={rejoining}
+                onDisconnected={onDisconnected} onConnectionError={onConnectionError} onDeviceError={onDeviceError} onConclusion={openConclusion} conclusionOpen={conclusionOpen} />
+            </Suspense>
+          </div>
+        </div>
+        {conclusionOpen && (
+          <div className="absolute inset-0 z-10 flex bg-white lg:static lg:w-[460px] lg:shrink-0">
+            {conclusionRequest
+              ? <ConclusionPanel request={conclusionRequest} onPublished={() => { toast.success('Concluzia a fost publicată. Apelul s-a închis.'); navigate(returnTo); }} />
+              : <p className="p-6 text-sm text-slate-500">Se încarcă ciorna…</p>}
+            <button type="button" onClick={() => setConclusionOpen(false)} className="absolute right-3 top-3 rounded-lg px-2 py-1 text-sm text-slate-500 lg:hidden">Închide</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return <div className="w-full min-w-0 space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-4">
       <div><Link to={returnTo} className="mb-3 inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-primary"><ArrowLeft size={16} /> Înapoi la consultație</Link>
@@ -179,18 +228,8 @@ export function VideoConsultationPage() {
         : patientInThisCall ? <div className="space-y-4 p-6 text-center sm:p-12"><h2 className="text-xl font-semibold">Ești în apel</h2><p className="text-slate-500">Apelul continuă pe orice pagină, minimizat în colțul ecranului.</p><Button onClick={() => patientCall.setExpanded(true)}>Revino în apel</Button></div>
         : <Suspense fallback={<p className="p-12 text-center text-slate-500">Se încarcă interfața video...</p>}>
           {status.participant && status.consultation && (
-            <div className={conclusionOpen ? 'grid lg:grid-cols-[minmax(0,1fr)_460px]' : undefined}>
-              <VideoCallPanel connection={connection} joining={joining} onJoin={join} participant={status.participant} context={status.consultation} rejoining={rejoining}
-                onDisconnected={onDisconnected} onConnectionError={onConnectionError} onDeviceError={onDeviceError}
-                onConclusion={role === 'doctor' && connection ? openConclusion : undefined} conclusionOpen={conclusionOpen} />
-              {conclusionOpen && (
-                <div className="min-h-[560px] border-t border-slate-200 lg:border-l lg:border-t-0">
-                  {conclusionRequest
-                    ? <ConclusionPanel request={conclusionRequest} onPublished={() => { toast.success('Concluzia a fost publicată. Apelul s-a închis.'); navigate(returnTo); }} />
-                    : <p className="p-6 text-sm text-slate-500">Se încarcă ciorna…</p>}
-                </div>
-              )}
-            </div>
+            <VideoCallPanel connection={connection} joining={joining} onJoin={join} participant={status.participant} context={status.consultation} rejoining={rejoining}
+              onDisconnected={onDisconnected} onConnectionError={onConnectionError} onDeviceError={onDeviceError} />
           )}
         </Suspense>}
     </section>

@@ -42,6 +42,7 @@ interface Doctor {
   services?: DoctorServiceItem[];
   institution?: { name: string; address?: string | null } | null;
   bio?: string | null;
+  avatar?: string | null;
 }
 
 /** Serviciile pe care pacientul le poate programa acum (după comutatoarele platformei). */
@@ -509,7 +510,9 @@ export function DoctorsList() {
             return (
               <article key={doctor.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 lg:gap-3.5 lg:p-5">
                 <button type="button" className="flex items-center gap-3 text-left lg:gap-3.5" onClick={openProfile}>
-                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-blue-100 font-semibold text-blue-700 lg:h-[52px] lg:w-[52px] lg:text-base">{initialsOf(doctor.name)}</span>
+                  {doctor.avatar
+                    ? <img src={doctor.avatar} alt="" className="h-12 w-12 shrink-0 rounded-full object-cover lg:h-[52px] lg:w-[52px]" />
+                    : <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-blue-100 font-semibold text-blue-700 lg:h-[52px] lg:w-[52px] lg:text-base">{initialsOf(doctor.name)}</span>}
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="truncate text-base font-semibold text-slate-950">{doctor.name}</span>
                     {doctor.institution

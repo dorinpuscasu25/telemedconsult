@@ -20,6 +20,14 @@ export interface ConclusionRequest {
   patient_profile?: PatientProfileSummary | null;
 }
 
+interface ConclusionContext {
+  weight: number | null;
+  height: number | null;
+  previous: Array<{ date: string | null; kind?: string | null; service?: string | null; diagnosis?: string | null }>;
+}
+
+const KIND_SHORT: Record<string, string> = { video: 'Video', preliminary: 'Chat', with_exam: 'La domiciliu' };
+
 interface Draft {
   anam: string;
   exam: string;
@@ -47,6 +55,7 @@ const blank = (request: ConclusionRequest): Draft => ({
 export function useConclusionDraft(request: ConclusionRequest | null, enabled: boolean) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [context, setContext] = useState<ConclusionContext | null>(null);
   const timer = useRef<number | null>(null);
   const pending = useRef<Draft | null>(null);
   const requestId = request?.id;
@@ -55,9 +64,10 @@ export function useConclusionDraft(request: ConclusionRequest | null, enabled: b
     if (!enabled || !request) return;
     let cancelled = false;
     setDraft(null);
-    apiRequest<{ draft: Partial<Draft>; saved_at: string | null }>(`/requests/${request.id}/conclusion-draft`)
+    apiRequest<{ draft: Partial<Draft>; saved_at: string | null; context?: ConclusionContext }>(`/requests/${request.id}/conclusion-draft`)
       .then((response) => {
         if (cancelled) return;
+        setContext(response.context ?? null);
         const saved = response.draft ?? {};
         setDraft({ ...blank(request), ...saved, meds: Array.isArray(saved.meds) && saved.meds.length ? saved.meds : [{ n: '', d: '' }] });
         setSavedAt(response.saved_at);
@@ -91,7 +101,7 @@ export function useConclusionDraft(request: ConclusionRequest | null, enabled: b
 
   useEffect(() => () => { void flush(); }, [flush]);
 
-  return { draft, update, savedAt, flush };
+  return { draft, update, savedAt, flush, context };
 }
 
 const filledSteps = (draft: Draft | null, hasFile: boolean) => [
@@ -260,7 +270,7 @@ function usePublish(request: ConclusionRequest | null, draft: Draft | null, file
 export function ConclusionDialog({ request, open, onOpenChange, onPublished }: {
   request: ConclusionRequest | null; open: boolean; onOpenChange: (open: boolean) => void; onPublished: () => void;
 }) {
-  const { draft, update, savedAt, flush } = useConclusionDraft(request, open);
+  const { draft, update, savedAt, flush, context } = useConclusionDraft(request, open);
   const [step, setStep] = useState(0);
   const [file, setFile] = useState<File | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -309,7 +319,10 @@ export function ConclusionDialog({ request, open, onOpenChange, onPublished }: {
               </>
             ) : (
               <>
-                <Context label="PACIENT"><span className="text-[15px] font-semibold text-slate-950">{[name, profile?.age !== null && profile?.age !== undefined ? `${profile.age} ani` : null, gender].filter(Boolean).join(' · ')}</span></Context>
+                <Context label="PACIENT">
+                  <span className="text-[15px] font-semibold text-slate-950">{[name, profile?.age !== null && profile?.age !== undefined ? `${profile.age} ani` : null, gender].filter(Boolean).join(' · ')}</span>
+                  {(context?.weight || context?.height) && <span className="text-[13px] text-slate-500">{[context.weight ? `${String(context.weight).replace('.', ',')} kg` : null, context.height ? `${String(context.height).replace('.', ',')} cm` : null].filter(Boolean).join(' · ')}</span>}
+                </Context>
                 <Context label="SERVICIU"><span className="text-sm">{request.service ? [request.service.name, serviceMeta(request.service).split(' · ')[1], mdl(request.service.price)].filter(Boolean).join(' · ') : '—'}</span></Context>
                 <Context label="ACUZE DIN CERERE"><span className="text-sm leading-normal">{request.symptoms || '—'}</span></Context>
                 <div className="flex flex-col gap-2">
@@ -318,6 +331,12 @@ export function ConclusionDialog({ request, open, onOpenChange, onPublished }: {
                   <RecordCard label="Boli cronice" value={sectionSummary(record, 'chronic_conditions')} />
                   <RecordCard label="Medicamente acum" value={lifestyle.long_term_medication || 'Necompletat'} />
                 </div>
+                <Context label="CONSULTAȚII ANTERIOARE">
+                  {context?.previous.length ? context.previous.map((item, index) => {
+                    const date = item.date ? new Date(item.date) : null;
+                    return <span key={index} className="text-sm text-slate-950">{[date ? `${date.getDate()} ${MONTHS[date.getMonth()]}` : null, KIND_SHORT[item.kind ?? ''] ?? null, item.diagnosis || item.service].filter(Boolean).join(' · ')}</span>;
+                  }) : <span className="text-sm text-slate-500">Prima consultație</span>}
+                </Context>
               </>
             )}
           </aside>

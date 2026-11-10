@@ -24,6 +24,7 @@ interface ProfileResponse {
   profile?: {
     clinic_name?: string | null; clinic_details?: string | null; accepts_points?: boolean; specialty_id?: number | null; license_number?: string | null;
     bio?: string | null; experience_years?: number | null; is_available?: boolean; rating?: string | number | null; reviews_count?: number | null;
+    payout_bank?: string | null; payout_iban?: string | null;
   } | null;
   vacations: Vacation[];
   availability: Slot[];
@@ -32,6 +33,7 @@ interface ProfileResponse {
   institution?: { name: string; address?: string | null } | null;
   has_signature?: boolean;
   has_clinic_logo?: boolean;
+  avatar?: string | null;
 }
 
 type Section = 'pub' | 'inst' | 'serv' | 'prog' | 'conc' | 'pdf' | 'pay';
@@ -52,7 +54,9 @@ export function DoctorProfilePage() {
   const { user, refreshUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState<ProfileResponse | null>(null);
-  const [form, setForm] = useState({ name: '', phone: '', specialty_id: '', license_number: '', experience_years: '0', bio: '', clinic_name: '', clinic_details: '', accepts_points: false, is_available: true });
+  const [form, setForm] = useState({ name: '', phone: '', specialty_id: '', license_number: '', experience_years: '0', bio: '', clinic_name: '', clinic_details: '', accepts_points: false, is_available: true, payout_bank: '', payout_iban: '' });
+  const [adminOpen, setAdminOpen] = useState(false);
+  const avatarInput = useRef<HTMLInputElement | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [catalog, setCatalog] = useState<CatalogInvestigation[]>([]);
@@ -74,7 +78,8 @@ export function DoctorProfilePage() {
     setForm({
       name: response.user.name ?? '', phone: response.user.phone ?? '', specialty_id: response.profile?.specialty_id ? String(response.profile.specialty_id) : '',
       license_number: response.profile?.license_number ?? '', experience_years: String(response.profile?.experience_years ?? 0), bio: response.profile?.bio ?? '',
-      clinic_name: response.profile?.clinic_name ?? '', clinic_details: response.profile?.clinic_details ?? '', accepts_points: Boolean(response.profile?.accepts_points), is_available: response.profile?.is_available ?? true
+      clinic_name: response.profile?.clinic_name ?? '', clinic_details: response.profile?.clinic_details ?? '', accepts_points: Boolean(response.profile?.accepts_points), is_available: response.profile?.is_available ?? true,
+      payout_bank: response.profile?.payout_bank ?? '', payout_iban: response.profile?.payout_iban ?? ''
     });
     setDirty(false);
   }, []);
@@ -100,7 +105,7 @@ export function DoctorProfilePage() {
       await apiRequest('/doctor/profile', { method: 'PUT', body: JSON.stringify({
         name: next.name, phone: next.phone || null, specialty_id: next.specialty_id ? Number(next.specialty_id) : null, license_number: next.license_number || null,
         experience_years: Number(next.experience_years) || 0, bio: next.bio || null, clinic_name: next.clinic_name || null, clinic_details: next.clinic_details || null,
-        accepts_points: next.accepts_points, is_available: next.is_available
+        accepts_points: next.accepts_points, is_available: next.is_available, payout_bank: next.payout_bank || null, payout_iban: next.payout_iban || null
       }) });
       setForm(next);
       setDirty(false);
@@ -162,6 +167,20 @@ export function DoctorProfilePage() {
     }
   };
 
+  const uploadAvatar = async (file: File) => {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 3 * 1024 * 1024) { toast.error('Încarcă o fotografie JPG, PNG sau WEBP, maximum 3 MB.'); return; }
+    const body = new FormData();
+    body.append('avatar', file);
+    try {
+      await apiRequest('/doctor/avatar', { method: 'POST', body });
+      toast.success('Fotografia a fost salvată.');
+      void refreshUser();
+      void load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Nu am putut încărca fotografia.');
+    }
+  };
+
   const go = (key: Section) => {
     const node = scroller.current?.querySelector<HTMLElement>(`[data-sec="${key}"]`);
     if (node) window.scrollTo({ top: node.getBoundingClientRect().top + window.scrollY - 80, behavior: 'smooth' });
@@ -192,7 +211,7 @@ export function DoctorProfilePage() {
 
   if (!data) return <p className="p-6 text-sm text-slate-500">Se încarcă profilul…</p>;
 
-  const publicDoctor = { name: form.name, specialty: specialtyName, experience_years: Number(form.experience_years), rating: data.profile?.rating, reviews_count: data.profile?.reviews_count, institution: data.institution, bio: form.bio, services: activeServices };
+  const publicDoctor = { name: form.name, specialty: specialtyName, experience_years: Number(form.experience_years), rating: data.profile?.rating, reviews_count: data.profile?.reviews_count, institution: data.institution, bio: form.bio, avatar: data.avatar, services: activeServices };
 
   const sectionContent: Record<Section, { title: string; description: string; action?: ReactNode; body: ReactNode; lock?: boolean }> = {
     pub: {
@@ -200,7 +219,13 @@ export function DoctorProfilePage() {
       description: 'Apar în catalog și în profilul tău.',
       body: (
         <>
-          <span className="grid h-16 w-16 place-items-center rounded-full bg-blue-100 text-xl font-semibold text-blue-700">{form.name.split(' ').map((part) => part.charAt(0)).slice(0, 2).join('').toUpperCase()}</span>
+          <div className="flex items-center gap-4">
+            {data.avatar
+              ? <img src={data.avatar} alt="" className="h-16 w-16 rounded-full object-cover" />
+              : <span className="grid h-16 w-16 place-items-center rounded-full bg-blue-100 text-xl font-semibold text-blue-700">{form.name.split(' ').map((part) => part.charAt(0)).slice(0, 2).join('').toUpperCase()}</span>}
+            <input ref={avatarInput} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadAvatar(file); event.target.value = ''; }} />
+            <button type="button" onClick={() => avatarInput.current?.click()} className="h-9 rounded-[10px] border border-slate-200 bg-white px-3 text-[13px] font-medium hover:bg-slate-50">{data.avatar ? 'Schimbă fotografia' : 'Adaugă o fotografie'}</button>
+          </div>
           <div className="grid gap-x-4 gap-y-3.5 sm:grid-cols-2">
             <Field label="Nume complet"><input value={form.name} onChange={(event) => set({ name: event.target.value })} className={field} /></Field>
             <Field label="Specializare">
@@ -229,9 +254,9 @@ export function DoctorProfilePage() {
             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] border border-slate-200 bg-white text-slate-600"><Building2 className="h-5 w-5" /></span>
             <div className="flex flex-col gap-[3px]"><span className="text-[15px] font-semibold text-slate-950">{data.institution.name}</span>{data.institution.address && <span className="text-[13px] text-slate-500">{data.institution.address}</span>}</div>
           </div>
-          <span className="text-[13px] text-slate-500">Lucrezi în altă instituție? Scrie administratorului și o schimbă el.</span>
+          <span className="text-[13px] text-slate-500">Lucrezi în altă instituție? <button type="button" onClick={() => setAdminOpen(true)} className="font-medium text-blue-600 hover:underline">Scrie administratorului</button> și o schimbă el.</span>
         </>
-      ) : <span className="text-sm text-slate-500">Nu ești atribuit unei instituții. Administratorul o adaugă dacă lucrezi printr-una.</span>
+      ) : <span className="text-sm text-slate-500">Nu ești atribuit unei instituții. Lucrezi printr-una? <button type="button" onClick={() => setAdminOpen(true)} className="font-medium text-blue-600 hover:underline">Scrie administratorului</button>.</span>
     },
     serv: {
       title: 'Servicii și prețuri',
@@ -287,10 +312,16 @@ export function DoctorProfilePage() {
       title: 'Plăți',
       description: 'Se aplică la toate serviciile.',
       body: (
+        <>
+        <div className="grid gap-x-4 gap-y-3.5 sm:grid-cols-[1fr_1.6fr]">
+          <Field label="Banca"><input value={form.payout_bank} onChange={(event) => set({ payout_bank: event.target.value })} placeholder="Ex: MAIB" className={field} /></Field>
+          <Field label={<>IBAN <span className="font-normal text-slate-400">· aici primești extragerile</span></>}><input value={form.payout_iban} onChange={(event) => set({ payout_iban: event.target.value.toUpperCase() })} placeholder="MD24 AG00 0000 0225 1000 4821" className={cn(field, 'font-mono')} /></Field>
+        </div>
         <button type="button" onClick={() => void save({ accepts_points: !form.accepts_points })} className="flex items-start gap-3 text-left">
           <span className={cn('mt-px grid h-5 w-5 shrink-0 place-items-center rounded-md border text-white', form.accepts_points ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-white')}>{form.accepts_points && <Check className="h-3.5 w-3.5" strokeWidth={3} />}</span>
           <span className="flex flex-col gap-[3px]"><span className="text-sm font-medium text-slate-950">Accept plăți parțiale din bonusuri</span><span className="text-[13px] text-slate-500">Pacientul poate achita o parte din preț cu bonusuri. Tu primești suma întreagă.</span></span>
         </button>
+        </>
       )
     }
   };
@@ -302,7 +333,7 @@ export function DoctorProfilePage() {
     prog: [scheduleSummary, !slots.some((slot) => slot.is_active)],
     conc: [data.vacations.length ? `${data.vacations.length} planificate` : 'Niciun concediu planificat', false],
     pdf: [data.has_signature ? 'Parafa e încărcată' : 'Lipsește parafa', !data.has_signature],
-    pay: [form.accepts_points ? 'Accepți bonusuri' : 'Fără bonusuri', false]
+    pay: [form.payout_iban ? `${form.payout_bank || 'Cont'} ···· ${form.payout_iban.slice(-4)}${form.accepts_points ? ' · accepți bonusuri' : ''}` : 'Lipsește IBAN-ul', !form.payout_iban]
   };
 
   const renderSection = (key: Section) => {
@@ -402,6 +433,7 @@ export function DoctorProfilePage() {
       </div>
 
       <ServiceEditor service={editing} open={editorOpen} catalog={catalog} onOpenChange={setEditorOpen} onSaved={() => { toast.success('Serviciul a fost salvat.'); void load(); }} />
+      <AdminMessageDialog open={adminOpen} onOpenChange={setAdminOpen} />
       <VacationDialog open={vacationOpen} onOpenChange={setVacationOpen} onSaved={() => void load()} />
       <Dialog open={preview} onOpenChange={setPreview}>
         <DialogContent className="max-h-[92dvh] w-[calc(100%-1rem)] overflow-y-auto bg-slate-50 sm:max-w-2xl">
@@ -519,6 +551,37 @@ function UploadCard({ title, status, text, button, missing = false, onFile }: { 
       <input ref={input} type="file" accept="image/jpeg,image/png" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) onFile(file); event.target.value = ''; }} />
       <button type="button" onClick={() => input.current?.click()} className="h-9 self-start rounded-[10px] border border-slate-200 bg-white px-3 text-[13px] font-medium hover:bg-slate-50">{button}</button>
     </div>
+  );
+}
+
+function AdminMessageDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (open) setMessage(''); }, [open]);
+  const send = async () => {
+    setBusy(true);
+    try {
+      await apiRequest('/doctor/institution-request', { method: 'POST', body: JSON.stringify({ message }) });
+      toast.success('Mesajul a ajuns la administrator.');
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Nu am putut trimite mesajul.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[calc(100%-1rem)] gap-4 rounded-2xl p-6 sm:max-w-[440px]">
+        <DialogTitle className="text-lg font-semibold">Scrie administratorului</DialogTitle>
+        <DialogDescription>Spune în ce instituție lucrezi; administratorul o schimbă în profilul tău.</DialogDescription>
+        <textarea value={message} rows={4} maxLength={1000} onChange={(event) => setMessage(event.target.value)} placeholder="Ex: Lucrez la IMSP CMF nr. 2, str. Ismail 12." className={cn(field, 'h-auto resize-y py-2.5 leading-normal')} />
+        <div className="flex justify-end gap-2.5">
+          <button type="button" onClick={() => onOpenChange(false)} className="h-10 rounded-[10px] border border-slate-200 bg-white px-4 text-sm font-medium">Anulează</button>
+          <button type="button" onClick={() => void send()} disabled={busy || message.trim().length < 5} className="h-10 rounded-[10px] bg-blue-600 px-4 text-sm font-semibold text-white disabled:bg-blue-300">Trimite</button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -32,6 +32,7 @@ class UpsertBlogPostRequest extends FormRequest
             ],
             'remove_cover_image' => ['nullable', 'boolean'],
             'category' => ['nullable', 'string', 'max:40'],
+            'audience' => ['nullable', 'in:all,patients,doctors'],
             'author_name' => ['nullable', 'string', 'max:255'],
             'is_published' => ['nullable', 'boolean'],
         ];

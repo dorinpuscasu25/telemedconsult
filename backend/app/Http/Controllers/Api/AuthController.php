@@ -555,6 +555,7 @@ class AuthController extends Controller
             'email' => $user->email,
             'email_verified_at' => $user->email_verified_at,
             'phone' => $user->phone,
+            'avatar' => $user->avatar_url,
             'telegram_chat_id' => $user->telegram_chat_id,
             'status' => $user->status,
             'roles' => $user->roles->pluck('name')->values(),

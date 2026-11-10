@@ -1,7 +1,7 @@
 import { OutgoingVideoCall } from './OutgoingVideoCall';
 import { inviteVideoCall } from '../lib/video-calls';
 import { useCallback, useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Video, CalendarDays, Check, Play, Clock3, CircleCheck } from 'lucide-react';
 import { dateTime } from '../lib/format';
 import { apiRequest } from '../lib/api';
@@ -62,7 +62,8 @@ export function ConsultationChatNavigation({ requestId, onRefresh, showVideoLink
         {context?.can_accept && <Button size="sm" disabled={busy} onClick={() => act('accept')}><Check size={16} />Confirmă</Button>}
         {context?.can_start_early && <Button size="sm" variant="outline" disabled={busy} onClick={() => act('start', true)}><Play size={16} />Începe mai devreme</Button>}
         {context?.can_start && <Button size="sm" variant="outline" disabled={busy} onClick={() => act('start')}><Play size={16} />Începe</Button>}
-        {role === 'patient' && context?.status === 'rescheduled' && context.proposed_scheduled_at && <Button size="sm" disabled={busy} onClick={() => act('accept-proposed-time')}><Clock3 size={16} />Acceptă {dateTime(context.proposed_scheduled_at)}</Button>}
+        {/* Medicul poate propune până la trei ore: pacientul alege în cardul propunerii. */}
+        {role === 'patient' && context?.status === 'rescheduled' && <Button asChild size="sm"><Link to="/patient/consultations"><Clock3 size={16} />Alege ora</Link></Button>}
         <Button size="sm" variant={canCall ? 'default' : 'outline'} disabled={busy || !canCall} title={callReason || 'Sună participantul consultației'} aria-describedby={!canCall ? `call-reason-${requestId}` : undefined} onClick={() => act('video/invite')}><Video size={16} /><span className="hidden sm:inline">{busy ? 'Se conectează…' : 'Apel video'}</span><span className="sm:hidden">{busy ? '…' : 'Apel'}</span></Button>
       </div>
     </div>

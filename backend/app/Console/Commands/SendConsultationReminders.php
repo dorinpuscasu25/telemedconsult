@@ -10,11 +10,11 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 /**
- * Reamintirea pentru medic cu 15 minute înainte de consultație. O trimitem o
+ * Reamintirea pacientului că propunerea medicului expiră în 2 h și cea pentru medic cu 15 minute înainte de consultație. O trimitem o
  * singură dată pe cerere; pe Telegram ajunge doar dacă medicul a ales reamintiri.
  */
 #[Signature('consultations:remind')]
-#[Description('Anunță medicii cu 15 minute înainte de consultațiile confirmate')]
+#[Description('Reamintiri: medicul înainte de consultație, pacientul înainte să expire propunerea')]
 class SendConsultationReminders extends Command
 {
     public function handle(): int
@@ -41,7 +41,27 @@ class SendConsultationReminders extends Command
             ));
         }
 
-        $this->info("Reamintiri trimise: {$due->count()}");
+        // Pacientul află cu 2 h înainte că propunerea medicului expiră.
+        $proposals = ConsultationRequest::with('patient', 'doctor')
+            ->where('status', 'rescheduled')
+            ->whereNull('patient_asked_at')
+            ->whereNull('proposal_reminded_at')
+            ->whereBetween('proposal_expires_at', [$now, $now->addHours(2)])
+            ->get();
+
+        foreach ($proposals as $item) {
+            $item->forceFill(['proposal_reminded_at' => $now])->save();
+            $item->patient?->notify(new AppEventNotification(
+                'Propunerea expiră în curând',
+                'Alege una dintre orele propuse de medic până la '.$item->proposal_expires_at->setTimezone('Europe/Chisinau')->format('H:i').'.',
+                '/patient/consultations?request='.$item->id,
+                'warning',
+                false,
+                'requests',
+            ));
+        }
+
+        $this->info("Reamintiri trimise: {$due->count()} medici, {$proposals->count()} pacienți");
 
         return self::SUCCESS;
     }

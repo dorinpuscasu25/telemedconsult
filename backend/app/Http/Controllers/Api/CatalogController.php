@@ -78,6 +78,7 @@ class CatalogController extends Controller
                         'address' => $profile->medicalInstitution->address,
                     ] : null,
                     'bio' => $profile->bio,
+                    'avatar' => $profile->user->avatar_url,
                     'rating' => $profile->rating,
                     'reviews_count' => $profile->reviews_count,
                     'is_available' => $profile->is_available && ! $isOnVacation,
@@ -175,9 +176,15 @@ class CatalogController extends Controller
         return response()->json(['data' => $regions]);
     }
 
-    public function blog(): JsonResponse
+    /**
+     * Noutățile publice și ale pacienților exclud anunțurile doar pentru medici;
+     * `?audience=doctors` dă anunțurile pentru toți și cele pentru medici.
+     */
+    public function blog(Request $request): JsonResponse
     {
+        $audiences = $request->query('audience') === 'doctors' ? ['all', 'doctors'] : ['all', 'patients'];
         $posts = BlogPost::where('is_published', true)
+            ->whereIn('audience', $audiences)
             ->orderByDesc('published_at')
             ->orderByDesc('id')
             ->get()
@@ -189,6 +196,7 @@ class CatalogController extends Controller
                 'cover_image_url' => $post->cover_image_url,
                 'author_name' => $post->author_name,
                 'category' => $post->category,
+                'audience' => $post->audience,
                 'published_at' => $post->published_at,
             ]);
 

@@ -49,3 +49,19 @@
   .video-stage-with-chat { grid-template-columns: minmax(0, 1fr); }
   .telemed-video .lk-prejoin .lk-button-group-container { gap: .5rem; }
 }
+
+/* P2a · apelul medicului: fundal întunecat, butoane rotunde, „Concluzie” albă. */
+.video-dark .video-room { background: #0B1220; display: flex; flex-direction: column; height: 100%; }
+.video-dark .video-stage { flex: 1; height: auto; min-height: 360px; background: #0B1220; padding: 0 16px; }
+.video-dark .video-stage-with-chat { display: grid; }
+.video-dark .lk-grid-layout { padding: 0; gap: 12px; }
+.video-dark .lk-participant-tile { background: #1E293B; border-radius: 14px; }
+.video-dark .video-controls { background: transparent; border-top: 0; gap: 12px; padding: 12px 16px 16px; }
+.video-dark .lk-button.video-round { width: 48px; height: 48px; min-height: 48px; padding: 0; justify-content: center; border-radius: 999px; border: 0; background: rgba(255,255,255,.1); color: #fff; }
+.video-dark .lk-button.video-round[data-lk-enabled="false"] { background: rgba(255,255,255,.1); color: #FCA5A5; }
+.video-dark .lk-button.video-round:not(:disabled):hover { background: rgba(255,255,255,.18); }
+.video-dark .video-pill { height: 48px; padding: 0 16px; border-radius: 999px; display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; background: #fff; color: #0F172A; }
+.video-dark .video-pill[aria-pressed="true"] { background: #DBEAFE; color: #1D4ED8; }
+.video-dark .lk-disconnect-button { width: 64px; height: 48px; min-height: 48px; padding: 0; justify-content: center; border-radius: 999px; border: 0; background: #DC2626; color: #fff; }
+.video-dark .lk-disconnect-button:hover { background: #B91C1C; }
+.video-dark details { display: none; }

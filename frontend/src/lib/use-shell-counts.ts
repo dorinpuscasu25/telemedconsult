@@ -41,7 +41,7 @@ export function useShellCounts(enabled: boolean, role?: string | null) {
 
   const loadNews = useCallback(() => {
     if (!isDoctor) return;
-    apiRequest<{ data: Array<{ published_at: string | null }> }>('/catalog/blog', { auth: false })
+    apiRequest<{ data: Array<{ published_at: string | null }> }>('/catalog/blog?audience=doctors', { auth: false })
       .then((response) => {
         const seen = newsSeenAt();
         setUnreadNews((response.data ?? []).filter((post) => post.published_at && new Date(post.published_at).getTime() > seen).length);

@@ -1,29 +1,49 @@
 import { useState } from 'react';
 import { DisconnectButton, GridLayout, LiveKitRoom, MediaDeviceSelect, ParticipantTile, PreJoin, RoomAudioRenderer, StartAudio, useConnectionState, useParticipants, useTracks, useTrackToggle, type LocalUserChoices } from '@livekit/components-react';
 import { ConnectionState, Track } from 'livekit-client';
-import { Phone, Camera, CameraOff, Mic, MicOff, MonitorUp, MessageSquare, Settings2, FileText } from 'lucide-react';
+import { Phone, PhoneOff, Camera, CameraOff, Mic, MicOff, MonitorUp, MessageSquare, Settings2, FileText } from 'lucide-react';
 import { Button } from './ui/button';
 import { ConsultationCallChat } from './ConsultationCallChat';
 import type { VideoConnection, VideoContext, VideoParticipant } from '../lib/consultation-video';
 import '@livekit/components-styles';
 import './video-call.css';
 
-function MediaControl({ source, disabled, onDeviceError }: { source: Track.Source.Microphone | Track.Source.Camera | Track.Source.ScreenShare; disabled: boolean; onDeviceError: () => void }) {
+function MediaControl({ source, disabled, onDeviceError, round = false }: { source: Track.Source.Microphone | Track.Source.Camera | Track.Source.ScreenShare; disabled: boolean; onDeviceError: () => void; round?: boolean }) {
   const { buttonProps, enabled, pending } = useTrackToggle({ source, onDeviceError });
   const mic = source === Track.Source.Microphone;
   const screen = source === Track.Source.ScreenShare;
   const Icon = screen ? MonitorUp : mic ? enabled ? Mic : MicOff : enabled ? Camera : CameraOff;
   const label = screen ? enabled ? 'Oprește partajarea' : 'Partajează ecranul' : mic ? enabled ? 'Oprește microfonul' : 'Pornește microfonul' : enabled ? 'Oprește camera' : 'Pornește camera';
+  if (round) return <button {...buttonProps} className="lk-button video-round" data-lk-enabled={enabled} aria-pressed={enabled} aria-label={label} title={label} disabled={disabled || pending}><Icon size={20} /></button>;
   return <button {...buttonProps} className="lk-button" data-lk-enabled={enabled} aria-pressed={enabled} disabled={disabled || pending}><Icon size={16} />{pending ? 'Se schimbă...' : label}</button>;
 }
 
-function CallRoom({ onDeviceError, context, onConclusion, conclusionOpen = false }: { onDeviceError: () => void; context: VideoContext; onConclusion?: () => void; conclusionOpen?: boolean }) {
+function CallRoom({ onDeviceError, context, onConclusion, conclusionOpen = false, dark = false }: { onDeviceError: () => void; context: VideoContext; onConclusion?: () => void; conclusionOpen?: boolean; dark?: boolean }) {
   const tracks = useTracks([{ source: Track.Source.Camera, withPlaceholder: true }, { source: Track.Source.ScreenShare, withPlaceholder: false }]);
   const participants = useParticipants();
   const state = useConnectionState();
   const connected = state === ConnectionState.Connected;
   const stateLabel = connected ? 'În apel' : [ConnectionState.Reconnecting, ConnectionState.SignalReconnecting].includes(state) ? 'Se restabilește conexiunea...' : state === ConnectionState.Connecting ? 'Se conectează...' : 'Deconectat';
   const [chatOpen, setChatOpen] = useState(false);
+
+  if (dark) {
+    return <div className="video-room">
+      <div className={`video-stage ${chatOpen ? 'video-stage-with-chat' : ''}`}>
+        <GridLayout tracks={tracks}><ParticipantTile /></GridLayout>
+        {chatOpen && <ConsultationCallChat context={context} onClose={() => setChatOpen(false)} />}
+      </div>
+      {connected && participants.length < 2 && <p className="px-4 pt-3 text-center text-sm text-slate-400">Ești în apel. Așteptăm pacientul.</p>}
+      <div className="video-controls">
+        <MediaControl round source={Track.Source.Microphone} disabled={!connected} onDeviceError={onDeviceError} />
+        <MediaControl round source={Track.Source.Camera} disabled={!connected} onDeviceError={onDeviceError} />
+        <button type="button" className="lk-button video-round" aria-pressed={chatOpen} aria-label="Mesaje" title="Mesaje" onClick={() => setChatOpen(!chatOpen)}><MessageSquare size={20} /></button>
+        {onConclusion && <button type="button" className="video-pill" aria-pressed={conclusionOpen} onClick={onConclusion}><FileText size={18} />Concluzie</button>}
+        <DisconnectButton aria-label="Închide apelul" title="Închide apelul"><PhoneOff size={20} /></DisconnectButton>
+      </div>
+      <RoomAudioRenderer />
+      <StartAudio label="Activează sunetul" />
+    </div>;
+  }
 
   return <div className="video-room">
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-3 text-sm">
@@ -48,7 +68,8 @@ function CallRoom({ onDeviceError, context, onConclusion, conclusionOpen = false
   </div>;
 }
 
-export default function VideoCallPanel({ connection, joining, onJoin, onDisconnected, onConnectionError, onDeviceError, participant, context, rejoining, onConclusion, conclusionOpen }: {
+export default function VideoCallPanel({ connection, joining, onJoin, onDisconnected, onConnectionError, onDeviceError, participant, context, rejoining, onConclusion, conclusionOpen, dark = false }: {
+  dark?: boolean;
   onConclusion?: () => void;
   conclusionOpen?: boolean;
   connection: VideoConnection | null;
@@ -61,12 +82,12 @@ export default function VideoCallPanel({ connection, joining, onJoin, onDisconne
   onConnectionError: () => void;
   onDeviceError: () => void;
 }) {
-  return connection ? <LiveKitRoom className="telemed-video" data-lk-theme="default"
+  return connection ? <LiveKitRoom className={dark ? 'telemed-video video-dark h-full' : 'telemed-video'} data-lk-theme="default"
     serverUrl={connection.server_url} token={connection.participant_token} connect
     audio={connection.choices.audioEnabled ? { deviceId: connection.choices.audioDeviceId } : false}
     video={connection.choices.videoEnabled ? { deviceId: connection.choices.videoDeviceId } : false}
     onDisconnected={onDisconnected} onError={onConnectionError} onMediaDeviceFailure={onDeviceError}>
-    <CallRoom onDeviceError={onDeviceError} context={context} onConclusion={onConclusion} conclusionOpen={conclusionOpen} />
+    <CallRoom onDeviceError={onDeviceError} context={context} onConclusion={onConclusion} conclusionOpen={conclusionOpen} dark={dark} />
   </LiveKitRoom> : <div data-lk-theme="default" className="telemed-video video-prejoin" aria-busy={joining} style={{ pointerEvents: joining ? 'none' : undefined }}>
     <div className="mx-auto mb-6 max-w-lg text-center"><h2 className="text-xl font-semibold text-slate-900">Pregătește-te pentru consultație</h2><p className="mt-2 text-sm text-slate-500">Apasă „Intră în apel și sună”. Camera și microfonul sunt oprite inițial; le poți porni când dorești.</p></div>
     <div className="video-identity"><span className="text-xs font-medium uppercase tracking-wide text-primary">{participant.role_label}</span><p className="mt-1 text-lg font-semibold text-slate-900">{participant.name}</p><p className="mt-1 text-xs text-slate-500">Vei apărea cu acest nume în apel.</p></div>

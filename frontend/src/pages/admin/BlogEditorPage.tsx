@@ -17,6 +17,7 @@ type BlogForm = {
   body: string;
   author_name: string;
   category: string;
+  audience: 'all' | 'patients' | 'doctors';
   is_published: boolean;
   cover_image_url: string | null;
 };
@@ -28,6 +29,7 @@ const emptyPost: BlogForm = {
   body: '',
   author_name: '',
   category: '',
+  audience: 'all',
   is_published: false,
   cover_image_url: null
 };
@@ -55,6 +57,7 @@ export function AdminBlogEditorPage() {
         body: response.body,
         author_name: response.author_name ?? '',
         category: response.category ?? '',
+        audience: response.audience ?? 'all',
         is_published: response.is_published,
         cover_image_url: response.cover_image_url
       }))
@@ -89,6 +92,7 @@ export function AdminBlogEditorPage() {
     form.append('excerpt', post.excerpt.trim());
     form.append('author_name', post.author_name.trim());
     form.append('category', post.category.trim());
+    form.append('audience', post.audience);
     form.append('is_published', post.is_published ? '1' : '0');
     form.append('remove_cover_image', removeCover ? '1' : '0');
     if (coverFile) form.append('cover_image', coverFile);
@@ -139,6 +143,14 @@ export function AdminBlogEditorPage() {
             <div className="grid gap-5 md:grid-cols-[1fr_220px]">
               <TextField label="Autor" value={post.author_name} onChange={(author_name) => setPost({ ...post, author_name })} />
               <TextField label="Categorie (ex: Platformă, Plăți, Ghid)" value={post.category} onChange={(category) => setPost({ ...post, category })} />
+              <div className="space-y-2">
+                <Label htmlFor="audience">Pentru cine</Label>
+                <select id="audience" value={post.audience} onChange={(event) => setPost({ ...post, audience: event.target.value as 'all' | 'patients' | 'doctors' })} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">
+                  <option value="all">Toți</option>
+                  <option value="patients">Pacienți</option>
+                  <option value="doctors">Medici</option>
+                </select>
+              </div>
               <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <Label htmlFor="published">Publicat</Label>
                 <Switch id="published" checked={post.is_published} onCheckedChange={(is_published) => setPost({ ...post, is_published })} />

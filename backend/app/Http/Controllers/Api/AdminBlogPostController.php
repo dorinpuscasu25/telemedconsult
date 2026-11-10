@@ -96,6 +96,7 @@ class AdminBlogPostController extends Controller
             'cover_image_url' => $coverImageUrl,
             'author_name' => $validated['author_name'] ?? null,
             'category' => $validated['category'] ?? null,
+            'audience' => $validated['audience'] ?? 'all',
             'is_published' => $isPublished,
             'published_at' => $isPublished ? ($blogPost?->published_at ?? now()) : null,
         ];
@@ -130,6 +131,7 @@ class AdminBlogPostController extends Controller
             'cover_image_url' => $post->cover_image_url,
             'author_name' => $post->author_name,
             'category' => $post->category,
+            'audience' => $post->audience,
             'is_published' => $post->is_published,
             'published_at' => $post->published_at,
             'created_at' => $post->created_at,

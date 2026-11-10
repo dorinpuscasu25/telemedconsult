@@ -23,6 +23,7 @@ use App\Services\DoctorSchedule;
 use App\Services\DoctorServiceCatalog;
 use App\Services\InstitutionLedger;
 use App\Services\PlatformConfig;
+use App\Services\PublicImageStorage;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -141,6 +142,7 @@ class DoctorOperationsController extends Controller
                 'address' => $doctor->doctorProfile->medicalInstitution->address,
             ] : null,
             'has_signature' => (bool) $doctor->doctorProfile?->signature_path,
+            'avatar' => $doctor->avatar_url,
             'has_clinic_logo' => (bool) $doctor->doctorProfile?->clinic_logo_path,
         ]);
     }
@@ -183,6 +185,10 @@ class DoctorOperationsController extends Controller
                 }
             }],
             'is_available' => ['nullable', 'boolean'],
+            'payout_bank' => ['nullable', 'string', 'max:80'],
+            'payout_iban' => ['nullable', 'string', 'max:40', 'regex:/^[A-Za-z0-9 ]+$/'],
+        ], [
+            'payout_iban.regex' => 'IBAN-ul poate conține doar litere și cifre.',
         ]);
 
         $doctor->forceFill([
@@ -211,6 +217,8 @@ class DoctorOperationsController extends Controller
                 'required_investigations' => $doctor->doctorProfile?->required_investigations ?? [],
                 'is_available' => $validated['is_available'] ?? $existing?->is_available ?? true,
                 'is_approved' => $doctor->doctorProfile?->is_approved ?? true,
+                'payout_bank' => array_key_exists('payout_bank', $validated) ? $validated['payout_bank'] : $existing?->payout_bank,
+                'payout_iban' => array_key_exists('payout_iban', $validated) ? ($validated['payout_iban'] ? strtoupper(str_replace(' ', '', $validated['payout_iban'])) : null) : $existing?->payout_iban,
             ],
         );
 
@@ -349,6 +357,44 @@ class DoctorOperationsController extends Controller
         return response()->json(app(DoctorSchedule::class)->freeSlots($doctor, (int) ($validated['days'] ?? 8), null, true, isset($validated['ignore']) ? (int) $validated['ignore'] : null));
     }
 
+    /** Fotografia din profilul public; o vede pacientul în catalog. */
+    public function uploadAvatar(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->hasRole('doctor'), 403);
+        $request->validate(['avatar' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:3072', 'dimensions:max_width=4000,max_height=4000']]);
+
+        $url = app(PublicImageStorage::class)->persistReplacement(
+            $request->file('avatar'),
+            'avatars',
+            function (?string $url) use ($user) {
+                $user->forceFill(['avatar_url' => $url])->save();
+
+                return $url;
+            },
+            $user->avatar_url,
+        );
+
+        return response()->json(['message' => 'Fotografia a fost salvată.', 'avatar' => $url]);
+    }
+
+    /** Medicul nu-și schimbă singur instituția: îi scrie administratorului. */
+    public function requestInstitutionChange(Request $request): JsonResponse
+    {
+        $doctor = $request->user()->loadMissing('doctorProfile.medicalInstitution');
+        abort_unless($doctor->hasRole('doctor'), 403);
+        $validated = $request->validate(['message' => ['required', 'string', 'min:5', 'max:1000']], ['message.required' => 'Scrie în ce instituție lucrezi.']);
+
+        $this->notifyAdmins(
+            'Medicul cere schimbarea instituției',
+            $doctor->name.' ('.($doctor->doctorProfile?->medicalInstitution?->name ?? 'fără instituție').'): '.$validated['message'],
+            '/admin/doctors',
+            false,
+        );
+
+        return response()->json(['message' => 'Mesajul a ajuns la administrator.']);
+    }
+
     public function stats(Request $request): JsonResponse
     {
         $doctor = $request->user()->loadMissing(['roles', 'doctorProfile.medicalInstitution']);
@@ -433,6 +479,9 @@ class DoctorOperationsController extends Controller
                 'reviews_count' => (int) ($doctor->doctorProfile?->reviews_count ?? 0),
                 'profile_views' => $profileViews,
                 'available_balance' => $this->availableBalanceMinor($doctor->id) / 100,
+                'payout_account' => $doctor->doctorProfile?->payout_iban
+                    ? trim(($doctor->doctorProfile->payout_bank ?? '').' ···· '.substr($doctor->doctorProfile->payout_iban, -4))
+                    : null,
             ],
             'institution' => $this->institutionSummary($doctor),
             'revenue' => $monthlyRevenue,
@@ -519,7 +568,7 @@ class DoctorOperationsController extends Controller
             'user_id' => $doctor->id,
             'amount_minor' => $amountMinor,
             'currency' => 'MDL',
-            'iban' => '',
+            'iban' => $doctor->doctorProfile?->payout_iban ?? '',
             'payout_period' => now()->format('Y-m'),
             'status' => 'pending',
         ]);
