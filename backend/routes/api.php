@@ -106,6 +106,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/video-calls/{videoCallInvitation}/respond', [ConsultationVideoController::class, 'respondCall'])->middleware('throttle:30,1');
         Route::get('/notifications', [NotificationController::class, 'index']);
         Route::post('/notifications/read', [NotificationController::class, 'markRead']);
+        Route::post('/notifications/{notification}/read', [NotificationController::class, 'markOneRead']);
 
         Route::get('/telegram/status', [TelegramController::class, 'status']);
         Route::post('/telegram/link', [TelegramController::class, 'link'])->middleware('throttle:20,1');

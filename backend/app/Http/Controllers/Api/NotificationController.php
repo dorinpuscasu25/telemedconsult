@@ -37,4 +37,16 @@ class NotificationController extends Controller
 
         return response()->json(['message' => 'Notificări marcate ca citite.']);
     }
+
+    /** O singură notificare citită (clic pe ea în panou). Doar a utilizatorului curent. */
+    public function markOneRead(Request $request, string $notification): JsonResponse
+    {
+        $item = $request->user()->notifications()->whereKey($notification)->firstOrFail();
+        $item->markAsRead();
+
+        return response()->json([
+            'message' => 'Notificare citită.',
+            'unread_count' => $request->user()->unreadNotifications()->count(),
+        ]);
+    }
 }

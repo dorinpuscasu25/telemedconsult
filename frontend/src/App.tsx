@@ -42,6 +42,7 @@ import { ChatPage } from './pages/patient/ChatPage';
 import { ProfilePage } from './pages/patient/ProfilePage';
 import { ComplaintsPage as PatientComplaintsPage } from './pages/patient/ComplaintsPage';
 import { PatientConsultationsPage } from './pages/patient/PatientConsultationsPage';
+import { MorePage } from './pages/patient/MorePage';
 // New Doctor Pages
 import { ConsultationsPage } from './pages/doctor/ConsultationsPage';
 import { DoctorChatPage } from './pages/doctor/DoctorChatPage';
@@ -235,6 +236,7 @@ function AppRoutes() {
         <Route path="consultations" element={<PatientConsultationsPage />} />
         <Route path="chat" element={<ChatPage />} />
         <Route path="complaints" element={<PatientComplaintsPage />} />
+        <Route path="more" element={<MorePage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="patients/:profileId" element={<PatientRecordPage />} />
         <Route path="noutati" element={<AppNewsListPage />} />

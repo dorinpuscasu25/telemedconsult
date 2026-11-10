@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Check, ClipboardList, Clock, Folder, Home, Info, MessageSquare, Paperclip, Search, Send, Video } from 'lucide-react';
+import { ArrowLeft, Check, CheckCircle2, ChevronDown, ClipboardList, Clock, Folder, Home, MessageSquare, MessagesSquare, Paperclip, Search, Send, Video } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import { Input } from '../../components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../../components/ui/sheet';
 import { cn } from '../../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
@@ -32,16 +31,16 @@ type Conversation = {
   messages: Message[];
   created_at: string;
 };
-type Peer = { key: string; role: 'doctor' | 'operator'; id: number; name: string; unread: number; last?: Message; lastAt: number; patients: Array<{ id: number; name: string; unread: number }> };
-type Filter = string;
+type Peer = { key: string; role: 'doctor' | 'operator'; id: number; name: string; unread: number; last?: Message; lastAt: number; patients: Array<{ id: number; name: string; unread: number }>; hasDirect: boolean; directUnread: number };
+type Channel = { key: string; title: string; fullName: string; code?: string; unread: number; last?: string; lastAt: number; state: { label: string; className: string } | null; statusLine: string };
 
 const DIRECT = 'direct';
 
 /**
- * Chatul pacientului pe două niveluri: medicii (stânga), apoi conversația cu un
- * medic, cu un tab pentru fiecare pacient și unul pentru discuția directă. În
- * fiecare tab, consultațiile sunt episoade într-o singură cronologie. Apelul îl
- * pornește medicul; pacientul nu are buton de apel.
+ * Chatul pacientului (v2): medici → canale → conversație. Fiecare medic are câte un
+ * canal pentru fiecare pacient cu consultații la el și, separat, „Discuție directă”.
+ * În canal, consultațiile sunt episoade într-o singură cronologie. Apelul îl pornește
+ * medicul; pacientul nu are buton de apel.
  */
 export function PatientChatView() {
   const { user } = useAuth();
@@ -52,9 +51,12 @@ export function PatientChatView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<Filter>('all');
-  const [mobileChat, setMobileChat] = useState(() => Boolean(searchParams.get('conversation') || searchParams.get('request') || searchParams.get('doctor')));
+  // Pe telefon, conversația e deschisă cât timp URL-ul are un medic sau o conversație (C2b, fără navigația de jos).
+  const mobileChat = Boolean(searchParams.get('conversation') || searchParams.get('request') || searchParams.get('doctor') || searchParams.get('operator'));
   const [recordOpen, setRecordOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  // Câte mesaje erau necitite când am deschis canalul: de aici pornește „Mesaje noi”.
+  const [newFrom, setNewFrom] = useState<Record<string, number>>({});
 
   useEffect(() => { document.title = 'Mesaje · telemedconsult.md'; }, []);
 
@@ -92,66 +94,6 @@ export function PatientChatView() {
   }, [currentUserId, load]);
 
   const peers = useMemo(() => buildPeers(conversations), [conversations]);
-
-  // Ce e selectat vine din URL: ?doctor= / ?operator=, ?patient_profile= sau ?tab=direct, ?conversation= / ?request=.
-  const target = useMemo(() => {
-    const byConversation = conversations.find((item) => String(item.id) === searchParams.get('conversation'))
-      ?? conversations.find((item) => String(item.consultation_request_id) === searchParams.get('request'));
-    const doctorParam = searchParams.get('doctor');
-    const operatorParam = searchParams.get('operator');
-    const peerKey = byConversation ? peerKeyOf(byConversation) : doctorParam ? `doctor:${doctorParam}` : operatorParam ? `operator:${operatorParam}` : peers[0]?.key;
-    const tab = byConversation ? (byConversation.is_direct ? DIRECT : String(byConversation.patient_profile_id ?? DIRECT)) : searchParams.get('tab') ?? searchParams.get('patient_profile');
-    return { peerKey, tab };
-  }, [conversations, peers, searchParams]);
-
-  const peer = peers.find((item) => item.key === target.peerKey) ?? peers[0];
-  const peerConversations = useMemo(() => conversations.filter((item) => peer && peerKeyOf(item) === peer.key), [conversations, peer]);
-  const tabs = useMemo(() => buildTabs(peerConversations), [peerConversations]);
-  const activeTab = tabs.find((item) => item.key === target.tab)?.key ?? tabs.find((item) => item.key !== DIRECT)?.key ?? DIRECT;
-  const episodes = useMemo(() => peerConversations
-    .filter((item) => (activeTab === DIRECT ? item.is_direct : !item.is_direct && String(item.patient_profile_id) === activeTab))
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()), [peerConversations, activeTab]);
-  const current = episodes[episodes.length - 1];
-  const currentRequest = current?.consultation_request_id ? requests[String(current.consultation_request_id)] : undefined;
-  const patientProfile = peerConversations.find((item) => String(item.patient_profile_id) === activeTab)?.patient_profile;
-
-  // Marchează ca citite mesajele episodului curent.
-  const lastMessageId = current?.messages[current.messages.length - 1]?.id;
-  useEffect(() => {
-    if (!current?.id || !lastMessageId || !current.unread_count) return;
-    apiRequest(`/conversations/${current.id}/read`, { method: 'POST', body: JSON.stringify({ last_message_id: lastMessageId }) })
-      .then(() => { setConversations((list) => list.map((item) => item.id === current.id ? { ...item, unread_count: 0 } : item)); window.dispatchEvent(new Event('conversation-read')); })
-      .catch(() => undefined);
-  }, [current?.id, current?.unread_count, lastMessageId]);
-
-  const selectPeer = (item: Peer) => {
-    setSearchParams({ [item.role]: String(item.id) });
-    setMobileChat(true);
-  };
-  const selectTab = (key: string) => {
-    if (!peer) return;
-    setSearchParams({ [peer.role]: String(peer.id), tab: key });
-  };
-
-  const openDirect = async () => {
-    const existing = peerConversations.find((item) => item.is_direct);
-    if (existing) { selectTab(DIRECT); return; }
-    const base = peerConversations[peerConversations.length - 1];
-    if (!base) return;
-    try {
-      const response = await apiRequest<{ data: Conversation }>(`/conversations/${base.id}/direct`, { method: 'POST' });
-      setConversations((list) => [response.data, ...list.filter((item) => item.id !== response.data.id)]);
-      selectTab(DIRECT);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Discuția directă nu a putut fi deschisă.');
-    }
-  };
-
-  const patientFilters = useMemo(() => {
-    const seen = new Map<number, string>();
-    for (const item of conversations) if (item.patient_profile) seen.set(item.patient_profile.id, item.patient_profile.display_name.split(' ')[0]);
-    return [...seen.entries()].map(([id, label]) => ({ id: String(id), label }));
-  }, [conversations]);
   const specialties = useMemo(() => {
     const map: Record<string, string> = {};
     for (const item of conversations) {
@@ -160,60 +102,121 @@ export function PatientChatView() {
     }
     return map;
   }, [conversations, requests]);
+
+  // Ce e selectat vine din URL: ?doctor= / ?operator=, ?channel= (id pacient sau „direct”), ?conversation= / ?request=.
+  const target = useMemo(() => {
+    const byConversation = conversations.find((item) => String(item.id) === searchParams.get('conversation'))
+      ?? conversations.find((item) => String(item.consultation_request_id) === searchParams.get('request'));
+    const doctorParam = searchParams.get('doctor');
+    const operatorParam = searchParams.get('operator');
+    const peerKey = byConversation ? peerKeyOf(byConversation) : doctorParam ? `doctor:${doctorParam}` : operatorParam ? `operator:${operatorParam}` : peers[0]?.key;
+    const channel = byConversation ? channelKeyOf(byConversation) : searchParams.get('channel') ?? searchParams.get('tab') ?? searchParams.get('patient_profile');
+    return { peerKey, channel };
+  }, [conversations, peers, searchParams]);
+
+  const peer = peers.find((item) => item.key === target.peerKey) ?? peers[0];
+  const peerConversations = useMemo(() => conversations.filter((item) => peer && peerKeyOf(item) === peer.key), [conversations, peer]);
+  const channels = useMemo(() => buildChannels(peerConversations, requests), [peerConversations, requests]);
+  // Canalul ales: din URL; altfel primul cu necitite; altfel cel mai recent. Conversația nu e niciodată goală.
+  const autoChannel = channels.find((item) => item.unread > 0)?.key ?? [...channels].sort((a, b) => b.lastAt - a.lastAt)[0]?.key ?? DIRECT;
+  const activeKey = channels.some((item) => item.key === target.channel) ? target.channel! : autoChannel;
+  const channel = channels.find((item) => item.key === activeKey);
+  const episodes = useMemo(() => peerConversations
+    .filter((item) => channelKeyOf(item) === activeKey)
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()), [peerConversations, activeKey]);
+  const current = episodes[episodes.length - 1];
+  const currentRequest = current?.consultation_request_id ? requests[String(current.consultation_request_id)] : undefined;
+  const patientProfile = peerConversations.find((item) => channelKeyOf(item) === activeKey && item.patient_profile)?.patient_profile;
+  const isDirect = activeKey === DIRECT;
+  const stateKey = `${peer?.key}|${activeKey}`;
+
+  // Marchează ca citite mesajele canalului deschis; ține minte de unde încep cele noi.
+  const unreadIds = episodes.filter((item) => item.unread_count).map((item) => item.id).join(',');
+  useEffect(() => {
+    const unreadEpisodes = episodes.filter((item) => item.unread_count && item.messages.length);
+    if (!unreadEpisodes.length) return;
+    const latest = unreadEpisodes[unreadEpisodes.length - 1];
+    const firstNew = latest.messages[Math.max(0, latest.messages.length - (latest.unread_count ?? 0))]?.id;
+    if (firstNew) setNewFrom((map) => (map[stateKey] ? map : { ...map, [stateKey]: firstNew }));
+    for (const item of unreadEpisodes) {
+      const last = item.messages[item.messages.length - 1]?.id;
+      apiRequest(`/conversations/${item.id}/read`, { method: 'POST', body: JSON.stringify({ last_message_id: last }) })
+        .then(() => { setConversations((list) => list.map((entry) => entry.id === item.id ? { ...entry, unread_count: 0 } : entry)); window.dispatchEvent(new Event('conversation-read')); })
+        .catch(() => undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stateKey, unreadIds]);
+
+  const selectPeer = (item: Peer) => {
+    setSearchParams({ [item.role]: String(item.id) });
+  };
+  const selectChannel = async (key: string) => {
+    if (!peer) return;
+    setSheetOpen(false);
+    if (key === DIRECT && !peerConversations.some((item) => item.is_direct)) {
+      const base = peerConversations[peerConversations.length - 1];
+      if (!base) return;
+      try {
+        const response = await apiRequest<{ data: Conversation }>(`/conversations/${base.id}/direct`, { method: 'POST' });
+        setConversations((list) => [response.data, ...list.filter((item) => item.id !== response.data.id)]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Discuția directă nu a putut fi deschisă.');
+        return;
+      }
+    }
+    setSearchParams({ [peer.role]: String(peer.id), channel: key });
+  };
+
   const needle = search.toLocaleLowerCase('ro');
-  const visiblePeers = peers.filter((item) => (item.name.toLocaleLowerCase('ro').includes(needle) || (item.last?.body ?? '').toLocaleLowerCase('ro').includes(needle))
-    && (filter === 'all' || item.patients.some((patient) => String(patient.id) === filter)));
+  const visiblePeers = peers.filter((item) => item.name.toLocaleLowerCase('ro').includes(needle));
+  const otherUnread = channels.filter((item) => item.key !== activeKey).reduce((sum, item) => sum + item.unread, 0);
 
   if (!loading && conversations.length === 0) {
     return (
-      <div className="mx-auto max-w-lg rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-12 text-center">
-        <span className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 text-slate-500"><MessageSquare className="h-6 w-6" /></span>
-        <h1 className="font-semibold text-slate-900">Nu ai conversații încă</h1>
-        <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">Conversația cu medicul se deschide când trimiți o cerere de consultație.</p>
-        <Button asChild className="mt-4"><Link to="/patient/doctors">Programează o consultație</Link></Button>
+      <div className="grid min-h-[calc(100dvh-132px)] place-items-center px-4 lg:min-h-dvh">
+        <div className="max-w-sm text-center">
+          <span className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-xl bg-slate-100 text-slate-500"><MessageSquare className="h-6 w-6" /></span>
+          <h1 className="text-base font-semibold text-slate-950">Nu ai conversații încă</h1>
+          <p className="mt-1 text-sm text-slate-500">Conversația cu medicul se deschide când trimiți o cerere de consultație.</p>
+          <Button asChild className="mt-4 h-11 rounded-[10px]"><Link to="/patient/doctors">Programează o consultație</Link></Button>
+        </div>
       </div>
     );
   }
 
-  const firstName = patientProfile?.display_name.split(' ')[0];
-  const scheduledCall = currentRequest?.status === 'accepted' && currentRequest.consultation_kind !== 'with_exam' && currentRequest.scheduled_at ? timeOf(currentRequest.scheduled_at) : null;
+  const channelRows = (list: Channel[]) => list.map((item) => <ChannelRow key={item.key} channel={item} active={item.key === activeKey} onPick={() => void selectChannel(item.key)} />);
+  const patientChannels = channels.filter((item) => item.key !== DIRECT);
+  const directChannel = channels.find((item) => item.key === DIRECT)!;
 
   return (
-    <div className="flex h-[calc(100dvh-56px-64px-3.25rem-env(safe-area-inset-bottom))] min-h-[420px] lg:h-[calc(100dvh-64px-4.5rem)] lg:overflow-hidden lg:rounded-2xl lg:border lg:border-slate-200 lg:bg-white">
-      {/* Nivelul 1: medicii */}
-      <aside className={cn('w-full flex-col lg:flex lg:w-[296px] lg:shrink-0 lg:border-r lg:border-slate-200', mobileChat ? 'hidden' : 'flex')}>
-        <div className="flex flex-col gap-3 pb-3 lg:px-4 lg:pt-5">
-          <h1 className="text-[28px] font-bold tracking-tight text-slate-950 lg:text-lg">Mesaje</h1>
+    <div className={cn('flex bg-white lg:h-dvh', mobileChat ? 'h-dvh' : 'h-[calc(100dvh-60px-max(12px,env(safe-area-inset-bottom)))]')}>
+      {/* Medicii (264 px pe desktop; lista întreagă pe telefon, C2a) */}
+      <aside className={cn('w-full flex-col bg-white lg:flex lg:w-[264px] lg:shrink-0 lg:border-r lg:border-slate-200', mobileChat ? 'hidden' : 'flex')}>
+        <div className="flex flex-col gap-3 px-4 pb-3 pt-[calc(16px+env(safe-area-inset-top))] lg:pt-[18px]">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-950 lg:text-lg">Mesaje</h1>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Caută medic sau mesaj" className="h-10 rounded-[10px] bg-white pl-9" aria-label="Caută medic sau mesaj" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Caută medic" aria-label="Caută medic"
+              className="h-[42px] w-full rounded-[10px] border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none placeholder:text-slate-400 focus-visible:border-blue-600 lg:h-[38px] lg:text-[13px]" />
           </div>
-          {patientFilters.length > 1 && (
-            <div className="flex gap-1.5 overflow-x-auto [scrollbar-width:none]" role="radiogroup" aria-label="Pacient">
-              {[{ id: 'all', label: 'Toți' }, ...patientFilters].map((item) => (
-                <button key={item.id} type="button" role="radio" aria-checked={filter === item.id} onClick={() => setFilter(item.id)} className={cn('h-8 shrink-0 rounded-full border px-3 text-[13px] font-medium', filter === item.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700')}>{item.label}</button>
-              ))}
-            </div>
-          )}
         </div>
-        <ul className="-mx-4 min-h-0 flex-1 overflow-y-auto lg:mx-0 lg:px-2">
+        <ul className="min-h-0 flex-1 overflow-y-auto">
           {loading && <li className="p-4"><div className="h-14 animate-pulse rounded-xl bg-slate-100" /></li>}
           {visiblePeers.map((item) => {
             const active = peer?.key === item.key;
             const mine = item.last && currentUserId === Number(item.last.sender_id);
+            const last = item.last ? `${mine ? 'Tu: ' : ''}${previewOf(item.last)}` : 'Fără mesaje';
             return (
-              <li key={item.key} className="border-b border-slate-100 lg:border-0">
-                <button type="button" onClick={() => selectPeer(item)} className={cn('flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-slate-50 lg:rounded-xl lg:px-2.5', active && 'lg:bg-blue-50 lg:hover:bg-blue-50')}>
-                  <Initials name={item.name} />
-                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="flex items-baseline justify-between gap-2"><span className="truncate text-sm font-semibold text-slate-950">{item.name}</span><span className="shrink-0 text-[11px] text-slate-400">{item.last ? listTime(item.last.created_at) : ''}</span></span>
-                    <span className="flex items-center gap-1.5 text-xs text-slate-500">
-                      {specialties[item.key] ?? (item.role === 'operator' ? 'Operator' : 'Medic')}
-                      {item.patients.map((patient) => <span key={patient.id} title={patient.name} className="grid h-4 min-w-4 place-items-center rounded-full bg-blue-50 px-1 text-[9px] font-bold text-blue-700">{patient.name[0]?.toUpperCase()}</span>)}
-                    </span>
-                    <span className="flex items-center justify-between gap-2">
-                      <span className={cn('truncate text-[13px]', item.unread > 0 ? 'font-medium text-slate-950' : 'text-slate-500')}>{item.last ? `${mine ? 'Tu: ' : ''}${previewOf(item.last)}` : 'Fără mesaje'}</span>
-                      {item.unread > 0 && <span className="grid h-[18px] min-w-[18px] shrink-0 place-items-center rounded-full bg-blue-600 px-1.5 text-[11px] font-semibold text-white">{item.unread}</span>}
+              <li key={item.key} className="border-t border-slate-100">
+                <button type="button" onClick={() => selectPeer(item)} className={cn('flex w-full gap-3 px-4 py-3.5 text-left hover:bg-slate-50 lg:gap-2.5 lg:py-3', active && 'lg:bg-blue-50 lg:shadow-[inset_3px_0_0_#2563EB] lg:hover:bg-blue-50')}>
+                  <span className={cn('grid h-12 w-12 shrink-0 place-items-center rounded-full text-[15px] font-semibold lg:h-10 lg:w-10 lg:text-[13px]', active ? 'bg-slate-200 text-slate-700 lg:bg-blue-600 lg:text-white' : 'bg-slate-200 text-slate-700')}>{initialsOf(item.name)}</span>
+                  <span className="flex min-w-0 flex-1 flex-col gap-1 lg:gap-[3px]">
+                    <span className="flex justify-between gap-1.5"><span className="truncate text-[15px] font-semibold text-slate-950 lg:text-sm">{item.name}</span><span className="shrink-0 text-xs text-slate-400 lg:text-[11px]">{item.last ? listTime(item.last.created_at) : ''}</span></span>
+                    <span className="hidden text-xs text-slate-500 lg:block">{specialties[item.key] ?? (item.role === 'operator' ? 'Operator' : 'Medic')}</span>
+                    <span className="flex items-center justify-between gap-2"><span className="truncate text-[13px] text-slate-600 lg:text-xs">{last}</span>{item.unread > 0 && <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-blue-600 px-1.5 text-[11px] font-bold text-white lg:h-[18px] lg:min-w-[18px]">{item.unread}</span>}</span>
+                    <span className="flex flex-wrap gap-1 lg:hidden">
+                      {item.patients.map((patient) => <Chip key={patient.id} label={patient.name.split(' ')[0]} count={patient.unread} />)}
+                      {item.hasDirect && <Chip label="Direct" count={item.directUnread} />}
                     </span>
                   </span>
                 </button>
@@ -223,55 +226,79 @@ export function PatientChatView() {
         </ul>
       </aside>
 
-      {/* Nivelul 2: conversația cu medicul */}
-      <section className={cn('-mx-4 min-w-0 flex-1 flex-col overflow-hidden bg-white lg:mx-0 lg:flex', mobileChat ? 'flex' : 'hidden')}>
-        {peer && (
-          <>
-            <header className="flex items-center gap-3 px-3 pb-2 pt-3 sm:px-5 lg:border-b lg:border-slate-100 lg:py-3.5">
-              <Button variant="ghost" size="icon-sm" className="lg:hidden" aria-label="Înapoi la conversații" onClick={() => setMobileChat(false)}><ArrowLeft className="h-5 w-5" /></Button>
-              <Initials name={peer.name} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[15px] font-semibold text-slate-950">{peer.name}</p>
-                <p className="truncate text-xs text-slate-500">{activeTab === DIRECT ? 'Discuție directă' : patientProfile ? `pentru ${firstName}${patientProfile.patient_code ? ` · Cod ${patientProfile.patient_code.replace(/(\d{3})(?=\d)/g, '$1 ')}` : ''}` : ''}</p>
-              </div>
-              {patientProfile && activeTab !== DIRECT && (
-                <>
-                  <Button variant="outline" size="sm" onClick={() => setRecordOpen(true)} aria-label="Fișa pacientului" className="shrink-0 rounded-[10px] max-lg:h-9 max-lg:w-9 max-lg:border-0 max-lg:p-0"><ClipboardList className="h-4 w-4" /><span className="max-lg:sr-only">Fișa pacientului</span></Button>
-                  <Button asChild variant="outline" size="sm" className="hidden rounded-[10px] lg:inline-flex"><Link to={`/patient/patients/${patientProfile.id}?tab=documente`}><Folder className="h-4 w-4" />Documente</Link></Button>
-                </>
-              )}
-              {/* Apelul îl pornește medicul; butonul arată doar de când. */}
-              <span title="Medicul te sună" className="flex h-9 shrink-0 items-center gap-1.5 rounded-[10px] text-sm text-slate-400 max-lg:w-9 max-lg:justify-center lg:border lg:border-slate-200 lg:px-3"><Video className="h-4 w-4" /><span className="max-lg:sr-only">Apel video{scheduledCall ? ` · de la ${scheduledCall}` : ''}</span></span>
-            </header>
+      {/* Canalele medicului ales (248 px, doar desktop; pe telefon e foaia de jos) */}
+      {peer && (
+        <aside className="hidden w-[248px] shrink-0 flex-col border-r border-slate-200 bg-slate-50 lg:flex">
+          <div className="flex h-16 shrink-0 flex-col justify-center gap-0.5 border-b border-slate-200 bg-white px-4">
+            <span className="text-xs text-slate-500">Canale cu</span>
+            <span className="truncate text-[15px] font-semibold text-slate-950">{peer.name}</span>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+            {patientChannels.length > 0 && (
+              <>
+                <div className="flex justify-between pb-1.5 pl-4 pr-2.5 pt-3.5 text-[11px] font-semibold tracking-[.04em] text-slate-500">PACIENȚI<span>{patientChannels.length}</span></div>
+                <div className="flex flex-col gap-0.5 px-2">{channelRows(patientChannels)}</div>
+                <div className="mx-4 my-3 h-px bg-slate-200" />
+              </>
+            )}
+            <div className={cn('flex flex-col gap-0.5 px-2', !patientChannels.length && 'pt-3')}>{channelRows([directChannel])}</div>
+          </div>
+        </aside>
+      )}
 
-            {/* Telefon: chips sub antet. Desktop: taburi subliniate. */}
-            <nav className="flex gap-1.5 overflow-x-auto border-b border-slate-100 px-3 pb-2.5 [scrollbar-width:none] sm:px-5 lg:hidden" aria-label="Pacienți">
-              {tabs.map((item) => (
-                <button key={item.key} type="button" onClick={() => (item.key === DIRECT && !item.exists ? void openDirect() : selectTab(item.key))} aria-current={activeTab === item.key ? 'page' : undefined}
-                  className={cn('inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium', activeTab === item.key ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700')}>
-                  {item.label}{item.unread > 0 && <span className="rounded-full bg-blue-600 px-1.5 text-[10px] font-semibold text-white">{item.unread}</span>}
-                </button>
-              ))}
-            </nav>
-            <nav className="hidden gap-1 border-b border-slate-200 px-4 lg:flex" aria-label="Pacienți">
-              {tabs.map((item) => (
-                <button key={item.key} type="button" onClick={() => (item.key === DIRECT && !item.exists ? void openDirect() : selectTab(item.key))} aria-current={activeTab === item.key ? 'page' : undefined}
-                  className={cn('-mb-px inline-flex h-10 items-center gap-1.5 border-b-2 px-2.5 text-sm', activeTab === item.key ? 'border-blue-600 font-semibold text-slate-950' : 'border-transparent text-slate-500 hover:text-slate-800')}>
-                  {item.label}{item.unread > 0 && <span className="rounded-full bg-blue-600 px-1.5 text-[10px] font-semibold text-white">{item.unread}</span>}
-                </button>
-              ))}
-            </nav>
+      {/* Conversația */}
+      <section className={cn('min-w-0 flex-1 flex-col bg-white lg:flex', mobileChat ? 'flex' : 'hidden')}>
+        {peer && channel && (
+          <>
+            {/* Telefon (C2b): medicul, apoi rândul mare „pentru cine”. */}
+            <header className="flex items-center gap-1.5 border-b border-slate-100 px-2 pb-2 pt-[calc(8px+env(safe-area-inset-top))] lg:hidden">
+              <button type="button" onClick={() => setSearchParams({})} aria-label="Înapoi la conversații" className="grid h-10 w-10 place-items-center text-slate-700"><ArrowLeft className="h-5 w-5" /></button>
+              <span className="flex min-w-0 flex-1 flex-col"><span className="truncate text-base font-semibold text-slate-950">{peer.name}</span><span className="truncate text-xs text-slate-500">{specialties[peer.key] ?? (peer.role === 'operator' ? 'Operator' : 'Medic')}</span></span>
+              {patientProfile && !isDirect
+                ? <button type="button" onClick={() => setRecordOpen(true)} aria-label="Fișa pacientului" className="grid h-10 w-10 place-items-center text-slate-700"><ClipboardList className="h-5 w-5" /></button>
+                : <Link to="/patient/profile" aria-label="Documente" className="grid h-10 w-10 place-items-center text-slate-700"><Folder className="h-5 w-5" /></Link>}
+            </header>
+            <button type="button" onClick={() => setSheetOpen(true)} className="mx-3 mt-2.5 flex min-h-14 items-center gap-2.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-left lg:hidden">
+              <ChannelAvatar channel={channel} size="md" />
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5"><span className="truncate text-sm font-semibold text-slate-950">{isDirect ? 'Discuție directă' : `pentru ${channel.title}`}</span><span className="truncate text-xs text-slate-600">{channel.statusLine}</span></span>
+              {otherUnread > 0 && <span className="shrink-0 whitespace-nowrap rounded-full bg-blue-600 px-2 py-[3px] text-[11px] font-semibold text-white">{otherUnread} în alt canal</span>}
+              <span className="flex shrink-0 items-center gap-0.5 text-[13px] font-semibold text-blue-700">Schimbă<ChevronDown className="h-4 w-4" /></span>
+            </button>
+
+            {/* Desktop (C1a) */}
+            <header className="hidden h-16 shrink-0 items-center gap-3 border-b border-slate-200 px-5 lg:flex">
+              <ChannelAvatar channel={channel} size="lg" />
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="truncate text-[15px] font-semibold text-slate-950">{peer.name}</span>
+                <span className="truncate text-xs text-slate-500">{isDirect ? 'Discuție directă · fără pacient' : `pentru ${channel.title}${channel.code ? ` · Cod ${channel.code}` : ''}`}</span>
+              </span>
+              {patientProfile && !isDirect && <HeaderButton onClick={() => setRecordOpen(true)} icon={<ClipboardList className="h-4 w-4" />}>Fișa pacientului</HeaderButton>}
+              <HeaderButton to={patientProfile && !isDirect ? `/patient/patients/${patientProfile.id}?tab=documente` : '/patient/profile'} icon={<Folder className="h-4 w-4" />}>Documente</HeaderButton>
+            </header>
 
             {error && <p role="alert" className="mx-4 mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
-            {currentRequest && activeTab !== DIRECT && <EpisodeHeader request={currentRequest} />}
+            {currentRequest && !isDirect && <EpisodeHeader request={currentRequest} />}
 
-            <Timeline episodes={episodes} requests={requests} currentUserId={currentUserId} onChanged={() => void load()} />
+            <Timeline episodes={episodes} requests={requests} currentUserId={currentUserId} newFrom={newFrom[stateKey]} onChanged={() => void load()} />
 
-            <Composer conversation={current} request={currentRequest} isDirect={activeTab === DIRECT} patientName={firstName} patientProfileId={patientProfile?.id} doctorId={peer.role === 'doctor' ? peer.id : undefined} onChanged={() => void load()} />
+            <Composer conversation={current} request={currentRequest} isDirect={isDirect} patientProfileId={patientProfile?.id} doctorId={peer.role === 'doctor' ? peer.id : undefined} onChanged={() => void load()} />
           </>
         )}
       </section>
+
+      {/* C2c: alegerea canalului pe telefon */}
+      {sheetOpen && peer && (
+        <div className="fixed inset-0 z-[60] lg:hidden" role="dialog" aria-label={`Canale cu ${peer.name}`}>
+          <button type="button" aria-label="Închide" onClick={() => setSheetOpen(false)} className="absolute inset-0 bg-slate-900/45" />
+          <div className="absolute inset-x-0 bottom-0 flex max-h-[80dvh] flex-col gap-1.5 overflow-y-auto rounded-t-[20px] bg-white px-3 pb-[max(32px,env(safe-area-inset-bottom))] pt-2.5">
+            <span className="mb-1.5 h-1 w-10 self-center rounded-sm bg-slate-200" />
+            <span className="px-2 pb-2 pt-1 text-base font-semibold text-slate-950">Canale cu {peer.name}</span>
+            {patientChannels.length > 0 && <><span className="px-2 pb-0.5 text-[11px] font-semibold tracking-[.04em] text-slate-500">PACIENȚI</span>{channelRows(patientChannels)}<div className="m-2 h-px bg-slate-200" /></>}
+            {channelRows([directChannel])}
+          </div>
+        </div>
+      )}
 
       <Sheet open={recordOpen} onOpenChange={setRecordOpen}>
         <SheetContent side="right" className="w-full gap-0 sm:max-w-md">
@@ -280,6 +307,42 @@ export function PatientChatView() {
         </SheetContent>
       </Sheet>
     </div>
+  );
+}
+
+function Chip({ label, count }: { label: string; count: number }) {
+  return <span className={cn('flex h-[22px] items-center rounded-full px-2 text-[11px] font-semibold', count ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600')}>{count ? `${label} · ${count}` : label}</span>;
+}
+
+function HeaderButton({ to, onClick, icon, children }: { to?: string; onClick?: () => void; icon: ReactNode; children: ReactNode }) {
+  const className = 'flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[10px] border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-950 hover:bg-slate-50';
+  return to ? <Link to={to} className={className}>{icon}{children}</Link> : <button type="button" onClick={onClick} className={className}>{icon}{children}</button>;
+}
+
+function ChannelAvatar({ channel, size }: { channel: Channel; size: 'sm' | 'md' | 'lg' }) {
+  const box = size === 'lg' ? 'h-[38px] w-[38px] text-[13px]' : size === 'md' ? 'h-9 w-9 text-xs' : 'h-[34px] w-[34px] text-xs';
+  if (channel.key === DIRECT) return <span className={cn('grid shrink-0 place-items-center bg-slate-200 text-slate-600', box, size === 'sm' ? 'rounded-[10px]' : 'rounded-full')}><MessagesSquare className="h-4 w-4" /></span>;
+  return <span className={cn('grid shrink-0 place-items-center rounded-full bg-blue-100 font-semibold text-blue-700', box)}>{initialsOf(channel.fullName)}</span>;
+}
+
+function ChannelRow({ channel, active, onPick }: { channel: Channel; active: boolean; onPick: () => void }) {
+  const unread = active ? 0 : channel.unread;
+  return (
+    <button type="button" onClick={onPick} aria-current={active ? 'true' : undefined}
+      className={cn('flex w-full items-center gap-2.5 rounded-xl border p-2.5 text-left', active ? 'border-blue-200 bg-white shadow-[0_1px_3px_rgba(15,23,42,.08),inset_3px_0_0_#2563EB]' : 'border-transparent hover:bg-white')}>
+      <ChannelAvatar channel={channel} size="sm" />
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="flex items-center justify-between gap-1.5">
+          <span className={cn('truncate text-sm', unread > 0 || active ? 'font-semibold' : 'font-medium', active ? 'text-blue-700' : 'text-slate-950')}>{channel.key === DIRECT ? 'Discuție directă' : channel.title}</span>
+          {unread > 0 && <span className="grid h-[18px] min-w-[18px] shrink-0 place-items-center rounded-full bg-blue-600 px-[5px] text-[11px] font-bold text-white">{unread}</span>}
+        </span>
+        <span className="truncate text-[11px] text-slate-500">{channel.last ?? 'Fără mesaje'}</span>
+        <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+          {channel.state && <span className={cn('shrink-0 rounded-full px-1.5 py-px text-[10px] font-semibold', channel.state.className)}>{channel.state.label}</span>}
+          <span className="truncate text-[10px] text-slate-400">{channel.key === DIRECT ? 'fără pacient' : channel.code ? `Cod ${channel.code}` : ''}</span>
+        </span>
+      </span>
+    </button>
   );
 }
 
@@ -330,81 +393,111 @@ function EpisodeHeader({ request }: { request: PatientConsultation }) {
 
 const EPISODE_STATE: Record<string, { label: string; className: string }> = {
   new: { label: 'Așteaptă medicul', className: 'bg-amber-100 text-amber-800' },
-  rescheduled: { label: 'Așteaptă răspunsul tău', className: 'bg-blue-50 text-blue-700' },
+  rescheduled: { label: 'Oră nouă propusă', className: 'bg-orange-50 text-orange-700' },
   accepted: { label: 'Confirmată', className: 'bg-green-50 text-green-700' },
-  completed: { label: 'Finalizată', className: 'bg-slate-100 text-slate-500' }
+  live: { label: 'În curs', className: 'bg-blue-50 text-blue-700' },
+  completed: { label: 'Finalizată', className: 'bg-slate-100 text-slate-600' },
+  cancelled: { label: 'Anulată', className: 'bg-slate-100 text-slate-600' }
 };
 
-function Timeline({ episodes, requests, currentUserId, onChanged }: { episodes: Conversation[]; requests: Record<string, PatientConsultation>; currentUserId: number | null; onChanged: () => void }) {
+function episodeState(request?: PatientConsultation) {
+  if (!request) return null;
+  if (request.status === 'accepted' && request.doctor_started_at) return EPISODE_STATE.live;
+  return EPISODE_STATE[request.status] ?? EPISODE_STATE.cancelled;
+}
+
+function Timeline({ episodes, requests, currentUserId, newFrom, onChanged }: { episodes: Conversation[]; requests: Record<string, PatientConsultation>; currentUserId: number | null; newFrom?: number; onChanged: () => void }) {
   const end = useRef<HTMLDivElement>(null);
   const total = episodes.reduce((sum, item) => sum + item.messages.length, 0);
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [total, episodes.length]);
   let lastDay = '';
-  const dayDivider = (value: string, key: string) => {
+  const dayPill = (value: string, key: string) => {
     const day = new Date(value).toLocaleDateString('en-CA', { timeZone: TZ });
     if (day === lastDay) return null;
+    const first = lastDay === '';
     lastDay = day;
-    return <div key={`day-${key}`} className="my-4 flex items-center gap-3 text-xs text-slate-500"><span className="h-px flex-1 bg-slate-200" />{dayLabel(value)}<span className="h-px flex-1 bg-slate-200" /></div>;
+    return first ? null : <div key={`day-${key}`} className="self-center rounded-full bg-slate-100 px-2.5 py-[3px] text-xs text-slate-500">{dayLabel(value)}</div>;
   };
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-3 py-4 sm:px-6">
+    <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto px-4 py-3.5 lg:gap-3 lg:px-6 lg:py-4">
+      <div className="flex-1" />
       {episodes.length === 0 && <p className="py-10 text-center text-sm text-slate-500">Niciun mesaj încă.</p>}
       {episodes.map((episode, index) => {
         const request = episode.consultation_request_id ? requests[String(episode.consultation_request_id)] : undefined;
         const isCurrent = index === episodes.length - 1;
-        const state = request ? EPISODE_STATE[request.status] ?? { label: 'Anulată', className: 'bg-slate-100 text-slate-500' } : null;
+        const past = !isCurrent && !episode.is_direct;
+        const state = episodeState(request);
+        const opacity = past ? 'opacity-[.55]' : '';
         return (
-          <div key={episode.id}>
-            {dayDivider(episode.created_at, `e${episode.id}`)}
+          <Fragment key={episode.id}>
             {!episode.is_direct && (
-              <div className={cn('my-3 flex items-center justify-between gap-3 rounded-xl border bg-white px-3.5 py-2.5', isCurrent && request?.status !== 'completed' ? 'border-blue-200' : 'border-slate-200 opacity-70')}>
-                <div className="min-w-0">
-                  <p className="text-[13px] font-semibold text-slate-900">Consultația #{index + 1} · {request?.consultation_kind === 'with_exam' ? 'Cu examinare' : 'Video'}{request?.status === 'completed' ? ` · ${shortDate(request.scheduled_at ?? episode.created_at)}` : ''}</p>
-                  <p className="text-xs text-slate-500">{request?.status === 'completed' ? 'Concluzie PDF' : `Cerută ${dayLabel(episode.created_at).toLocaleLowerCase('ro')}, ${shortTime(episode.created_at)}`}</p>
-                </div>
+              <div className={cn('flex shrink-0 items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5', opacity)}>
+                {request?.consultation_kind === 'with_exam' ? <Home className="h-4 w-4 shrink-0 text-slate-500" /> : <Video className="h-4 w-4 shrink-0 text-slate-500" />}
+                <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-slate-950">Consultația #{index + 1} · {request?.consultation_kind === 'with_exam' ? 'Cu examinare' : 'Video'} · {episodeDate(request?.scheduled_at ?? episode.created_at)}</span>
+                {request?.status === 'completed' && <EpisodeLinks requestId={request.id} />}
                 {state && <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold', state.className)}>{state.label}</span>}
               </div>
             )}
-            {episode.messages.map((message, position) => {
-              const previous = episode.messages[position - 1];
-              const next = episode.messages[position + 1];
+            {episode.messages.map((message) => {
               const mine = currentUserId === Number(message.sender_id);
-              const divider = dayDivider(message.created_at, `m${message.id}`);
+              const divider = dayPill(message.created_at, `m${message.id}`);
+              const isNew = newFrom === message.id;
+              const marker = isNew ? <div key={`new-${message.id}`} className="flex shrink-0 items-center gap-2.5 text-[11px] font-semibold text-blue-600"><span className="h-px flex-1 bg-blue-200" />Mesaje noi<span className="h-px flex-1 bg-blue-200" /></div> : null;
               if (message.type === 'system') {
-                const good = /confirm|accept|început/i.test(message.body);
-                return <div key={message.id}>{divider}<p className="mx-auto my-3 flex w-fit max-w-md items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-center text-xs text-slate-700"><span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', good ? 'bg-green-600' : 'bg-slate-400')} />{message.body}<span className="text-slate-400">{shortTime(message.created_at)}</span></p></div>;
+                return <Fragment key={message.id}>{divider}{marker}<div className={cn('flex shrink-0 items-center gap-1.5 self-center text-center text-xs text-slate-600', opacity)}><CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-600" />{message.body}</div></Fragment>;
               }
-              const firstOfGroup = Boolean(divider) || !previous || previous.sender_id !== message.sender_id || previous.type === 'system';
-              const lastOfGroup = !next || next.sender_id !== message.sender_id || next.type === 'system';
+              const body = message.type === 'image' && message.metadata?.url
+                ? <a href={message.metadata.url} target="_blank" rel="noreferrer"><img src={message.metadata.url} alt={message.metadata.file_name || 'imagine'} className="max-h-60 max-w-[240px] rounded-[14px] object-cover" /></a>
+                : message.type === 'file' && message.metadata?.url
+                  ? <a href={message.metadata.url} target="_blank" rel="noreferrer" className={cn('flex items-center gap-2.5 px-3 py-2.5', mine ? 'rounded-[14px_4px_14px_14px] bg-blue-600 text-white' : 'rounded-[4px_14px_14px_14px] border border-slate-200 bg-white text-slate-950')}>
+                      <span className={cn('grid h-8 w-8 shrink-0 place-items-center rounded-md text-[9px] font-bold', mine ? 'bg-white/15' : 'bg-red-50 text-red-700')}>{fileExt(message.metadata.file_name)}</span>
+                      <span className="min-w-0 truncate text-[13px] font-semibold">{message.metadata.file_name || message.body}</span>
+                    </a>
+                  : <div className={cn('whitespace-pre-wrap break-words px-3 py-2.5 text-sm leading-[1.45]', mine ? 'rounded-[14px_4px_14px_14px] bg-blue-600 text-white' : 'rounded-[4px_14px_14px_14px] border border-slate-200 bg-white text-slate-950')}>{message.body}</div>;
               return (
-                <div key={message.id}>
-                  {divider}
-                  <div className={cn('flex flex-col', mine ? 'items-end' : 'items-start', firstOfGroup ? 'mt-3' : 'mt-1')}>
-                    {firstOfGroup && !mine && message.sender?.name && <span className="mb-1 px-1 text-xs text-slate-500">{message.sender.name}</span>}
-                    {message.type === 'image' && message.metadata?.url ? (
-                      <a href={message.metadata.url} target="_blank" rel="noreferrer"><img src={message.metadata.url} alt={message.metadata.file_name || 'imagine'} className="max-h-60 max-w-[240px] rounded-[14px] object-cover" /></a>
-                    ) : message.type === 'file' && message.metadata?.url ? (
-                      <a href={message.metadata.url} target="_blank" rel="noreferrer" className={cn('flex max-w-[85%] items-center gap-2.5 rounded-[14px] px-3 py-2.5 sm:max-w-[60%]', mine ? 'bg-blue-700 text-white' : 'border border-slate-200 bg-white text-slate-900')}>
-                        <span className={cn('grid h-8 w-8 shrink-0 place-items-center rounded-md text-[9px] font-bold', mine ? 'bg-white/15' : 'bg-red-50 text-red-600')}>{fileExt(message.metadata.file_name)}</span>
-                        <span className="min-w-0 truncate text-[13px] font-semibold">{message.metadata.file_name || message.body}</span>
-                      </a>
-                    ) : (
-                      <div className={cn('max-w-[85%] whitespace-pre-wrap break-words rounded-[14px] px-3 py-2.5 text-sm leading-[1.45] sm:max-w-[62%]', mine ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-900')}>{message.body}</div>
-                    )}
-                    {lastOfGroup && <span className="mt-1 px-1 text-[11px] text-slate-400">{shortTime(message.created_at)}</span>}
-                  </div>
-                </div>
+                <Fragment key={message.id}>
+                  {divider}{marker}
+                  {mine
+                    ? <div className={cn('max-w-[78%] shrink-0 self-end', opacity)} title={shortTime(message.created_at)}>{body}</div>
+                    : <div className={cn('flex max-w-[78%] shrink-0 flex-col gap-[3px]', opacity)} title={shortTime(message.created_at)}><span className="pl-1 text-[11px] text-slate-500">{message.sender?.name}</span>{body}</div>}
+                </Fragment>
               );
             })}
             {request?.status === 'completed' && <ConclusionCard requestId={request.id} />}
             {isCurrent && request?.status === 'rescheduled' && request.proposed_scheduled_at && <ProposalCard request={request} onChanged={onChanged} />}
-          </div>
+          </Fragment>
         );
       })}
       <div ref={end} />
     </div>
   );
+}
+
+/** „Concluzie PDF” și „Rețetă” pe episodul încheiat. */
+function EpisodeLinks({ requestId }: { requestId: string }) {
+  const docs = useDocuments(requestId);
+  const doc = docs.find((item) => item.url);
+  if (!doc) return null;
+  return (
+    <span className="hidden shrink-0 gap-2.5 sm:flex">
+      <a href={doc.url!} target="_blank" rel="noreferrer" className="text-xs font-medium text-blue-600 hover:underline">Concluzie PDF</a>
+      {doc.prescription_url && <a href={doc.prescription_url} target="_blank" rel="noreferrer" className="text-xs font-medium text-blue-600 hover:underline">Rețetă</a>}
+    </span>
+  );
+}
+
+type ConsultationDoc = { id: number; title: string; url?: string | null; prescription_url?: string | null };
+const documentCache = new Map<string, Promise<ConsultationDoc[]>>();
+function useDocuments(requestId: string): ConsultationDoc[] {
+  const [docs, setDocs] = useState<ConsultationDoc[]>([]);
+  useEffect(() => {
+    let alive = true;
+    if (!documentCache.has(requestId)) documentCache.set(requestId, apiRequest<{ documents: ConsultationDoc[] }>(`/requests/${requestId}/documents`).then((response) => response.documents ?? []).catch(() => []));
+    void documentCache.get(requestId)!.then((list) => { if (alive) setDocs(list); });
+    return () => { alive = false; };
+  }, [requestId]);
+  return docs;
 }
 
 /** Propunerea de oră a medicului, în cronologie, cu răspunsul pe loc (C3b). */
@@ -432,21 +525,16 @@ function ProposalCard({ request, onChanged }: { request: PatientConsultation; on
   );
 }
 
-/** C2c: concluzia publicată, ca un card în cronologie. */
+/** Concluzia publicată, ca un card în cronologie. */
 function ConclusionCard({ requestId }: { requestId: string }) {
-  const [docs, setDocs] = useState<Array<{ id: number; title: string; url?: string | null; prescription_url?: string | null }>>([]);
-  useEffect(() => {
-    apiRequest<{ documents: Array<{ id: number; title: string; url?: string | null; prescription_url?: string | null }> }>(`/requests/${requestId}/documents`)
-      .then((response) => setDocs(response.documents ?? []))
-      .catch(() => setDocs([]));
-  }, [requestId]);
+  const docs = useDocuments(requestId);
   return (
     <>
       {docs.filter((doc) => doc.url).map((doc) => (
-        <div key={doc.id} className="mx-auto my-3 flex max-w-md items-center gap-3 rounded-[14px] border border-slate-200 bg-white p-3.5">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-red-50 text-[10px] font-bold text-red-600">PDF</span>
-          <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-slate-950">Concluzia a fost publicată</span><span className="block truncate text-xs text-slate-500">{doc.title}{doc.prescription_url ? ' · rețetă inclusă' : ''}</span></span>
-          <a href={doc.url!} target="_blank" rel="noreferrer" className="shrink-0 text-sm font-medium text-blue-600 hover:underline">Deschide</a>
+        <div key={doc.id} className="flex max-w-[78%] shrink-0 items-center gap-2.5 rounded-xl border border-slate-200 bg-white p-3">
+          <span className="grid h-11 w-9 shrink-0 place-items-center rounded-md bg-red-50 text-[10px] font-bold text-red-700">PDF</span>
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5"><span className="text-[13px] font-semibold text-slate-950">Concluzia a fost publicată</span><span className="truncate text-xs text-slate-500">{doc.title}{doc.prescription_url ? ' · rețetă inclusă' : ''}</span></span>
+          <a href={doc.url!} target="_blank" rel="noreferrer" className="shrink-0 text-[13px] font-medium text-blue-600 hover:underline">Deschide</a>
         </div>
       ))}
     </>
@@ -457,7 +545,7 @@ function ConclusionCard({ requestId }: { requestId: string }) {
  * Zona de scriere ocupă mereu același loc. Când chatul nu e disponibil, locul ei
  * îl ia motivul și, dacă se poate face ceva, butonul care îl redeschide (C2 a–e).
  */
-function Composer({ conversation, request, isDirect, patientName, patientProfileId, doctorId, onChanged }: { conversation?: Conversation; request?: PatientConsultation; isDirect: boolean; patientName?: string; patientProfileId?: number; doctorId?: number; onChanged: () => void }) {
+function Composer({ conversation, request, isDirect, patientProfileId, doctorId, onChanged }: { conversation?: Conversation; request?: PatientConsultation; isDirect: boolean; patientProfileId?: number; doctorId?: number; onChanged: () => void }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
@@ -501,20 +589,20 @@ function Composer({ conversation, request, isDirect, patientName, patientProfile
   const bookLink = `/patient/doctors?${new URLSearchParams({ ...(patientProfileId ? { patient_profile: String(patientProfileId) } : {}), ...(doctorId ? { doctor: String(doctorId) } : {}) }).toString()}`;
 
   return (
-    <div className="shrink-0 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)]">
+    <div className="shrink-0 border-t border-slate-200 bg-white">
       {error && <p role="alert" className="px-4 pt-2 text-sm text-red-700">{error}</p>}
       {chat.can_write ? (
         <>
-          {isDirect && <p className="flex items-center gap-2 bg-slate-50 px-4 py-2 text-[13px] text-slate-600"><Info className="h-4 w-4 shrink-0" />Discuție fără pacient: mesajele nu intră în nicio fișă medicală.</p>}
-          {freeDaysLeft > 0 && <p className="flex items-center gap-2 bg-blue-50 px-4 py-2.5 text-[13px] text-blue-700"><Clock className="h-4 w-4 shrink-0" />Chat gratuit încă {freeDaysLeft} {freeDaysLeft === 1 ? 'zi' : 'zile'}. Întreabă medicul orice despre concluzie.</p>}
-          <form onSubmit={send} className="flex items-end gap-2 px-3 py-3 sm:px-4">
-            <button type="button" aria-label="Atașează un fișier" disabled={sending} onClick={() => fileInput.current?.click()} className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50"><Paperclip className="h-[18px] w-[18px]" /></button>
+          {isDirect && <p className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-xs text-slate-600">Pentru întrebări despre un pacient, scrie în canalul lui, ca medicul să vadă fișa.</p>}
+          {freeDaysLeft > 0 && <p className="flex items-center gap-1.5 border-b border-slate-100 bg-slate-50 px-4 py-2 text-xs text-slate-600"><Clock className="h-3.5 w-3.5 shrink-0" />Chat gratuit încă {freeDaysLeft} {freeDaysLeft === 1 ? 'zi' : 'zile'}</p>}
+          <form onSubmit={send} className="flex items-end gap-2 px-3.5 pb-4 pt-3">
+            <button type="button" aria-label="Atașează un fișier" disabled={sending} onClick={() => fileInput.current?.click()} className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] text-slate-500 hover:bg-slate-100 disabled:opacity-50"><Paperclip className="h-5 w-5" /></button>
             <input ref={fileInput} type="file" accept="image/*,.pdf,.doc,.docx" className="hidden" onChange={attach} />
             <label htmlFor="patient-chat-message" className="sr-only">Mesaj</label>
             <textarea id="patient-chat-message" rows={1} value={text} onChange={(event) => setText(event.target.value)}
               onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}
-              placeholder={!isDirect && patientName ? `Scrie despre ${patientName}…` : 'Scrie medicului…'} className="max-h-40 min-h-10 flex-1 resize-none rounded-[10px] border border-slate-200 px-3 py-2 text-[15px] leading-6 outline-none focus-visible:border-blue-600 focus-visible:ring-[3px] focus-visible:ring-blue-600/15" />
-            <button type="submit" aria-label="Trimite mesajul" disabled={sending || !text.trim()} className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"><Send className="h-[18px] w-[18px]" /></button>
+              placeholder="Scrie un mesaj…" className="max-h-40 min-h-[42px] flex-1 resize-none rounded-[10px] border border-slate-200 px-3 py-[9px] text-sm leading-[22px] outline-none placeholder:text-slate-400 focus-visible:border-blue-600 focus-visible:ring-[3px] focus-visible:ring-blue-600/15" />
+            <button type="submit" aria-label="Trimite mesajul" disabled={sending || !text.trim()} className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-[10px] bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"><Send className="h-[18px] w-[18px]" /></button>
           </form>
         </>
       ) : chat.state === 'pending' ? (
@@ -582,30 +670,65 @@ function buildPeers(conversations: Conversation[]): Peer[] {
     const key = `${role}:${id}`;
     const last = conversation.messages[conversation.messages.length - 1];
     const lastAt = new Date(last?.created_at ?? conversation.created_at).getTime();
-    const peer = peers.get(key) ?? { key, role, id, name: (role === 'doctor' ? conversation.doctor?.name : conversation.operator?.name) ?? (role === 'doctor' ? 'Medic' : 'Operator'), unread: 0, lastAt: 0, patients: [] };
-    peer.unread += conversation.unread_count ?? 0;
+    const peer = peers.get(key) ?? { key, role, id, name: (role === 'doctor' ? conversation.doctor?.name : conversation.operator?.name) ?? (role === 'doctor' ? 'Medic' : 'Operator'), unread: 0, lastAt: 0, patients: [], hasDirect: false, directUnread: 0 };
+    const unread = conversation.unread_count ?? 0;
+    peer.unread += unread;
     if (lastAt >= peer.lastAt) { peer.lastAt = lastAt; peer.last = last; }
-    if (conversation.patient_profile) {
+    if (conversation.is_direct) { peer.hasDirect = true; peer.directUnread += unread; }
+    else if (conversation.patient_profile) {
       const existing = peer.patients.find((patient) => patient.id === conversation.patient_profile!.id);
-      if (existing) existing.unread += conversation.unread_count ?? 0;
-      else peer.patients.push({ id: conversation.patient_profile.id, name: conversation.patient_profile.display_name, unread: conversation.unread_count ?? 0 });
+      if (existing) existing.unread += unread;
+      else peer.patients.push({ id: conversation.patient_profile.id, name: conversation.patient_profile.display_name, unread });
     }
     peers.set(key, peer);
   }
   return [...peers.values()].sort((a, b) => b.lastAt - a.lastAt);
 }
 
-function buildTabs(conversations: Conversation[]): Array<{ key: string; label: string; unread: number; exists: boolean }> {
-  const tabs = new Map<string, { key: string; label: string; unread: number; exists: boolean }>();
-  for (const conversation of conversations) {
-    if (conversation.is_direct || !conversation.patient_profile_id) continue;
-    const key = String(conversation.patient_profile_id);
-    const tab = tabs.get(key) ?? { key, label: conversation.patient_profile?.display_name.split(' ')[0] ?? 'Pacient', unread: 0, exists: true };
-    tab.unread += conversation.unread_count ?? 0;
-    tabs.set(key, tab);
+/** Canalele unui medic: câte unul pe pacient (în ordinea în care au apărut), apoi „Discuție directă”. */
+function buildChannels(conversations: Conversation[], requests: Record<string, PatientConsultation>): Channel[] {
+  const map = new Map<string, { items: Conversation[] }>();
+  for (const conversation of [...conversations].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())) {
+    const key = channelKeyOf(conversation);
+    (map.get(key) ?? map.set(key, { items: [] }).get(key)!).items.push(conversation);
   }
-  const direct = conversations.filter((item) => item.is_direct);
-  return [...tabs.values(), { key: DIRECT, label: 'Discuție directă', unread: direct.reduce((sum, item) => sum + (item.unread_count ?? 0), 0), exists: direct.length > 0 }];
+  const channels: Channel[] = [];
+  for (const [key, { items }] of map) {
+    if (key === DIRECT) continue;
+    const latest = items[items.length - 1];
+    const request = latest.consultation_request_id ? requests[String(latest.consultation_request_id)] : undefined;
+    const profile = items.find((item) => item.patient_profile)?.patient_profile;
+    const fullName = profile?.display_name ?? 'Pacient';
+    const messages = items.flatMap((item) => item.messages);
+    const last = messages[messages.length - 1];
+    const state = episodeState(request);
+    const freeUntil = latest.consultation_request?.free_chat_until;
+    const freeDays = freeUntil && request?.status === 'completed' ? Math.ceil((new Date(freeUntil).getTime() - Date.now()) / 86400000) : 0;
+    const when = request?.scheduled_at ? `${episodeDate(request.scheduled_at)}${request.status !== 'completed' ? ` ${shortTime(request.scheduled_at)}` : ''}` : '';
+    channels.push({
+      key, fullName, title: fullName.split(' ')[0], code: profile?.patient_code ?? undefined,
+      unread: items.reduce((sum, item) => sum + (item.unread_count ?? 0), 0),
+      last: last ? previewOf(last) : undefined,
+      lastAt: new Date(last?.created_at ?? latest.created_at).getTime(),
+      state,
+      statusLine: [state?.label === 'În curs' ? 'Consultație în curs' : state?.label, when, freeDays > 0 ? `chat gratuit încă ${freeDays} ${freeDays === 1 ? 'zi' : 'zile'}` : null].filter(Boolean).join(' · ')
+    });
+  }
+  const direct = map.get(DIRECT)?.items ?? [];
+  const directMessages = direct.flatMap((item) => item.messages);
+  const directLast = directMessages[directMessages.length - 1];
+  channels.push({
+    key: DIRECT, title: 'Discuție directă', fullName: 'Discuție directă',
+    unread: direct.reduce((sum, item) => sum + (item.unread_count ?? 0), 0),
+    last: directLast ? previewOf(directLast) : direct.length ? undefined : 'Întrebări generale, fără pacient',
+    lastAt: directLast ? new Date(directLast.created_at).getTime() : 0,
+    state: null, statusLine: 'fără pacient · întrebări generale'
+  });
+  return channels;
+}
+
+function channelKeyOf(conversation: Conversation): string {
+  return conversation.is_direct || !conversation.patient_profile_id ? DIRECT : String(conversation.patient_profile_id);
 }
 
 function peerKeyOf(conversation: Conversation): string {
@@ -619,6 +742,12 @@ function initialsOf(name: string): string {
 const TZ = 'Europe/Chisinau';
 function shortTime(value: string): string { return new Date(value).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit', timeZone: TZ }); }
 function timeOf(value: string): string { return shortTime(value); }
+/** „azi” sau „13 oct”. */
+function episodeDate(value: string): string {
+  const date = new Date(value);
+  if (dayKey(date) === dayKey(new Date())) return 'azi';
+  return date.toLocaleDateString('ro-RO', { day: 'numeric', month: 'short', timeZone: TZ }).replace('.', '');
+}
 function dayMonth(value: string): string { return new Date(value).toLocaleDateString('ro-RO', { day: 'numeric', month: 'long', timeZone: TZ }); }
 function capitalize(value: string): string { return value.charAt(0).toUpperCase() + value.slice(1); }
 function dayKey(date: Date): string { return date.toLocaleDateString('en-CA', { timeZone: TZ }); }

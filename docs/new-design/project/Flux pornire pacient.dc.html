@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#E9EDF3;font-family:Geist,system-ui,sans-serif;color:#0F172A;-webkit-font-smoothing:antialiased}
+a{color:#2563EB;text-decoration:none}a:hover{color:#1D4ED8;text-decoration:underline}
+.dv-turn{padding:44px 48px 40px;border-bottom:1px solid rgba(15,23,42,.08);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:12px;margin:0 0 6px}
+.dv-tid{font:600 11px 'Geist Mono',ui-monospace,monospace;padding:3px 8px;background:#0F172A;color:#fff;border-radius:5px;text-decoration:none}
+.dv-tname{font:600 20px/1.2 Geist,sans-serif;color:#0F172A;letter-spacing:-.01em}
+.dv-tdesc{font:400 14px/1.5 Geist,sans-serif;color:#475569;margin:0 0 24px;max-width:760px;text-wrap:pretty}
+.dv-opts{display:flex;flex-wrap:wrap;gap:36px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:10px;scroll-margin-top:16px}
+.dv-oid{font:600 11px 'Geist Mono',ui-monospace,monospace;padding:3px 7px;background:rgba(15,23,42,.08);color:#0F172A;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 13px/1.3 Geist,sans-serif;color:#475569}
+.dv-opt:target .dv-oid{background:#2563EB;color:#fff}
+</style>
+</helmet>
+
+<section class="dv-turn" id="t0" style="background:#fff">
+  <div style="display:flex;flex-direction:column;gap:14px;max-width:880px">
+    <div style="font:600 12px 'Geist Mono',monospace;color:#2563EB;letter-spacing:.04em">TELEMEDCONSULT.MD · FLUXUL DE PORNIRE</div>
+    <h1 style="margin:0;font-size:36px;line-height:1.15;letter-spacing:-.02em;font-weight:700">De la înregistrare la prima cerere de consultație</h1>
+    <p style="margin:0;font-size:16px;line-height:1.6;color:#475569;text-wrap:pretty">Un drum liniar, cu o singură plată MAIB (pachet + alimentare). Fiecare ecran are o acțiune principală și duce direct la următorul. Scenariul folosit: Dorin Puscasu, cont nou, consultație pentru el cu Dr. Ana Ciobanu.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
+      <a href="#t1" style="padding:6px 12px;border:1px solid #E2E8F0;border-radius:999px;font-size:13px;color:#334155">1 Înregistrare</a>
+      <a href="#t2" style="padding:6px 12px;border:1px solid #E2E8F0;border-radius:999px;font-size:13px;color:#334155">2 Cod din email</a>
+      <a href="#t3" style="padding:6px 12px;border:1px solid #E2E8F0;border-radius:999px;font-size:13px;color:#334155">3 Pachet + plată</a>
+      <a href="#t4" style="padding:6px 12px;border:1px solid #E2E8F0;border-radius:999px;font-size:13px;color:#334155">4 Pacient</a>
+      <a href="#t5" style="padding:6px 12px;border:1px solid #E2E8F0;border-radius:999px;font-size:13px;color:#334155">5 Medici</a>
+      <a href="#t6" style="padding:6px 12px;border:1px solid #E2E8F0;border-radius:999px;font-size:13px;color:#334155">6 Programare</a>
+      <a href="#t7" style="padding:6px 12px;border:1px solid #E2E8F0;border-radius:999px;font-size:13px;color:#334155">7 Cerere trimisă</a>
+      <a href="#t8" style="padding:6px 12px;border:1px solid #E2E8F0;border-radius:999px;font-size:13px;color:#334155">8 Acasă</a>
+    </div>
+    <p style="margin:0;font-size:13px;color:#64748B">Cardurile de pachet, Nu/Da, comutatoarele de bonus, „arată parola” și stelele sunt interactive. Din Tweaks poți muta blocul „Ajută medicul să se pregătească” după trimiterea cererii.</p>
+  </div>
+</section>
+
+<!-- 1 -->
+<section class="dv-turn" id="t1">
+  <div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Înregistrare</span></div>
+  <p class="dv-tdesc">Trei câmpuri. Fără alegerea tipului de cont și fără confirmarea parolei. Medicii și operatorii au un link discret jos.</p>
+  <div class="dv-opts">
+    <div class="dv-opt" id="1a">
+      <div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Mobil · 390</div>
+      <div style="width:390px;min-height:844px;background:#fff;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="padding:56px 24px 0;display:flex;flex-direction:column;gap:32px;flex:1">
+          <div style="display:flex;align-items:center;gap:8px"><div style="width:30px;height:30px;border-radius:8px;background:#2563EB;display:flex;align-items:center;justify-content:center;color:#fff"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg></div><span style="font-weight:700;font-size:15px;letter-spacing:-.01em">telemedconsult<span style="color:#2563EB">.md</span></span></div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <h2 style="margin:0;font-size:28px;line-height:1.2;letter-spacing:-.02em;font-weight:700">Creează-ți contul</h2>
+            <p style="margin:0;font-size:15px;line-height:1.5;color:#64748B">Consultații video sau acasă, pentru tine și familia ta.</p>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:18px">
+            <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Nume complet</span><div style="height:44px;border:1px solid #E2E8F0;border-radius:10px;padding:0 12px;display:flex;align-items:center;font-size:15px">Dorin Puscasu</div></div>
+            <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Email</span><div style="height:44px;border:1px solid #E2E8F0;border-radius:10px;padding:0 12px;display:flex;align-items:center;font-size:15px">dorin.puscasu@gmail.com</div></div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <span style="font-size:14px;font-weight:500">Parolă</span>
+              <div style="height:44px;border:2px solid #2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.15);border-radius:10px;padding:0 4px 0 11px;display:flex;align-items:center;justify-content:space-between;font-size:15px">
+                <span style="letter-spacing:{{ pwSpacing }}">{{ pwText }}</span>
+                <button onClick="{{ togglePw }}" style="height:36px;padding:0 10px;border:none;background:transparent;border-radius:8px;display:flex;align-items:center;gap:6px;color:#475569;font:500 13px Geist,sans-serif;cursor:pointer">
+                  <sc-if value="{{ showPw }}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"></path><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"></path><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"></path><path d="m2 2 20 20"></path></svg></sc-if>
+                  <sc-if value="{{ hidePwIcon }}" hint-placeholder-val="{{ true }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path><circle cx="12" cy="12" r="3"></circle></svg></sc-if>
+                  {{ pwLabel }}
+                </button>
+              </div>
+              <span style="font-size:13px;color:#64748B">Minim 8 caractere.</span>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <button style="height:48px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 15px Geist,sans-serif">Creează contul</button>
+            <p style="margin:0;font-size:12px;line-height:1.5;color:#64748B;text-align:center">Continuând, ești de acord cu <a href="#">Termenii</a> și <a href="#">Politica de confidențialitate</a>.</p>
+          </div>
+          <p style="margin:0;font-size:14px;color:#475569;text-align:center">Ai deja cont? <a href="#" style="font-weight:600">Intră</a></p>
+        </div>
+        <div style="padding:20px 24px 32px;text-align:center"><a href="#" style="font-size:13px;color:#64748B">Ești medic sau operator?</a></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 2 -->
+<section class="dv-turn" id="t2">
+  <div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Cod din email</span></div>
+  <p class="dv-tdesc">Codul se verifică automat la a 6-a cifră. Mesajul despre bonus apare doar dacă bonusul a fost acordat (comutator în Tweaks). După verificare, utilizatorul intră direct în asistent, la pasul „Pachet”.</p>
+  <div class="dv-opts">
+    <div class="dv-opt" id="2a">
+      <div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>Mobil · introducere cod</div>
+      <div style="width:390px;min-height:844px;background:#fff;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="padding:52px 16px 0"><div style="width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#334155"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg></div></div>
+        <div style="padding:16px 24px 32px;display:flex;flex-direction:column;gap:28px">
+          <div style="width:48px;height:48px;border-radius:14px;background:#EFF6FF;color:#2563EB;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg></div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <h2 style="margin:0;font-size:28px;line-height:1.2;letter-spacing:-.02em;font-weight:700">Verifică-ți emailul</h2>
+            <p style="margin:0;font-size:15px;line-height:1.5;color:#64748B">Ți-am trimis un cod de 6 cifre la <span style="color:#0F172A;font-weight:500">dorin.puscasu@gmail.com</span>.</p>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px">
+            <div style="height:56px;border:1px solid #CBD5E1;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600">4</div>
+            <div style="height:56px;border:1px solid #CBD5E1;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600">8</div>
+            <div style="height:56px;border:1px solid #CBD5E1;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600">2</div>
+            <div style="height:56px;border:2px solid #2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.15);border-radius:10px;display:flex;align-items:center;justify-content:center"><div style="width:2px;height:24px;background:#2563EB"></div></div>
+            <div style="height:56px;border:1px solid #E2E8F0;border-radius:10px"></div>
+            <div style="height:56px;border:1px solid #E2E8F0;border-radius:10px"></div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;font-size:14px">
+            <span style="color:#64748B">N-a ajuns?</span>
+            <button style="height:40px;padding:0 12px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;display:flex;align-items:center;gap:6px;font:500 14px Geist,sans-serif;color:#0F172A"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>Retrimite codul</button>
+          </div>
+          <p style="margin:0;font-size:13px;color:#64748B">Verifică și dosarul Spam. Poți retrimite peste 0:42.</p>
+        </div>
+      </div>
+    </div>
+    <div class="dv-opt" id="2b">
+      <div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a>Mobil · cod corect, bonus acordat</div>
+      <div style="width:390px;min-height:844px;background:#fff;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="padding:52px 16px 0"><div style="width:44px;height:44px"></div></div>
+        <div style="padding:16px 24px 32px;display:flex;flex-direction:column;gap:28px;flex:1">
+          <div style="width:48px;height:48px;border-radius:14px;background:#F0FDF4;color:#16A34A;display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <h2 style="margin:0;font-size:28px;line-height:1.2;letter-spacing:-.02em;font-weight:700">Gata, contul e activ</h2>
+            <p style="margin:0;font-size:15px;line-height:1.5;color:#64748B">Mai sunt 3 pași până la prima consultație: alegi pachetul, adaugi pacientul și programezi.</p>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px">
+            <div style="height:56px;border:1px solid #86EFAC;background:#F0FDF4;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600">4</div>
+            <div style="height:56px;border:1px solid #86EFAC;background:#F0FDF4;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600">8</div>
+            <div style="height:56px;border:1px solid #86EFAC;background:#F0FDF4;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600">2</div>
+            <div style="height:56px;border:1px solid #86EFAC;background:#F0FDF4;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600">0</div>
+            <div style="height:56px;border:1px solid #86EFAC;background:#F0FDF4;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600">7</div>
+            <div style="height:56px;border:1px solid #86EFAC;background:#F0FDF4;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600">5</div>
+          </div>
+          <sc-if value="{{ showBonus }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;gap:12px;align-items:center;padding:14px 16px;border:1px solid #FDE68A;background:#FFFBEB;border-radius:16px">
+              <div style="width:36px;height:36px;border-radius:10px;background:#FEF3C7;color:#B45309;display:flex;align-items:center;justify-content:center;flex:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"></rect><path d="M12 8v13"></path><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"></path><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"></path></svg></div>
+              <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600;color:#78350F">Ai primit 50 MDL bonus</span><span style="font-size:13px;color:#92400E">Se scad automat din prima consultație.</span></div>
+            </div>
+          </sc-if>
+          <div style="flex:1"></div>
+          <button style="height:48px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 15px Geist,sans-serif">Începe</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 -->
+<section class="dv-turn" id="t3">
+  <div class="dv-thd"><a class="dv-tid" href="#t3">3</a><span class="dv-tname">Asistent · Pachet</span></div>
+  <p class="dv-tdesc">Pachetul și suma pentru prima consultație se plătesc împreună, cu cardul. La întoarcerea de la MAIB pachetul e deja activ și asistentul trece singur la pasul „Pacient”. Alege un pachet sau debifează alimentarea ca să vezi totalul.</p>
+  <div class="dv-opts">
+    <div class="dv-opt" id="3a">
+      <div class="dv-olabel"><a class="dv-oid" href="#3a">3a</a>Mobil · alegere pachet</div>
+      <div style="width:390px;min-height:844px;background:#fff;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="padding:52px 20px 16px;display:flex;flex-direction:column;gap:18px;border-bottom:1px solid #F1F5F9">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:8px;background:#2563EB;display:flex;align-items:center;justify-content:center;color:#fff"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg></div><span style="font-weight:700;font-size:14px">telemedconsult<span style="color:#2563EB">.md</span></span></div>
+            <a href="#" style="font-size:14px;color:#64748B">Mai târziu</a>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+            <div style="display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><span style="font-size:12px;font-weight:600;color:#2563EB">Pachet</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#E2E8F0"></div><span style="font-size:12px;font-weight:500;color:#94A3B8">Pacient</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#E2E8F0"></div><span style="font-size:12px;font-weight:500;color:#94A3B8">Programare</span></div>
+          </div>
+        </div>
+        <div style="padding:24px 20px;display:flex;flex-direction:column;gap:20px;flex:1">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <h2 style="margin:0;font-size:24px;line-height:1.2;letter-spacing:-.02em;font-weight:700">Alege pachetul</h2>
+            <p style="margin:0;font-size:14px;line-height:1.5;color:#64748B;text-wrap:pretty">Un profil este o persoană din familie, cu fișa ei medicală, activ un an.</p>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{ pkgs }}" as="p" hint-placeholder-count="3">
+              <div onClick="{{ p.pick }}" style="display:flex;align-items:center;gap:14px;padding:16px;border-radius:16px;cursor:pointer;border:{{ p.border }};background:{{ p.bg }}">
+                <div style="width:20px;height:20px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;border:{{ p.radio }}"><div style="width:10px;height:10px;border-radius:50%;background:{{ p.dot }}"></div></div>
+                <div style="display:flex;flex-direction:column;gap:2px;flex:1"><span style="font-size:16px;font-weight:600">{{ p.name }}</span><span style="font-size:13px;color:#64748B">{{ p.per }}</span></div>
+                <div style="font-size:18px;font-weight:700;letter-spacing:-.01em">{{ p.price }} <span style="font-size:12px;font-weight:500;color:#64748B">MDL</span></div>
+              </div>
+            </sc-for>
+          </div>
+          <div onClick="{{ toggleTopup }}" style="display:flex;gap:12px;padding:14px 16px;border-radius:16px;background:#F8FAFC;cursor:pointer;align-items:flex-start">
+            <div style="width:20px;height:20px;border-radius:6px;flex:none;margin-top:1px;display:flex;align-items:center;justify-content:center;color:#fff;background:{{ topupBg }};border:{{ topupBorder }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
+            <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:14px;font-weight:500;line-height:1.4">Adaugă și 500 MDL în portofel pentru prima consultație</span><span style="font-size:13px;color:#64748B;line-height:1.4">Banii rămân în portofel până îi folosești.</span></div>
+          </div>
+          <div style="flex:1"></div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <button style="height:48px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 15px Geist,sans-serif;display:flex;align-items:center;justify-content:center;gap:8px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"></rect><line x1="2" x2="22" y1="10" y2="10"></line></svg>Plătește {{ total }} MDL</button>
+            <span style="font-size:12px;color:#64748B;text-align:center">{{ totalNote }} · plată securizată MAIB</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dv-opt" id="3b">
+      <div class="dv-olabel"><a class="dv-oid" href="#3b">3b</a>Mobil · întoarcere de la plată, reușită</div>
+      <div style="width:390px;min-height:844px;background:#fff;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="padding:52px 20px 16px;display:flex;flex-direction:column;gap:18px;border-bottom:1px solid #F1F5F9">
+          <div style="height:28px"></div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+            <div style="display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><span style="font-size:12px;font-weight:600;color:#2563EB;display:flex;align-items:center;gap:4px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Pachet</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#E2E8F0"></div><span style="font-size:12px;font-weight:500;color:#94A3B8">Pacient</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#E2E8F0"></div><span style="font-size:12px;font-weight:500;color:#94A3B8">Programare</span></div>
+          </div>
+        </div>
+        <div style="padding:40px 20px 32px;display:flex;flex-direction:column;gap:24px;flex:1">
+          <div style="width:56px;height:56px;border-radius:50%;background:#F0FDF4;color:#16A34A;display:flex;align-items:center;justify-content:center"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <h2 style="margin:0;font-size:24px;line-height:1.2;letter-spacing:-.02em;font-weight:700">Plata a reușit</h2>
+            <p style="margin:0;font-size:15px;line-height:1.5;color:#64748B">Acum adaugă persoana pentru care faci programarea.</p>
+          </div>
+          <div style="border:1px solid #E2E8F0;border-radius:16px;overflow:hidden">
+            <div style="display:flex;justify-content:space-between;padding:14px 16px;font-size:14px;border-bottom:1px solid #F1F5F9"><span style="color:#64748B">Pachet 1 profil</span><span style="font-weight:500">activ până la 08.11.2027</span></div>
+            <div style="display:flex;justify-content:space-between;padding:14px 16px;font-size:14px;border-bottom:1px solid #F1F5F9"><span style="color:#64748B">În portofel</span><span style="font-weight:500">500 MDL</span></div>
+            <div style="display:flex;justify-content:space-between;padding:14px 16px;font-size:14px"><span style="color:#64748B">Bonus</span><span style="font-weight:500">50 MDL</span></div>
+          </div>
+          <div style="flex:1"></div>
+          <button style="height:48px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 15px Geist,sans-serif">Continuă: adaugă pacientul</button>
+        </div>
+      </div>
+    </div>
+    <div class="dv-opt" id="3c">
+      <div class="dv-olabel"><a class="dv-oid" href="#3c">3c</a>Mobil · întoarcere de la plată, eșuată</div>
+      <div style="width:390px;min-height:844px;background:#fff;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="padding:52px 20px 16px;display:flex;flex-direction:column;gap:18px;border-bottom:1px solid #F1F5F9">
+          <div style="height:28px"></div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+            <div style="display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><span style="font-size:12px;font-weight:600;color:#2563EB">Pachet</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#E2E8F0"></div><span style="font-size:12px;font-weight:500;color:#94A3B8">Pacient</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#E2E8F0"></div><span style="font-size:12px;font-weight:500;color:#94A3B8">Programare</span></div>
+          </div>
+        </div>
+        <div style="padding:40px 20px 32px;display:flex;flex-direction:column;gap:24px;flex:1">
+          <div style="width:56px;height:56px;border-radius:50%;background:#FEF2F2;color:#DC2626;display:flex;align-items:center;justify-content:center"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" x2="12" y1="8" y2="12"></line><line x1="12" x2="12.01" y1="16" y2="16"></line></svg></div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <h2 style="margin:0;font-size:24px;line-height:1.2;letter-spacing:-.02em;font-weight:700">Plata nu a trecut</h2>
+            <p style="margin:0;font-size:15px;line-height:1.5;color:#64748B;text-wrap:pretty">Banca a refuzat tranzacția. De pe card nu s-a retras nimic. Verifică soldul cardului sau încearcă alt card.</p>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:14px 16px;font-size:14px;border:1px solid #E2E8F0;border-radius:16px"><span style="color:#64748B">Pachet 1 profil + 500 MDL în portofel</span><span style="font-weight:600">740 MDL</span></div>
+          <div style="flex:1"></div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <button style="height:48px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 15px Geist,sans-serif">Încearcă din nou · 740 MDL</button>
+            <button style="height:48px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;color:#0F172A;font:500 15px Geist,sans-serif">Schimbă pachetul</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dv-opt" id="3d">
+      <div class="dv-olabel"><a class="dv-oid" href="#3d">3d</a>Desktop · 1280</div>
+      <div style="width:1280px;height:820px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="height:68px;padding:0 32px;background:#fff;border-bottom:1px solid #E2E8F0;display:flex;align-items:center;justify-content:space-between;flex:none">
+          <div style="display:flex;align-items:center;gap:10px"><div style="width:32px;height:32px;border-radius:9px;background:#2563EB;display:flex;align-items:center;justify-content:center;color:#fff"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg></div><span style="font-weight:700;font-size:15px">telemedconsult<span style="color:#2563EB">.md</span></span></div>
+          <div style="display:flex;align-items:center;gap:10px;width:420px">
+            <div style="flex:1;display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><span style="font-size:12px;font-weight:600;color:#2563EB">1 · Pachet</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#E2E8F0"></div><span style="font-size:12px;font-weight:500;color:#94A3B8">2 · Pacient</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#E2E8F0"></div><span style="font-size:12px;font-weight:500;color:#94A3B8">3 · Programare</span></div>
+          </div>
+          <a href="#" style="font-size:14px;color:#64748B">Termin mai târziu</a>
+        </div>
+        <div style="flex:1;display:flex;justify-content:center;padding:56px 32px">
+          <div style="width:760px;display:flex;flex-direction:column;gap:28px">
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <h2 style="margin:0;font-size:30px;line-height:1.2;letter-spacing:-.02em;font-weight:700">Alege pachetul</h2>
+              <p style="margin:0;font-size:15px;color:#64748B">Un profil este o persoană din familie, cu fișa ei medicală, activ un an.</p>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+              <sc-for list="{{ pkgs }}" as="p" hint-placeholder-count="3">
+                <div onClick="{{ p.pick }}" style="display:flex;flex-direction:column;gap:18px;padding:20px;border-radius:16px;cursor:pointer;border:{{ p.border }};background:{{ p.bgD }}">
+                  <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:16px;font-weight:600">{{ p.name }}</span><div style="width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:{{ p.radio }}"><div style="width:10px;height:10px;border-radius:50%;background:{{ p.dot }}"></div></div></div>
+                  <div style="display:flex;flex-direction:column;gap:4px"><div style="font-size:30px;font-weight:700;letter-spacing:-.02em">{{ p.price }} <span style="font-size:14px;font-weight:500;color:#64748B">MDL / an</span></div><span style="font-size:13px;color:#64748B;min-height:18px">{{ p.per }}</span></div>
+                </div>
+              </sc-for>
+            </div>
+            <div onClick="{{ toggleTopup }}" style="display:flex;gap:12px;padding:16px 18px;border-radius:16px;background:#fff;border:1px solid #E2E8F0;cursor:pointer;align-items:flex-start">
+              <div style="width:20px;height:20px;border-radius:6px;flex:none;margin-top:1px;display:flex;align-items:center;justify-content:center;color:#fff;background:{{ topupBg }};border:{{ topupBorder }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
+              <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:500">Adaugă și 500 MDL în portofel pentru prima consultație</span><span style="font-size:13px;color:#64748B">Banii rămân în portofel până îi folosești.</span></div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding-top:4px">
+              <span style="font-size:14px;color:#64748B">{{ totalNote }} · plată securizată MAIB</span>
+              <button style="height:48px;padding:0 24px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 15px Geist,sans-serif;display:flex;align-items:center;gap:8px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"></rect><line x1="2" x2="22" y1="10" y2="10"></line></svg>Plătește {{ total }} MDL</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 -->
+<section class="dv-turn" id="t4">
+  <div class="dv-thd"><a class="dv-tid" href="#t4">4</a><span class="dv-tname">Asistent · Pacient</span></div>
+  <p class="dv-tdesc">Doar cele 6 câmpuri necesare pentru programare. Adresa nu se cere aici: apare la programare doar dacă alegi examinarea la domiciliu. Blocul opțional e un card separat, ușor de mutat după trimiterea cererii (vezi Tweaks).</p>
+  <div class="dv-opts">
+    <div class="dv-opt" id="4a">
+      <div class="dv-olabel"><a class="dv-oid" href="#4a">4a</a>Mobil</div>
+      <div style="width:390px;min-height:844px;background:#fff;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="padding:52px 20px 16px;display:flex;flex-direction:column;gap:18px;border-bottom:1px solid #F1F5F9">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="width:36px;height:36px;margin-left:-8px;display:flex;align-items:center;justify-content:center;color:#334155"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg></div>
+            <a href="#" style="font-size:14px;color:#64748B">Mai târziu</a>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+            <div style="display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><span style="font-size:12px;font-weight:600;color:#2563EB;display:flex;align-items:center;gap:4px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Pachet</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><span style="font-size:12px;font-weight:600;color:#2563EB">Pacient</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#E2E8F0"></div><span style="font-size:12px;font-weight:500;color:#94A3B8">Programare</span></div>
+          </div>
+        </div>
+        <div style="padding:24px 20px 32px;display:flex;flex-direction:column;gap:22px">
+          <h2 style="margin:0;font-size:24px;line-height:1.2;letter-spacing:-.02em;font-weight:700">Pentru cine e consultația?</h2>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;background:#F1F5F9;border-radius:12px">
+            <button onClick="{{ setMe }}" style="height:40px;border:none;border-radius:9px;font:500 14px Geist,sans-serif;cursor:pointer;background:{{ meBg }};color:{{ meColor }};box-shadow:{{ meShadow }}">Pentru mine</button>
+            <button onClick="{{ setOther }}" style="height:40px;border:none;border-radius:9px;font:500 14px Geist,sans-serif;cursor:pointer;background:{{ otherBg }};color:{{ otherColor }};box-shadow:{{ otherShadow }}">Pentru altcineva</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Prenume</span><div style="height:44px;border:1px solid #E2E8F0;border-radius:10px;padding:0 12px;display:flex;align-items:center;font-size:15px;color:{{ nameColor }}">{{ fn }}</div></div>
+            <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Nume</span><div style="height:44px;border:1px solid #E2E8F0;border-radius:10px;padding:0 12px;display:flex;align-items:center;font-size:15px;color:{{ nameColor }}">{{ ln }}</div></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Data nașterii</span><div style="height:44px;border:1px solid #E2E8F0;border-radius:10px;padding:0 12px;display:flex;align-items:center;justify-content:space-between;font-size:15px;color:#94A3B8">zz.ll.aaaa<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"></path><path d="M16 2v4"></path><rect width="18" height="18" x="3" y="4" rx="2"></rect><path d="M3 10h18"></path></svg></div></div>
+          <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Sex</span>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div style="height:44px;border:1.5px solid #2563EB;background:#EFF6FF;border-radius:10px;display:flex;align-items:center;gap:10px;padding:0 12px;font-size:15px"><div style="width:18px;height:18px;border-radius:50%;border:1.5px solid #2563EB;display:flex;align-items:center;justify-content:center"><div style="width:8px;height:8px;border-radius:50%;background:#2563EB"></div></div>Masculin</div>
+              <div style="height:44px;border:1px solid #E2E8F0;border-radius:10px;display:flex;align-items:center;gap:10px;padding:0 12px;font-size:15px"><div style="width:18px;height:18px;border-radius:50%;border:1.5px solid #CBD5E1"></div>Feminin</div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Raion / municipiu</span><div style="height:44px;border:1px solid #E2E8F0;border-radius:10px;padding:0 12px;display:flex;align-items:center;justify-content:space-between;font-size:15px">Chișinău<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></div></div>
+          <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Localitate</span><div style="height:44px;border:1px solid #E2E8F0;border-radius:10px;padding:0 12px;display:flex;align-items:center;justify-content:space-between;font-size:15px">Durlești<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></div></div>
+
+          <sc-if value="{{ prepInStep4 }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:16px;padding:18px 16px;border-radius:16px;background:#F8FAFC;border:1px solid #E2E8F0">
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:16px;font-weight:600">Ajută medicul să se pregătească</span><span style="font-size:12px;font-weight:500;color:#64748B;padding:2px 8px;border-radius:999px;background:#fff;border:1px solid #E2E8F0">Opțional</span></div>
+                <span style="font-size:13px;color:#64748B;line-height:1.45">Poți răspunde și mai târziu, din fișa pacientului.</span>
+              </div>
+              <sc-for list="{{ prepQs }}" as="q" hint-placeholder-count="3">
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                    <span style="font-size:14px;font-weight:500">{{ q.label }}</span>
+                    <div style="display:flex;gap:2px;padding:3px;background:#E2E8F0;border-radius:9px;flex:none">
+                      <button onClick="{{ q.setNu }}" style="height:32px;width:48px;border:none;border-radius:7px;font:500 13px Geist,sans-serif;cursor:pointer;background:{{ q.nuBg }};color:{{ q.nuColor }}">Nu</button>
+                      <button onClick="{{ q.setDa }}" style="height:32px;width:48px;border:none;border-radius:7px;font:500 13px Geist,sans-serif;cursor:pointer;background:{{ q.daBg }};color:{{ q.daColor }}">Da</button>
+                    </div>
+                  </div>
+                  <sc-if value="{{ q.isDa }}" hint-placeholder-val="{{ false }}">
+                    <div style="min-height:44px;border:1px solid #E2E8F0;background:#fff;border-radius:10px;padding:11px 12px;font-size:15px;color:{{ q.textColor }}">{{ q.text }}</div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <button style="height:48px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 15px Geist,sans-serif;margin-top:4px">Continuă la medici</button>
+        </div>
+      </div>
+    </div>
+    <div class="dv-opt" id="4b">
+      <div class="dv-olabel"><a class="dv-oid" href="#4b">4b</a>Desktop · 1280</div>
+      <div style="width:1280px;min-height:820px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="height:68px;padding:0 32px;background:#fff;border-bottom:1px solid #E2E8F0;display:flex;align-items:center;justify-content:space-between;flex:none">
+          <div style="display:flex;align-items:center;gap:10px"><div style="width:32px;height:32px;border-radius:9px;background:#2563EB;display:flex;align-items:center;justify-content:center;color:#fff"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg></div><span style="font-weight:700;font-size:15px">telemedconsult<span style="color:#2563EB">.md</span></span></div>
+          <div style="display:flex;align-items:center;gap:10px;width:420px">
+            <div style="flex:1;display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><span style="font-size:12px;font-weight:600;color:#2563EB">✓ Pachet</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><span style="font-size:12px;font-weight:600;color:#2563EB">2 · Pacient</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#E2E8F0"></div><span style="font-size:12px;font-weight:500;color:#94A3B8">3 · Programare</span></div>
+          </div>
+          <a href="#" style="font-size:14px;color:#64748B">Termin mai târziu</a>
+        </div>
+        <div style="flex:1;display:flex;justify-content:center;padding:48px 32px">
+          <div style="width:760px;display:flex;flex-direction:column;gap:24px">
+            <h2 style="margin:0;font-size:30px;line-height:1.2;letter-spacing:-.02em;font-weight:700">Pentru cine e consultația?</h2>
+            <div style="display:flex;flex-direction:column;gap:20px;padding:24px;background:#fff;border:1px solid #E2E8F0;border-radius:16px">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;background:#F1F5F9;border-radius:12px;width:360px">
+                <button onClick="{{ setMe }}" style="height:38px;border:none;border-radius:9px;font:500 14px Geist,sans-serif;cursor:pointer;background:{{ meBg }};color:{{ meColor }};box-shadow:{{ meShadow }}">Pentru mine</button>
+                <button onClick="{{ setOther }}" style="height:38px;border:none;border-radius:9px;font:500 14px Geist,sans-serif;cursor:pointer;background:{{ otherBg }};color:{{ otherColor }};box-shadow:{{ otherShadow }}">Pentru altcineva</button>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 16px">
+                <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Prenume</span><div style="height:42px;border:1px solid #E2E8F0;border-radius:10px;padding:0 12px;display:flex;align-items:center;font-size:14px;color:{{ nameColor }}">{{ fn }}</div></div>
+                <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Nume</span><div style="height:42px;border:1px solid #E2E8F0;border-radius:10px;padding:0 12px;display:flex;align-items:center;font-size:14px;color:{{ nameColor }}">{{ ln }}</div></div>
+                <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Data nașterii</span><div style="height:42px;border:1px solid #E2E8F0;border-radius:10px;padding:0 12px;display:flex;align-items:center;justify-content:space-between;font-size:14px;color:#94A3B8">zz.ll.aaaa<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"></path><path d="M16 2v4"></path><rect width="18" height="18" x="3" y="4" rx="2"></rect><path d="M3 10h18"></path></svg></div></div>
+                <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Sex</span>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                    <div style="height:42px;border:1.5px solid #2563EB;background:#EFF6FF;border-radius:10px;display:flex;align-items:center;gap:10px;padding:0 12px;font-size:14px"><div style="width:16px;height:16px;border-radius:50%;border:1.5px solid #2563EB;display:flex;align-items:center;justify-content:center"><div style="width:7px;height:7px;border-radius:50%;background:#2563EB"></div></div>Masculin</div>
+                    <div style="height:42px;border:1px solid #E2E8F0;border-radius:10px;display:flex;align-items:center;gap:10px;padding:0 12px;font-size:14px"><div style="width:16px;height:16px;border-radius:50%;border:1.5px solid #CBD5E1"></div>Feminin</div>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Raion / municipiu</span><div style="height:42px;border:1px solid #E2E8F0;border-radius:10px;padding:0 12px;display:flex;align-items:center;justify-content:space-between;font-size:14px">Chișinău<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></div></div>
+                <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Localitate</span><div style="height:42px;border:1px solid #E2E8F0;border-radius:10px;padding:0 12px;display:flex;align-items:center;justify-content:space-between;font-size:14px">Durlești<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></div></div>
+              </div>
+            </div>
+            <sc-if value="{{ prepInStep4 }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:16px;padding:22px 24px;border-radius:16px;background:#fff;border:1px dashed #CBD5E1">
+                <div style="display:flex;align-items:baseline;justify-content:space-between"><div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:16px;font-weight:600">Ajută medicul să se pregătească</span><span style="font-size:13px;color:#64748B">Opțional. Poți răspunde și mai târziu, din fișa pacientului.</span></div><span style="font-size:12px;font-weight:500;color:#64748B;padding:2px 8px;border-radius:999px;background:#F1F5F9">Opțional</span></div>
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+                  <sc-for list="{{ prepQs }}" as="q" hint-placeholder-count="3">
+                    <div style="display:flex;flex-direction:column;gap:10px">
+                      <span style="font-size:14px;font-weight:500">{{ q.label }}</span>
+                      <div style="display:flex;gap:2px;padding:3px;background:#F1F5F9;border-radius:9px;width:fit-content">
+                        <button onClick="{{ q.setNu }}" style="height:30px;width:52px;border:none;border-radius:7px;font:500 13px Geist,sans-serif;cursor:pointer;background:{{ q.nuBg }};color:{{ q.nuColor }}">Nu</button>
+                        <button onClick="{{ q.setDa }}" style="height:30px;width:52px;border:none;border-radius:7px;font:500 13px Geist,sans-serif;cursor:pointer;background:{{ q.daBg }};color:{{ q.daColor }}">Da</button>
+                      </div>
+                      <sc-if value="{{ q.isDa }}" hint-placeholder-val="{{ false }}">
+                        <div style="min-height:40px;border:1px solid #E2E8F0;border-radius:10px;padding:10px 12px;font-size:14px;color:{{ q.textColor }}">{{ q.text }}</div>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <button style="height:44px;padding:0 16px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;font:500 14px Geist,sans-serif;color:#0F172A">Înapoi</button>
+              <button style="height:48px;padding:0 24px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 15px Geist,sans-serif">Continuă la medici</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 -->
+<section class="dv-turn" id="t5">
+  <div class="dv-thd"><a class="dv-tid" href="#t5">5</a><span class="dv-tname">Lista de medici</span></div>
+  <p class="dv-tdesc">Pacientul ales e fixat sus și se poate schimba. Fiecare card arată ambele prețuri, ca utilizatorul să știe costul înainte să deschidă programarea.</p>
+  <div class="dv-opts">
+    <div class="dv-opt" id="5a">
+      <div class="dv-olabel"><a class="dv-oid" href="#5a">5a</a>Mobil</div>
+      <div style="width:390px;min-height:844px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="padding:52px 20px 16px;display:flex;flex-direction:column;gap:16px;background:#fff;border-bottom:1px solid #E2E8F0">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+            <div style="display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><span style="font-size:12px;font-weight:600;color:#2563EB">✓ Pachet</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><span style="font-size:12px;font-weight:600;color:#2563EB">✓ Pacient</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><span style="font-size:12px;font-weight:600;color:#2563EB">Programare</span></div>
+          </div>
+          <h2 style="margin:0;font-size:24px;line-height:1.2;letter-spacing:-.02em;font-weight:700">Alege medicul</h2>
+          <div style="height:48px;border:1px solid #E2E8F0;border-radius:10px;padding:0 12px;display:flex;align-items:center;gap:10px">
+            <div style="width:28px;height:28px;border-radius:50%;background:#EFF6FF;color:#2563EB;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center">DP</div>
+            <div style="display:flex;flex-direction:column;flex:1"><span style="font-size:11px;color:#64748B">Pentru</span><span style="font-size:14px;font-weight:500">Dorin Puscasu</span></div>
+            <span style="font-size:13px;color:#2563EB;font-weight:500">Schimbă</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+          </div>
+        </div>
+        <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+          <sc-for list="{{ doctors }}" as="d" hint-placeholder-count="4">
+            <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;gap:12px;align-items:center">
+                <div style="width:48px;height:48px;border-radius:50%;background:#E2E8F0;color:#334155;font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none">{{ d.ini }}</div>
+                <div style="display:flex;flex-direction:column;gap:2px;flex:1"><span style="font-size:16px;font-weight:600">{{ d.name }}</span><span style="font-size:13px;color:#64748B">{{ d.spec }}</span></div>
+                <div style="display:flex;align-items:center;gap:4px;font-size:14px;font-weight:600"><svg width="15" height="15" viewBox="0 0 24 24" fill="#F59E0B" stroke="#F59E0B" stroke-width="1.5" stroke-linejoin="round"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"></path></svg>{{ d.rating }}<span style="font-weight:400;color:#94A3B8;font-size:12px">({{ d.reviews }})</span></div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <div style="padding:10px 12px;border-radius:10px;background:#F8FAFC;display:flex;flex-direction:column;gap:2px"><span style="font-size:12px;color:#64748B">Video</span><span style="font-size:15px;font-weight:600">{{ d.video }} MDL</span></div>
+                <div style="padding:10px 12px;border-radius:10px;background:#F8FAFC;display:flex;flex-direction:column;gap:2px"><span style="font-size:12px;color:#64748B">Cu examinare acasă</span><span style="font-size:15px;font-weight:600">{{ d.exam }} MDL</span></div>
+              </div>
+              <button style="height:44px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 14px Geist,sans-serif">Programează</button>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+    <div class="dv-opt" id="5b">
+      <div class="dv-olabel"><a class="dv-oid" href="#5b">5b</a>Desktop · 1280</div>
+      <div style="width:1280px;height:820px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;overflow:hidden;display:flex;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="width:232px;flex:none;background:#fff;border-right:1px solid #E2E8F0;display:flex;flex-direction:column"><div style="height:64px;padding:0 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #F1F5F9"><div style="width:32px;height:32px;border-radius:9px;background:#2563EB;display:flex;align-items:center;justify-content:center;color:#fff"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg></div><span style="font-weight:700;font-size:15px">telemedconsult<span style="color:#2563EB">.md</span></span></div><div style="padding:16px 12px 8px"><button style="width:100%;height:44px;border:none;border-radius:10px;background:#2563EB;color:#fff;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>Consultație nouă</button></div><div style="padding:8px 12px;display:flex;flex-direction:column;gap:2px"><div style="height:40px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;color:#334155"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"></path><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg><span style="flex:1;white-space:nowrap">Acasă</span></div><div style="height:40px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;background:#EFF6FF;color:#2563EB;font-weight:500"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><path d="M12 11h4"></path><path d="M12 16h4"></path><path d="M8 11h.01"></path><path d="M8 16h.01"></path></svg><span style="flex:1;white-space:nowrap">Consultații</span></div><div style="height:40px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;color:#334155"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><span style="flex:1;white-space:nowrap">Mesaje</span><span style="min-width:20px;height:20px;padding:0 6px;box-sizing:border-box;border-radius:999px;background:#2563EB;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">3</span></div><div style="height:40px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;color:#334155"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg><span style="flex:1;white-space:nowrap">Pacienții mei</span></div><div style="height:40px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;color:#334155"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"></path><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"></path></svg><span style="flex:1;white-space:nowrap">Portofel</span></div></div><div style="padding:16px 24px 6px;font-size:11px;font-weight:600;color:#94A3B8;letter-spacing:.06em">MAI MULT</div><div style="padding:0 12px;display:flex;flex-direction:column;gap:2px"><div style="height:40px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;color:#334155"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"></rect><path d="M12 8v13"></path><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"></path><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"></path></svg><span style="flex:1;white-space:nowrap">Program de afiliere</span></div><div style="height:40px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;color:#334155"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path><path d="M12 7v2"></path><path d="M12 13h.01"></path></svg><span style="flex:1;white-space:nowrap">Reclamații și recenzii</span></div><div style="height:40px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;color:#334155"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18h-5"></path><path d="M18 14h-8"></path><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-4 0v-9a2 2 0 0 1 2-2h2"></path><rect width="8" height="4" x="10" y="6" rx="1"></rect></svg><span style="flex:1;white-space:nowrap">Noutăți</span></div><div style="height:40px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;color:#334155"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"></path><path d="m21.854 2.147-10.94 10.939"></path></svg><span style="flex:1;white-space:nowrap">Notificări Telegram</span><span title="Neconectat" style="width:8px;height:8px;border-radius:50%;background:#F59E0B;flex:none"></span></div></div><div style="flex:1"></div><div style="padding:12px 16px;border-top:1px solid #F1F5F9;display:flex;align-items:center;gap:10px"><div style="width:36px;height:36px;border-radius:50%;background:#EFF6FF;color:#2563EB;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center">DP</div><div style="display:flex;flex-direction:column;flex:1"><span style="font-size:13px;font-weight:600">Dorin Puscasu</span><span style="font-size:12px;color:#64748B">Pacient</span></div><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></div></div>
+        <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+          <div style="height:68px;padding:0 32px;background:#fff;border-bottom:1px solid #E2E8F0;display:flex;align-items:center;justify-content:space-between;flex:none">
+            <div style="display:flex;align-items:center;gap:10px;width:420px">
+              <div style="flex:1;display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><span style="font-size:12px;font-weight:600;color:#2563EB">✓ Pachet</span></div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><span style="font-size:12px;font-weight:600;color:#2563EB">✓ Pacient</span></div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:6px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><span style="font-size:12px;font-weight:600;color:#2563EB">3 · Programare</span></div>
+            </div>
+          </div>
+          <div style="padding:32px;display:flex;flex-direction:column;gap:24px">
+            <div style="display:flex;align-items:flex-end;justify-content:space-between">
+              <div style="display:flex;flex-direction:column;gap:6px"><h2 style="margin:0;font-size:28px;letter-spacing:-.02em;font-weight:700">Alege medicul</h2><span style="font-size:14px;color:#64748B">Prețurile sunt pentru o consultație.</span></div>
+              <div style="height:46px;border:1px solid #E2E8F0;background:#fff;border-radius:10px;padding:0 12px;display:flex;align-items:center;gap:10px;width:300px">
+                <div style="width:28px;height:28px;border-radius:50%;background:#EFF6FF;color:#2563EB;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center">DP</div>
+                <div style="display:flex;flex-direction:column;flex:1"><span style="font-size:11px;color:#64748B">Pentru</span><span style="font-size:14px;font-weight:500">Dorin Puscasu</span></div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+              <sc-for list="{{ doctors }}" as="d" hint-placeholder-count="4">
+                <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:16px">
+                  <div style="display:flex;gap:14px;align-items:center">
+                    <div style="width:52px;height:52px;border-radius:50%;background:#E2E8F0;color:#334155;font-size:16px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none">{{ d.ini }}</div>
+                    <div style="display:flex;flex-direction:column;gap:2px;flex:1"><span style="font-size:16px;font-weight:600">{{ d.name }}</span><span style="font-size:13px;color:#64748B">{{ d.spec }} · {{ d.exp }}</span></div>
+                    <div style="display:flex;align-items:center;gap:4px;font-size:14px;font-weight:600"><svg width="15" height="15" viewBox="0 0 24 24" fill="#F59E0B" stroke="#F59E0B" stroke-width="1.5" stroke-linejoin="round"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"></path></svg>{{ d.rating }}<span style="font-weight:400;color:#94A3B8;font-size:12px">({{ d.reviews }})</span></div>
+                  </div>
+                  <div style="display:flex;gap:10px;align-items:stretch">
+                    <div style="flex:1;padding:10px 12px;border-radius:10px;background:#F8FAFC;display:flex;flex-direction:column;gap:2px"><span style="font-size:12px;color:#64748B">Video</span><span style="font-size:15px;font-weight:600">{{ d.video }} MDL</span></div>
+                    <div style="flex:1;padding:10px 12px;border-radius:10px;background:#F8FAFC;display:flex;flex-direction:column;gap:2px"><span style="font-size:12px;color:#64748B">Cu examinare acasă</span><span style="font-size:15px;font-weight:600">{{ d.exam }} MDL</span></div>
+                    <button style="padding:0 18px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 14px Geist,sans-serif">Programează</button>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 -->
+<section class="dv-turn" id="t6">
+  <div class="dv-thd"><a class="dv-tid" href="#t6">6</a><span class="dv-tname">Programare în 3 pași</span></div>
+  <p class="dv-tdesc">Ecran întreg pe mobil, dialog pe desktop. Lipsurile se rezolvă pe loc: adresa apare la tipul „cu examinare”, iar banii lipsă se alimentează din butonul de trimitere, fără să ieși din programare.</p>
+  <div class="dv-opts">
+    <div class="dv-opt" id="6a">
+      <div class="dv-olabel"><a class="dv-oid" href="#6a">6a</a>Mobil · pas 1, cu examinare, fără adresă</div>
+      <div style="width:390px;min-height:844px;background:#fff;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="padding:52px 20px 14px;display:flex;flex-direction:column;gap:14px;border-bottom:1px solid #F1F5F9">
+          <div style="display:flex;align-items:center;justify-content:space-between"><div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:12px;color:#64748B">Pasul 1 din 3</span><span style="font-size:16px;font-weight:600">Dr. Ana Ciobanu</span></div><div style="width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#334155"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></div></div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><div style="height:4px;border-radius:2px;background:#E2E8F0"></div><div style="height:4px;border-radius:2px;background:#E2E8F0"></div></div>
+        </div>
+        <div style="padding:22px 20px 32px;display:flex;flex-direction:column;gap:20px;flex:1">
+          <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Pacient</span><div style="height:44px;border:1px solid #E2E8F0;border-radius:10px;padding:0 12px;display:flex;align-items:center;justify-content:space-between;font-size:15px">Dorin Puscasu<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></div></div>
+          <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:14px;font-weight:500">Tipul consultației</span>
+            <div style="display:flex;gap:12px;padding:14px;border:1px solid #E2E8F0;border-radius:16px;align-items:flex-start">
+              <div style="width:20px;height:20px;border-radius:50%;border:1.5px solid #CBD5E1;flex:none;margin-top:2px"></div>
+              <div style="display:flex;flex-direction:column;gap:2px;flex:1"><span style="font-size:15px;font-weight:600">Video</span><span style="font-size:13px;color:#64748B;line-height:1.4">Discuți cu medicul de acasă, pe telefon sau calculator.</span></div>
+              <span style="font-size:15px;font-weight:600">300 MDL</span>
+            </div>
+            <div style="display:flex;flex-direction:column;border:1.5px solid #2563EB;background:#fff;border-radius:16px;overflow:hidden">
+              <div style="display:flex;gap:12px;padding:14px;align-items:flex-start;background:#EFF6FF">
+                <div style="width:20px;height:20px;border-radius:50%;border:1.5px solid #2563EB;flex:none;margin-top:2px;display:flex;align-items:center;justify-content:center"><div style="width:10px;height:10px;border-radius:50%;background:#2563EB"></div></div>
+                <div style="display:flex;flex-direction:column;gap:2px;flex:1"><span style="font-size:15px;font-weight:600">Cu examinare la domiciliu</span><span style="font-size:13px;color:#475569;line-height:1.4">Vine un operator cu aparatul medical, apoi medicul dă concluzia.</span></div>
+                <span style="font-size:15px;font-weight:600">650 MDL</span>
+              </div>
+              <div style="padding:14px;display:flex;flex-direction:column;gap:12px;border-top:1px solid #DBEAFE">
+                <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:#475569"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"></path><circle cx="12" cy="10" r="3"></circle></svg>Unde vine operatorul? Durlești, Chișinău</div>
+                <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Strada și numărul</span><div style="height:44px;border:2px solid #2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.15);border-radius:10px;padding:0 11px;display:flex;align-items:center;font-size:15px">str. Cartușa 12, ap. 4</div></div>
+                <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Telefon</span><div style="height:44px;border:1px solid #E2E8F0;border-radius:10px;padding:0 12px;display:flex;align-items:center;font-size:15px;color:#94A3B8">+373 __ ___ ___</div></div>
+                <span style="font-size:12px;color:#64748B">Se salvează în profil, ca să nu le completezi data viitoare.</span>
+              </div>
+            </div>
+          </div>
+          <div style="flex:1"></div>
+          <button style="height:48px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 15px Geist,sans-serif">Continuă</button>
+        </div>
+      </div>
+    </div>
+    <div class="dv-opt" id="6b">
+      <div class="dv-olabel"><a class="dv-oid" href="#6b">6b</a>Mobil · pas 2, acuze și ora</div>
+      <div style="width:390px;min-height:844px;background:#fff;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="padding:52px 20px 14px;display:flex;flex-direction:column;gap:14px;border-bottom:1px solid #F1F5F9">
+          <div style="display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:6px"><div style="width:32px;height:40px;margin-left:-6px;display:flex;align-items:center;justify-content:center;color:#334155"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg></div><div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:12px;color:#64748B">Pasul 2 din 3</span><span style="font-size:16px;font-weight:600">Ce te deranjează?</span></div></div><div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;color:#334155"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></div></div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><div style="height:4px;border-radius:2px;background:#2563EB"></div><div style="height:4px;border-radius:2px;background:#E2E8F0"></div></div>
+        </div>
+        <div style="padding:22px 20px 32px;display:flex;flex-direction:column;gap:20px;flex:1">
+          <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Acuze</span><div style="min-height:88px;border:1px solid #E2E8F0;border-radius:10px;padding:11px 12px;font-size:15px;line-height:1.45">Tuse uscată de 5 zile, seara febră 37,8.</div></div>
+          <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Istoricul bolii <span style="font-weight:400;color:#64748B">(opțional)</span></span><div style="min-height:64px;border:1px solid #E2E8F0;border-radius:10px;padding:11px 12px;font-size:15px;color:#94A3B8">Cum a început, ce ai luat până acum…</div></div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <span style="font-size:14px;font-weight:500">Când îți convine?</span>
+            <div style="display:flex;gap:8px">
+              <div style="flex:1;height:58px;border-radius:10px;border:1.5px solid #2563EB;background:#EFF6FF;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px"><span style="font-size:12px;color:#2563EB">Lun</span><span style="font-size:16px;font-weight:600;color:#1D4ED8">9</span></div>
+              <div style="flex:1;height:58px;border-radius:10px;border:1px solid #E2E8F0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px"><span style="font-size:12px;color:#64748B">Mar</span><span style="font-size:16px;font-weight:600">10</span></div>
+              <div style="flex:1;height:58px;border-radius:10px;border:1px solid #E2E8F0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px"><span style="font-size:12px;color:#64748B">Mie</span><span style="font-size:16px;font-weight:600">11</span></div>
+              <div style="flex:1;height:58px;border-radius:10px;border:1px solid #E2E8F0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px"><span style="font-size:12px;color:#64748B">Joi</span><span style="font-size:16px;font-weight:600">12</span></div>
+              <div style="flex:1;height:58px;border-radius:10px;border:1px solid #E2E8F0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px"><span style="font-size:12px;color:#64748B">Vin</span><span style="font-size:16px;font-weight:600">13</span></div>
+            </div>
+            <span style="font-size:13px;color:#64748B">Ore libere luni, 9 noiembrie</span>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+              <div style="height:44px;border-radius:10px;border:1px solid #E2E8F0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:500">09:00</div>
+              <div style="height:44px;border-radius:10px;border:1px solid #E2E8F0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:500">09:30</div>
+              <div style="height:44px;border-radius:10px;background:#2563EB;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600">11:00</div>
+              <div style="height:44px;border-radius:10px;border:1px solid #E2E8F0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:500">12:30</div>
+              <div style="height:44px;border-radius:10px;border:1px solid #E2E8F0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:500">14:00</div>
+              <div style="height:44px;border-radius:10px;border:1px solid #E2E8F0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:500">15:30</div>
+              <div style="height:44px;border-radius:10px;border:1px solid #E2E8F0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:500">17:00</div>
+              <div style="height:44px;border-radius:10px;border:1px dashed #CBD5E1;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:500;color:#475569">Altă oră</div>
+            </div>
+          </div>
+          <div style="flex:1"></div>
+          <button style="height:48px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 15px Geist,sans-serif">Continuă</button>
+        </div>
+      </div>
+    </div>
+    <div class="dv-opt" id="6c">
+      <div class="dv-olabel"><a class="dv-oid" href="#6c">6c</a>Mobil · pas 3, video, sold suficient</div>
+      <div style="width:390px;min-height:844px;background:#fff;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="padding:52px 20px 14px;display:flex;flex-direction:column;gap:14px;border-bottom:1px solid #F1F5F9">
+          <div style="display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:6px"><div style="width:32px;height:40px;margin-left:-6px;display:flex;align-items:center;justify-content:center;color:#334155"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg></div><div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:12px;color:#64748B">Pasul 3 din 3</span><span style="font-size:16px;font-weight:600">Confirmă cererea</span></div></div><div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;color:#334155"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></div></div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><div style="height:4px;border-radius:2px;background:#2563EB"></div><div style="height:4px;border-radius:2px;background:#2563EB"></div></div>
+        </div>
+        <div style="padding:22px 20px 32px;display:flex;flex-direction:column;gap:18px;flex:1">
+          <div style="display:flex;gap:12px;align-items:center;padding:14px;border-radius:16px;background:#F8FAFC">
+            <div style="width:44px;height:44px;border-radius:50%;background:#E2E8F0;font-size:14px;font-weight:600;color:#334155;display:flex;align-items:center;justify-content:center">AC</div>
+            <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600">Dr. Ana Ciobanu · Video</span><span style="font-size:13px;color:#64748B">Luni, 9 noiembrie, 11:00 · pentru Dorin</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;border:1px solid #E2E8F0;border-radius:16px">
+            <div style="display:flex;justify-content:space-between;padding:14px 16px;font-size:14px"><span style="color:#475569">Consultație video</span><span>300 MDL</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid #F1F5F9;font-size:14px">
+              <div style="display:flex;flex-direction:column;gap:2px"><span style="font-weight:500">Folosește bonusurile</span><span style="font-size:12px;color:#64748B">Ai 50 MDL bonus</span></div>
+              <div style="display:flex;align-items:center;gap:10px"><span style="color:#16A34A">{{ bonusLine }}</span><button onClick="{{ toggleBonus }}" style="width:44px;height:26px;border-radius:13px;border:none;padding:3px;cursor:pointer;display:flex;justify-content:{{ bonusJustify }};background:{{ bonusTrack }}"><div style="width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2)"></div></button></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:14px 16px;border-top:1px solid #E2E8F0;font-size:16px;font-weight:600"><span>Total</span><span>{{ vidTotal }} MDL</span></div>
+          </div>
+          <div style="display:flex;gap:10px;padding:12px 14px;border-radius:12px;background:#EFF6FF;font-size:13px;line-height:1.45;color:#1E3A8A">
+            <svg style="flex:none;margin-top:1px" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"></path><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"></path></svg>
+            <span>Rezervăm {{ vidTotal }} MDL din portofel până confirmă medicul. Dacă refuză, banii revin în portofel. Rămân {{ vidLeft }} MDL.</span>
+          </div>
+          <div style="flex:1"></div>
+          <button style="height:48px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 15px Geist,sans-serif">Trimite cererea</button>
+        </div>
+      </div>
+    </div>
+    <div class="dv-opt" id="6d">
+      <div class="dv-olabel"><a class="dv-oid" href="#6d">6d</a>Mobil · pas 3, cu examinare, îți lipsesc bani</div>
+      <div style="width:390px;min-height:844px;background:#fff;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="padding:52px 20px 14px;display:flex;flex-direction:column;gap:14px;border-bottom:1px solid #F1F5F9">
+          <div style="display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:6px"><div style="width:32px;height:40px;margin-left:-6px;display:flex;align-items:center;justify-content:center;color:#334155"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg></div><div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:12px;color:#64748B">Pasul 3 din 3</span><span style="font-size:16px;font-weight:600">Confirmă cererea</span></div></div><div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;color:#334155"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></div></div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><div style="height:4px;border-radius:2px;background:#2563EB"></div><div style="height:4px;border-radius:2px;background:#2563EB"></div></div>
+        </div>
+        <div style="padding:22px 20px 32px;display:flex;flex-direction:column;gap:18px;flex:1">
+          <div style="display:flex;gap:12px;align-items:center;padding:14px;border-radius:16px;background:#F8FAFC">
+            <div style="width:44px;height:44px;border-radius:50%;background:#E2E8F0;font-size:14px;font-weight:600;color:#334155;display:flex;align-items:center;justify-content:center">AC</div>
+            <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600">Dr. Ana Ciobanu · Cu examinare</span><span style="font-size:13px;color:#64748B">Luni, 9 noiembrie, 11:00 · str. Cartușa 12</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;border:1px solid #E2E8F0;border-radius:16px">
+            <div style="display:flex;justify-content:space-between;padding:14px 16px;font-size:14px"><span style="color:#475569">Consultație cu examinare</span><span>650 MDL</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid #F1F5F9;font-size:14px">
+              <div style="display:flex;flex-direction:column;gap:2px"><span style="font-weight:500">Folosește bonusurile</span><span style="font-size:12px;color:#64748B">Ai 50 MDL bonus</span></div>
+              <div style="display:flex;align-items:center;gap:10px"><span style="color:#16A34A">{{ bonus2Line }}</span><button onClick="{{ toggleBonus2 }}" style="width:44px;height:26px;border-radius:13px;border:none;padding:3px;cursor:pointer;display:flex;justify-content:{{ bonus2Justify }};background:{{ bonus2Track }}"><div style="width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2)"></div></button></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:14px 16px;border-top:1px solid #E2E8F0;font-size:16px;font-weight:600"><span>Total</span><span>{{ exTotal }} MDL</span></div>
+            <div style="display:flex;justify-content:space-between;padding:0 16px 14px;font-size:14px;color:#475569"><span>În portofel</span><span>500 MDL</span></div>
+          </div>
+          <div style="display:flex;gap:10px;padding:14px;border-radius:12px;background:#FFFBEB;border:1px solid #FDE68A;font-size:14px;line-height:1.45;color:#78350F">
+            <svg style="flex:none;margin-top:2px" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"></path><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"></path></svg>
+            <div style="display:flex;flex-direction:column;gap:2px"><span style="font-weight:600">Îți lipsesc {{ lack }} MDL</span><span style="font-size:13px;color:#92400E">Alimentezi cu cardul și cererea pleacă imediat după plată. Datele completate rămân salvate.</span></div>
+          </div>
+          <div style="flex:1"></div>
+          <button style="height:48px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 15px Geist,sans-serif;display:flex;align-items:center;justify-content:center;gap:8px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"></rect><line x1="2" x2="22" y1="10" y2="10"></line></svg>Alimentează {{ lack }} MDL și trimite cererea</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="6e">
+      <div class="dv-olabel"><a class="dv-oid" href="#6e">6e</a>Desktop · pas 1, dialog</div>
+      <div style="width:1280px;height:820px;background:rgba(15,23,42,.42);border:1px solid #E2E8F0;border-radius:14px;overflow:hidden;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="width:560px;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.25);display:flex;flex-direction:column">
+          <div style="padding:22px 24px 16px;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start"><div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:#64748B">Pasul 1 din 3 · Dr. Ana Ciobanu</span><span style="font-size:20px;font-weight:600;letter-spacing:-.01em">Pacient și tip</span></div><div style="width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#64748B"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></div></div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><div style="height:4px;border-radius:2px;background:#E2E8F0"></div><div style="height:4px;border-radius:2px;background:#E2E8F0"></div></div>
+          </div>
+          <div style="padding:6px 24px 20px;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Pacient</span><div style="height:42px;border:1px solid #E2E8F0;border-radius:10px;padding:0 12px;display:flex;align-items:center;justify-content:space-between;font-size:14px">Dorin Puscasu<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></div></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div style="padding:14px;border:1px solid #E2E8F0;border-radius:16px;display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;justify-content:space-between;align-items:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"></path><rect x="2" y="6" width="14" height="12" rx="2"></rect></svg><div style="width:18px;height:18px;border-radius:50%;border:1.5px solid #CBD5E1"></div></div>
+                <span style="font-size:15px;font-weight:600">Video · 300 MDL</span><span style="font-size:13px;color:#64748B;line-height:1.4">Discuți cu medicul pe telefon sau calculator.</span>
+              </div>
+              <div style="padding:14px;border:1.5px solid #2563EB;background:#EFF6FF;border-radius:16px;display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;justify-content:space-between;align-items:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"></path><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg><div style="width:18px;height:18px;border-radius:50%;border:1.5px solid #2563EB;display:flex;align-items:center;justify-content:center"><div style="width:8px;height:8px;border-radius:50%;background:#2563EB"></div></div></div>
+                <span style="font-size:15px;font-weight:600">Cu examinare · 650 MDL</span><span style="font-size:13px;color:#475569;line-height:1.4">Vine un operator cu aparatul, apoi medicul dă concluzia.</span>
+              </div>
+            </div>
+            <div style="padding:14px;border-radius:12px;background:#F8FAFC;display:flex;flex-direction:column;gap:12px">
+              <span style="font-size:13px;color:#475569">Adresa pentru operator · Durlești, Chișinău</span>
+              <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:10px">
+                <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Strada și numărul</span><div style="height:42px;border:2px solid #2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.15);background:#fff;border-radius:10px;padding:0 11px;display:flex;align-items:center;font-size:14px">str. Cartușa 12, ap. 4</div></div>
+                <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Telefon</span><div style="height:42px;border:1px solid #E2E8F0;background:#fff;border-radius:10px;padding:0 12px;display:flex;align-items:center;font-size:14px;color:#94A3B8">+373 __ ___ ___</div></div>
+              </div>
+              <span style="font-size:12px;color:#64748B">Se salvează în profil.</span>
+            </div>
+          </div>
+          <div style="padding:16px 24px;border-top:1px solid #F1F5F9;display:flex;justify-content:flex-end;gap:10px">
+            <button style="height:42px;padding:0 16px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;font:500 14px Geist,sans-serif">Anulează</button>
+            <button style="height:42px;padding:0 20px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 14px Geist,sans-serif">Continuă</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dv-opt" id="6f">
+      <div class="dv-olabel"><a class="dv-oid" href="#6f">6f</a>Desktop · pas 2, dialog</div>
+      <div style="width:1280px;height:820px;background:rgba(15,23,42,.42);border:1px solid #E2E8F0;border-radius:14px;overflow:hidden;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="width:560px;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.25);display:flex;flex-direction:column">
+          <div style="padding:22px 24px 16px;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start"><div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:#64748B">Pasul 2 din 3 · Dr. Ana Ciobanu</span><span style="font-size:20px;font-weight:600;letter-spacing:-.01em">Ce te deranjează și când</span></div><div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;color:#64748B"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></div></div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><div style="height:4px;border-radius:2px;background:#2563EB"></div><div style="height:4px;border-radius:2px;background:#E2E8F0"></div></div>
+          </div>
+          <div style="padding:6px 24px 20px;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Acuze</span><div style="min-height:72px;border:1px solid #E2E8F0;border-radius:10px;padding:10px 12px;font-size:14px;line-height:1.45">Tuse uscată de 5 zile, seara febră 37,8.</div></div>
+            <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;font-weight:500">Istoricul bolii <span style="font-weight:400;color:#64748B">(opțional)</span></span><div style="min-height:52px;border:1px solid #E2E8F0;border-radius:10px;padding:10px 12px;font-size:14px;color:#94A3B8">Cum a început, ce ai luat până acum…</div></div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <span style="font-size:14px;font-weight:500">Când îți convine?</span>
+              <div style="display:flex;gap:6px">
+                <div style="flex:1;height:52px;border-radius:10px;border:1.5px solid #2563EB;background:#EFF6FF;display:flex;flex-direction:column;align-items:center;justify-content:center"><span style="font-size:11px;color:#2563EB">Lun</span><span style="font-size:15px;font-weight:600;color:#1D4ED8">9</span></div>
+                <div style="flex:1;height:52px;border-radius:10px;border:1px solid #E2E8F0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span style="font-size:11px;color:#64748B">Mar</span><span style="font-size:15px;font-weight:600">10</span></div>
+                <div style="flex:1;height:52px;border-radius:10px;border:1px solid #E2E8F0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span style="font-size:11px;color:#64748B">Mie</span><span style="font-size:15px;font-weight:600">11</span></div>
+                <div style="flex:1;height:52px;border-radius:10px;border:1px solid #E2E8F0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span style="font-size:11px;color:#64748B">Joi</span><span style="font-size:15px;font-weight:600">12</span></div>
+                <div style="flex:1;height:52px;border-radius:10px;border:1px solid #E2E8F0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span style="font-size:11px;color:#64748B">Vin</span><span style="font-size:15px;font-weight:600">13</span></div>
+                <div style="flex:1;height:52px;border-radius:10px;border:1px solid #E2E8F0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span style="font-size:11px;color:#64748B">Lun</span><span style="font-size:15px;font-weight:600">16</span></div>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:8px">
+                <div style="height:38px;padding:0 14px;border-radius:10px;border:1px solid #E2E8F0;display:flex;align-items:center;font-size:14px;font-weight:500">09:00</div>
+                <div style="height:38px;padding:0 14px;border-radius:10px;border:1px solid #E2E8F0;display:flex;align-items:center;font-size:14px;font-weight:500">09:30</div>
+                <div style="height:38px;padding:0 14px;border-radius:10px;background:#2563EB;color:#fff;display:flex;align-items:center;font-size:14px;font-weight:600">11:00</div>
+                <div style="height:38px;padding:0 14px;border-radius:10px;border:1px solid #E2E8F0;display:flex;align-items:center;font-size:14px;font-weight:500">12:30</div>
+                <div style="height:38px;padding:0 14px;border-radius:10px;border:1px solid #E2E8F0;display:flex;align-items:center;font-size:14px;font-weight:500">14:00</div>
+                <div style="height:38px;padding:0 14px;border-radius:10px;border:1px solid #E2E8F0;display:flex;align-items:center;font-size:14px;font-weight:500">15:30</div>
+                <div style="height:38px;padding:0 14px;border-radius:10px;border:1px solid #E2E8F0;display:flex;align-items:center;font-size:14px;font-weight:500">17:00</div>
+                <div style="height:38px;padding:0 14px;border-radius:10px;border:1px dashed #CBD5E1;display:flex;align-items:center;font-size:13px;font-weight:500;color:#475569">Altă oră</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:16px 24px;border-top:1px solid #F1F5F9;display:flex;justify-content:space-between;gap:10px">
+            <button style="height:42px;padding:0 16px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;font:500 14px Geist,sans-serif">Înapoi</button>
+            <button style="height:42px;padding:0 20px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 14px Geist,sans-serif">Continuă</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dv-opt" id="6g">
+      <div class="dv-olabel"><a class="dv-oid" href="#6g">6g</a>Desktop · pas 3, îți lipsesc bani</div>
+      <div style="width:1280px;height:820px;background:rgba(15,23,42,.42);border:1px solid #E2E8F0;border-radius:14px;overflow:hidden;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="width:560px;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.25);display:flex;flex-direction:column">
+          <div style="padding:22px 24px 16px;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start"><div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:#64748B">Pasul 3 din 3</span><span style="font-size:20px;font-weight:600;letter-spacing:-.01em">Confirmă cererea</span></div><div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;color:#64748B"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></div></div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><div style="height:4px;border-radius:2px;background:#2563EB"></div><div style="height:4px;border-radius:2px;background:#2563EB"></div></div>
+          </div>
+          <div style="padding:6px 24px 20px;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:12px;background:#F8FAFC">
+              <div style="width:40px;height:40px;border-radius:50%;background:#E2E8F0;font-size:13px;font-weight:600;color:#334155;display:flex;align-items:center;justify-content:center">AC</div>
+              <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:14px;font-weight:600">Dr. Ana Ciobanu · Cu examinare la domiciliu</span><span style="font-size:13px;color:#64748B">Luni, 9 noiembrie, 11:00 · Dorin Puscasu · str. Cartușa 12</span></div>
+            </div>
+            <div style="display:flex;flex-direction:column;border:1px solid #E2E8F0;border-radius:12px">
+              <div style="display:flex;justify-content:space-between;padding:12px 14px;font-size:14px"><span style="color:#475569">Consultație cu examinare</span><span>650 MDL</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-top:1px solid #F1F5F9;font-size:14px">
+                <div style="display:flex;flex-direction:column;gap:2px"><span style="font-weight:500">Folosește bonusurile</span><span style="font-size:12px;color:#64748B">Ai 50 MDL bonus</span></div>
+                <div style="display:flex;align-items:center;gap:10px"><span style="color:#16A34A">{{ bonus2Line }}</span><button onClick="{{ toggleBonus2 }}" style="width:44px;height:26px;border-radius:13px;border:none;padding:3px;cursor:pointer;display:flex;justify-content:{{ bonus2Justify }};background:{{ bonus2Track }}"><div style="width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2)"></div></button></div>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:12px 14px;border-top:1px solid #E2E8F0;font-size:15px;font-weight:600"><span>Total</span><span>{{ exTotal }} MDL</span></div>
+              <div style="display:flex;justify-content:space-between;padding:0 14px 12px;font-size:14px;color:#475569"><span>În portofel</span><span>500 MDL</span></div>
+            </div>
+            <div style="display:flex;gap:10px;padding:12px 14px;border-radius:12px;background:#FFFBEB;border:1px solid #FDE68A;font-size:14px;line-height:1.45;color:#78350F">
+              <svg style="flex:none;margin-top:2px" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"></path><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"></path></svg>
+              <span><span style="font-weight:600">Îți lipsesc {{ lack }} MDL.</span> Alimentezi cu cardul și cererea pleacă imediat după plată.</span>
+            </div>
+          </div>
+          <div style="padding:16px 24px;border-top:1px solid #F1F5F9;display:flex;justify-content:space-between;gap:10px">
+            <button style="height:42px;padding:0 16px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;font:500 14px Geist,sans-serif">Înapoi</button>
+            <button style="height:42px;padding:0 18px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 14px Geist,sans-serif;display:flex;align-items:center;gap:8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"></rect><line x1="2" x2="22" y1="10" y2="10"></line></svg>Alimentează {{ lack }} MDL și trimite cererea</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 7 -->
+<section class="dv-turn" id="t7">
+  <div class="dv-thd"><a class="dv-tid" href="#t7">7</a><span class="dv-tname">Cerere trimisă</span></div>
+  <p class="dv-tdesc">{{ s7desc }}</p>
+  <div class="dv-opts">
+    <div class="dv-opt" id="7a">
+      <div class="dv-olabel"><a class="dv-oid" href="#7a">7a</a>Mobil</div>
+      <div style="width:390px;min-height:844px;background:#fff;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="padding:52px 20px 0;display:flex;justify-content:flex-end"><div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;color:#334155"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></div></div>
+        <div style="padding:12px 20px 32px;display:flex;flex-direction:column;gap:22px;flex:1">
+          <div style="width:56px;height:56px;border-radius:50%;background:#F0FDF4;color:#16A34A;display:flex;align-items:center;justify-content:center"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <h2 style="margin:0;font-size:26px;line-height:1.2;letter-spacing:-.02em;font-weight:700">Cererea a fost trimisă</h2>
+            <p style="margin:0;font-size:15px;line-height:1.5;color:#64748B">Te anunțăm când Dr. Ana Ciobanu confirmă.</p>
+          </div>
+          <div style="display:flex;flex-direction:column;border:1px solid #E2E8F0;border-radius:16px">
+            <div style="display:flex;gap:12px;align-items:center;padding:14px 16px;border-bottom:1px solid #F1F5F9">
+              <div style="width:44px;height:44px;border-radius:50%;background:#E2E8F0;font-size:14px;font-weight:600;color:#334155;display:flex;align-items:center;justify-content:center">AC</div>
+              <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600">Dr. Ana Ciobanu</span><span style="font-size:13px;color:#64748B">Medic de familie</span></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:12px 16px;font-size:14px"><span style="color:#64748B">Când</span><span style="font-weight:500">Luni, 9 noiembrie, 11:00</span></div>
+            <div style="display:flex;justify-content:space-between;padding:0 16px 12px;font-size:14px"><span style="color:#64748B">Tip</span><span style="font-weight:500">Video · pentru Dorin</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:16px;background:#F8FAFC;border:1px solid #E2E8F0">
+            <div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:15px;font-weight:600">Ajută medicul să se pregătească</span><span style="font-size:13px;color:#64748B;line-height:1.45">3 întrebări despre alergii, boli cronice și medicamente. Un minut.</span></div>
+            <button style="height:44px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;font:500 14px Geist,sans-serif;color:#0F172A">Răspunde acum</button>
+          </div>
+          <div style="flex:1"></div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <button style="height:48px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 15px Geist,sans-serif;display:flex;align-items:center;justify-content:center;gap:8px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"></path><path d="m21.854 2.147-10.94 10.939"></path></svg>Primește notificări pe Telegram</button>
+            <a href="#" style="text-align:center;font-size:14px;padding:10px;color:#475569">Mergi la Acasă</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dv-opt" id="7b">
+      <div class="dv-olabel"><a class="dv-oid" href="#7b">7b</a>Desktop · 1280</div>
+      <div style="width:1280px;height:820px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;overflow:hidden;display:flex;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="width:232px;flex:none;background:#fff;border-right:1px solid #E2E8F0;display:flex;flex-direction:column"><div style="height:64px;padding:0 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #F1F5F9"><div style="width:32px;height:32px;border-radius:9px;background:#2563EB;display:flex;align-items:center;justify-content:center;color:#fff"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg></div><span style="font-weight:700;font-size:15px">telemedconsult<span style="color:#2563EB">.md</span></span></div><div style="padding:16px 12px 8px"><button style="width:100%;height:44px;border:none;border-radius:10px;background:#2563EB;color:#fff;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>Consultație nouă</button></div><div style="padding:8px 12px;display:flex;flex-direction:column;gap:2px"><div style="height:40px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;color:#334155"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"></path><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg><span style="flex:1;white-space:nowrap">Acasă</span></div><div style="height:40px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;background:#EFF6FF;color:#2563EB;font-weight:500"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><path d="M12 11h4"></path><path d="M12 16h4"></path><path d="M8 11h.01"></path><path d="M8 16h.01"></path></svg><span style="flex:1;white-space:nowrap">Consultații</span></div><div style="height:40px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;color:#334155"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><span style="flex:1;white-space:nowrap">Mesaje</span><span style="min-width:20px;height:20px;padding:0 6px;box-sizing:border-box;border-radius:999px;background:#2563EB;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">3</span></div><div style="height:40px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;color:#334155"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg><span style="flex:1;white-space:nowrap">Pacienții mei</span></div><div style="height:40px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;color:#334155"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"></path><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"></path></svg><span style="flex:1;white-space:nowrap">Portofel</span></div></div><div style="padding:16px 24px 6px;font-size:11px;font-weight:600;color:#94A3B8;letter-spacing:.06em">MAI MULT</div><div style="padding:0 12px;display:flex;flex-direction:column;gap:2px"><div style="height:40px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;color:#334155"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"></rect><path d="M12 8v13"></path><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"></path><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"></path></svg><span style="flex:1;white-space:nowrap">Program de afiliere</span></div><div style="height:40px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;color:#334155"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path><path d="M12 7v2"></path><path d="M12 13h.01"></path></svg><span style="flex:1;white-space:nowrap">Reclamații și recenzii</span></div><div style="height:40px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;color:#334155"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18h-5"></path><path d="M18 14h-8"></path><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-4 0v-9a2 2 0 0 1 2-2h2"></path><rect width="8" height="4" x="10" y="6" rx="1"></rect></svg><span style="flex:1;white-space:nowrap">Noutăți</span></div><div style="height:40px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;color:#334155"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"></path><path d="m21.854 2.147-10.94 10.939"></path></svg><span style="flex:1;white-space:nowrap">Notificări Telegram</span><span title="Neconectat" style="width:8px;height:8px;border-radius:50%;background:#F59E0B;flex:none"></span></div></div><div style="flex:1"></div><div style="padding:12px 16px;border-top:1px solid #F1F5F9;display:flex;align-items:center;gap:10px"><div style="width:36px;height:36px;border-radius:50%;background:#EFF6FF;color:#2563EB;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center">DP</div><div style="display:flex;flex-direction:column;flex:1"><span style="font-size:13px;font-weight:600">Dorin Puscasu</span><span style="font-size:12px;color:#64748B">Pacient</span></div><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></div></div>
+        <div style="flex:1;display:flex;flex-direction:column;min-width:0"><div style="height:64px;padding:0 24px;background:#fff;border-bottom:1px solid #E2E8F0;display:flex;align-items:center;justify-content:flex-end;flex:none"><div style="position:relative;width:42px;height:42px;border-radius:10px;border:1px solid #E2E8F0;background:#fff;display:flex;align-items:center;justify-content:center;color:#334155"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"></path><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"></path></svg><span style="position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:999px;background:#2563EB;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #fff">5</span></div></div><div style="flex:1;display:flex;justify-content:center;padding:72px 32px">
+          <div style="width:620px;display:flex;flex-direction:column;gap:24px">
+            <div style="display:flex;gap:16px;align-items:center">
+              <div style="width:52px;height:52px;border-radius:50%;background:#F0FDF4;color:#16A34A;display:flex;align-items:center;justify-content:center;flex:none"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
+              <div style="display:flex;flex-direction:column;gap:4px"><h2 style="margin:0;font-size:28px;letter-spacing:-.02em;font-weight:700">Cererea a fost trimisă</h2><span style="font-size:15px;color:#64748B">Te anunțăm când Dr. Ana Ciobanu confirmă.</span></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;padding:18px 20px;background:#fff;border:1px solid #E2E8F0;border-radius:16px">
+              <div style="width:48px;height:48px;border-radius:50%;background:#E2E8F0;font-size:15px;font-weight:600;color:#334155;display:flex;align-items:center;justify-content:center">AC</div>
+              <div style="display:flex;flex-direction:column;gap:2px;flex:1"><span style="font-size:16px;font-weight:600">Dr. Ana Ciobanu</span><span style="font-size:13px;color:#64748B">Medic de familie</span></div>
+              <div style="display:flex;flex-direction:column;gap:2px;align-items:flex-end"><span style="font-size:15px;font-weight:600">Luni, 9 noiembrie, 11:00</span><span style="font-size:13px;color:#64748B">Video · pentru Dorin</span></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:16px;padding:18px 20px;background:#fff;border:1px dashed #CBD5E1;border-radius:16px">
+              <div style="display:flex;flex-direction:column;gap:4px;flex:1"><span style="font-size:15px;font-weight:600">Ajută medicul să se pregătească</span><span style="font-size:13px;color:#64748B">3 întrebări despre alergii, boli cronice și medicamente. Un minut.</span></div>
+              <button style="height:40px;padding:0 16px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;font:500 14px Geist,sans-serif">Răspunde acum</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:16px">
+              <button style="height:48px;padding:0 22px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 15px Geist,sans-serif;display:flex;align-items:center;gap:8px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"></path><path d="m21.854 2.147-10.94 10.939"></path></svg>Primește notificări pe Telegram</button>
+              <a href="#" style="font-size:14px;color:#475569">Mergi la Acasă</a>
+            </div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 8 -->
+<section class="dv-turn" id="t8">
+  <div class="dv-thd"><a class="dv-tid" href="#t8">8</a><span class="dv-tname">Acasă · cardul de sus în 3 stări</span></div>
+  <div style="display:flex;gap:10px;align-items:center;margin:0 0 16px;padding:10px 14px;border-radius:10px;background:#FFF7ED;border:1px solid #FED7AA;font-size:13px;color:#9A3412;max-width:800px"><b>Înlocuit.</b> Pagina Acasă e definită complet în fișierul dedicat. Aici rămâne doar ca referință pentru flux. <a href="Acasa%20pacient.dc.html" style="font-weight:600">Vezi versiunea nouă</a></div>
+  <p class="dv-tdesc">Cardul de sus arată un singur lucru, în ordinea priorității: configurare neterminată, apoi evaluare restantă (care altfel ar bloca următoarea programare), apoi următoarea consultație. Restul paginii rămâne la fel.</p>
+  <div class="dv-opts">
+    <div class="dv-opt" id="8a">
+      <div class="dv-olabel"><a class="dv-oid" href="#8a">8a</a>Continuă configurarea</div>
+      <div style="width:390px;min-height:844px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="padding:52px 20px 14px;background:#fff;border-bottom:1px solid #E2E8F0;display:flex;align-items:center;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:8px;background:#2563EB;display:flex;align-items:center;justify-content:center;color:#fff"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg></div><span style="font-weight:700;font-size:14px">telemedconsult<span style="color:#2563EB">.md</span></span></div>
+          <div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;color:#334155"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg></div>
+        </div>
+        <div style="padding:22px 16px;display:flex;flex-direction:column;gap:14px">
+          <h2 style="margin:0 4px 4px;font-size:24px;letter-spacing:-.02em;font-weight:700">Bună, Dorin</h2>
+          <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;font-weight:600;color:#2563EB">Pasul 2 din 3</span><span style="font-size:18px;font-weight:600;letter-spacing:-.01em">Continuă configurarea</span><span style="font-size:14px;color:#64748B;line-height:1.45">Pachetul e activ. Mai ai de adăugat pacientul, apoi alegi medicul.</span></div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px"><div style="height:4px;border-radius:2px;background:#2563EB"></div><div style="height:4px;border-radius:2px;background:#BFDBFE"></div><div style="height:4px;border-radius:2px;background:#E2E8F0"></div></div>
+            <button style="height:46px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 15px Geist,sans-serif">Adaugă pacientul</button>
+          </div>
+          <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:12px"><div style="width:36px;height:36px;border-radius:10px;background:#F1F5F9;color:#475569;display:flex;align-items:center;justify-content:center"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"></path><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"></path></svg></div><div style="display:flex;flex-direction:column;flex:1"><span style="font-size:13px;color:#64748B">Portofel</span><span style="font-size:16px;font-weight:600">500 MDL <span style="font-size:13px;font-weight:400;color:#B45309">+ 50 bonus</span></span></div><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></div>
+          <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:12px"><div style="width:36px;height:36px;border-radius:10px;background:#F1F5F9;color:#475569;display:flex;align-items:center;justify-content:center"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></div><div style="display:flex;flex-direction:column;flex:1"><span style="font-size:15px;font-weight:600">Pacienții mei</span><span style="font-size:13px;color:#64748B">Pachet 1 profil · 1 loc liber</span></div><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></div>
+        </div>
+      </div>
+    </div>
+    <div class="dv-opt" id="8b">
+      <div class="dv-olabel"><a class="dv-oid" href="#8b">8b</a>Ai de evaluat consultația</div>
+      <div style="width:390px;min-height:844px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="padding:52px 20px 14px;background:#fff;border-bottom:1px solid #E2E8F0;display:flex;align-items:center;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:8px;background:#2563EB;display:flex;align-items:center;justify-content:center;color:#fff"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg></div><span style="font-weight:700;font-size:14px">telemedconsult<span style="color:#2563EB">.md</span></span></div>
+          <div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;color:#334155"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg></div>
+        </div>
+        <div style="padding:22px 16px;display:flex;flex-direction:column;gap:14px">
+          <h2 style="margin:0 4px 4px;font-size:24px;letter-spacing:-.02em;font-weight:700">Bună, Dorin</h2>
+          <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;gap:12px;align-items:center">
+              <div style="width:44px;height:44px;border-radius:50%;background:#E2E8F0;font-size:14px;font-weight:600;color:#334155;display:flex;align-items:center;justify-content:center;flex:none">AC</div>
+              <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:17px;font-weight:600;letter-spacing:-.01em;line-height:1.3">Ai de evaluat consultația cu Dr. Ana Ciobanu</span><span style="font-size:13px;color:#64748B">Video · luni, 9 noiembrie</span></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:4px 6px">
+              <sc-for list="{{ stars }}" as="st" hint-placeholder-count="5">
+                <button onClick="{{ st.set }}" style="width:52px;height:52px;border:none;background:transparent;padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="38" height="38" viewBox="0 0 24 24" fill="{{ st.fill }}" stroke="{{ st.stroke }}" stroke-width="1.5" stroke-linejoin="round"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"></path></svg></button>
+              </sc-for>
+            </div>
+            <span style="font-size:13px;color:#64748B;text-align:center">{{ ratingNote }}</span>
+            <sc-if value="{{ rated }}" hint-placeholder-val="{{ false }}">
+              <button style="height:46px;border:none;border-radius:10px;background:#2563EB;color:#fff;font:600 15px Geist,sans-serif">Trimite evaluarea</button>
+            </sc-if>
+          </div>
+          <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:12px"><div style="width:36px;height:36px;border-radius:10px;background:#F1F5F9;color:#475569;display:flex;align-items:center;justify-content:center"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"></path><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"></path></svg></div><div style="display:flex;flex-direction:column;flex:1"><span style="font-size:13px;color:#64748B">Portofel</span><span style="font-size:16px;font-weight:600">250 MDL</span></div><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></div>
+          <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:12px"><div style="width:36px;height:36px;border-radius:10px;background:#F1F5F9;color:#475569;display:flex;align-items:center;justify-content:center"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></div><div style="display:flex;flex-direction:column;flex:1"><span style="font-size:15px;font-weight:600">Pacienții mei</span><span style="font-size:13px;color:#64748B">Dorin Puscasu</span></div><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></div>
+        </div>
+      </div>
+    </div>
+    <div class="dv-opt" id="8c">
+      <div class="dv-olabel"><a class="dv-oid" href="#8c">8c</a>Următoarea consultație</div>
+      <div style="width:390px;min-height:844px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+        <div style="padding:52px 20px 14px;background:#fff;border-bottom:1px solid #E2E8F0;display:flex;align-items:center;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:8px;background:#2563EB;display:flex;align-items:center;justify-content:center;color:#fff"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg></div><span style="font-weight:700;font-size:14px">telemedconsult<span style="color:#2563EB">.md</span></span></div>
+          <div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;color:#334155"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg></div>
+        </div>
+        <div style="padding:22px 16px;display:flex;flex-direction:column;gap:14px">
+          <h2 style="margin:0 4px 4px;font-size:24px;letter-spacing:-.02em;font-weight:700">Bună, Dorin</h2>
+          <div style="background:#0F172A;color:#fff;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;font-weight:600;color:#93C5FD">Următoarea consultație</span><span style="font-size:12px;font-weight:500;padding:3px 8px;border-radius:999px;background:rgba(34,197,94,.15);color:#86EFAC">Confirmată</span></div>
+            <div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:24px;font-weight:700;letter-spacing:-.02em">Luni, 9 nov · 11:00</span><span style="font-size:14px;color:#CBD5E1">Dr. Ana Ciobanu · Video · pentru Dorin</span></div>
+            <button style="height:46px;border:none;border-radius:10px;background:#fff;color:#0F172A;font:600 15px Geist,sans-serif;display:flex;align-items:center;justify-content:center;gap:8px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"></path><rect x="2" y="6" width="14" height="12" rx="2"></rect></svg>Vezi detaliile</button>
+            <span style="font-size:12px;color:#94A3B8;text-align:center;margin-top:-6px">Intrarea pe video se deschide cu 10 minute înainte.</span>
+          </div>
+          <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:12px"><div style="width:36px;height:36px;border-radius:10px;background:#F1F5F9;color:#475569;display:flex;align-items:center;justify-content:center"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"></path><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"></path></svg></div><div style="display:flex;flex-direction:column;flex:1"><span style="font-size:13px;color:#64748B">Portofel</span><span style="font-size:16px;font-weight:600">250 MDL <span style="font-size:13px;font-weight:400;color:#64748B">· 250 rezervați</span></span></div><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></div>
+          <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:12px"><div style="width:36px;height:36px;border-radius:10px;background:#F1F5F9;color:#475569;display:flex;align-items:center;justify-content:center"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></div><div style="display:flex;flex-direction:column;flex:1"><span style="font-size:15px;font-weight:600">Pacienții mei</span><span style="font-size:13px;color:#64748B">Dorin Puscasu</span></div><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;prepPlacement&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;pas4&quot;,&quot;dupa&quot;],&quot;default&quot;:&quot;pas4&quot;,&quot;tsType&quot;:&quot;'pas4' | 'dupa'&quot;,&quot;section&quot;:&quot;Flux&quot;},&quot;showBonus&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Flux&quot;}}">
+class Component extends DCLogic {
+  state = { pkg: 1, topup: true, showPw: false, who: 'me', prep: { a: 'da', b: 'nu', c: 'nu' }, bonus: true, bonus2: true, rating: 0 };
+  renderVals() {
+    const s = this.state, p = this.props;
+    const BLUE = '#2563EB';
+    const P = { 1: 240, 2: 450, 6: 600 };
+    const total = P[s.pkg] + (s.topup ? 500 : 0);
+    const pkgs = [[1, '1 profil', '240', 'Doar pentru tine'], [2, '2 profiluri', '450', '225 MDL / profil'], [6, '6 profiluri', '600', '100 MDL / profil · pentru familie']].map(([id, name, price, per]) => {
+      const on = s.pkg === id;
+      return { name, price, per, pick: () => this.setState({ pkg: id }),
+        border: on ? '1.5px solid ' + BLUE : '1px solid #E2E8F0', bg: on ? '#EFF6FF' : '#fff', bgD: on ? '#EFF6FF' : '#fff',
+        radio: on ? '1.5px solid ' + BLUE : '1.5px solid #CBD5E1', dot: on ? BLUE : 'transparent' };
+    });
+    const seg = (on) => ({ bg: on ? '#fff' : 'transparent', color: on ? '#0F172A' : '#64748B', shadow: on ? '0 1px 2px rgba(15,23,42,.12)' : 'none' });
+    const me = seg(s.who === 'me'), other = seg(s.who === 'other');
+    const Q = [['a', 'Alergii?', 'Penicilină', 'La ce? (ex. penicilină, polen)'], ['b', 'Boli cronice?', '', 'Care? (ex. diabet, hipertensiune)'], ['c', 'Medicamente luate des?', '', 'Care și cât de des?']];
+    const prepQs = Q.map(([k, label, filled, ph]) => {
+      const da = s.prep[k] === 'da';
+      const set = (v) => () => this.setState(st => ({ prep: { ...st.prep, [k]: v } }));
+      return { label, isDa: da, setNu: set('nu'), setDa: set('da'),
+        nuBg: da ? 'transparent' : '#fff', nuColor: da ? '#64748B' : '#0F172A',
+        daBg: da ? '#fff' : 'transparent', daColor: da ? '#0F172A' : '#64748B',
+        text: filled || ph, textColor: filled ? '#0F172A' : '#94A3B8' };
+    });
+    const doctors = [
+      { ini: 'AC', name: 'Dr. Ana Ciobanu', spec: 'Medic de familie', exp: '14 ani experiență', rating: '4,9', reviews: 212, video: 300, exam: 650 },
+      { ini: 'VR', name: 'Dr. Victor Rusu', spec: 'Cardiolog', exp: '20 ani experiență', rating: '4,8', reviews: 147, video: 400, exam: 800 },
+      { ini: 'EM', name: 'Dr. Elena Munteanu', spec: 'Pediatru', exp: '11 ani experiență', rating: '4,9', reviews: 98, video: 350, exam: 700 },
+      { ini: 'ML', name: 'Dr. Mihai Lungu', spec: 'Neurolog', exp: '9 ani experiență', rating: '4,7', reviews: 63, video: 450, exam: 850 }
+    ];
+    const tog = (on) => ({ track: on ? BLUE : '#CBD5E1', justify: on ? 'flex-end' : 'flex-start', line: on ? '−50 MDL' : '' });
+    const b1 = tog(s.bonus), b2 = tog(s.bonus2);
+    const vidTotal = 300 - (s.bonus ? 50 : 0);
+    const exTotal = 650 - (s.bonus2 ? 50 : 0);
+    const notes = ['', 'Poate fi mai bine', 'Așa și așa', 'Bine', 'Foarte bine', 'Excelent'];
+    const prepInStep4 = (p.prepPlacement ?? 'pas4') === 'pas4';
+    return {
+      pwText: s.showPw ? 'Dorin2026!' : '••••••••••', pwSpacing: s.showPw ? 'normal' : '.1em', pwLabel: s.showPw ? 'Ascunde' : 'Arată',
+      showPw: s.showPw, hidePwIcon: !s.showPw, togglePw: () => this.setState({ showPw: !s.showPw }),
+      showBonus: p.showBonus ?? true,
+      pkgs, total, totalNote: (pkgs.find((_, i) => [1, 2, 6][i] === s.pkg).name) + ' ' + P[s.pkg] + (s.topup ? ' + portofel 500' : '') + ' MDL',
+      toggleTopup: () => this.setState({ topup: !s.topup }), topupBg: s.topup ? BLUE : '#fff', topupBorder: s.topup ? '1.5px solid ' + BLUE : '1.5px solid #CBD5E1',
+      setMe: () => this.setState({ who: 'me' }), setOther: () => this.setState({ who: 'other' }),
+      meBg: me.bg, meColor: me.color, meShadow: me.shadow, otherBg: other.bg, otherColor: other.color, otherShadow: other.shadow,
+      fn: s.who === 'me' ? 'Dorin' : 'Prenume', ln: s.who === 'me' ? 'Puscasu' : 'Nume', nameColor: s.who === 'me' ? '#0F172A' : '#94A3B8',
+      prepQs, prepInStep4, doctors,
+      toggleBonus: () => this.setState({ bonus: !s.bonus }), bonusTrack: b1.track, bonusJustify: b1.justify, bonusLine: b1.line,
+      toggleBonus2: () => this.setState({ bonus2: !s.bonus2 }), bonus2Track: b2.track, bonus2Justify: b2.justify, bonus2Line: b2.line,
+      vidTotal, vidLeft: 500 - vidTotal, exTotal, lack: exTotal - 500,
+      s7desc: prepInStep4
+        ? 'O singură acțiune principală: notificările pe Telegram. Cardul „Ajută medicul să se pregătească” apare doar dacă blocul de la pasul 4 a rămas necompletat.'
+        : 'O singură acțiune principală: notificările pe Telegram. Blocul „Ajută medicul să se pregătească” a fost mutat aici din pasul 4, deci apare la toți utilizatorii noi.',
+      stars: [1, 2, 3, 4, 5].map(n => ({ set: () => this.setState({ rating: n }), fill: n <= s.rating ? '#F59E0B' : 'transparent', stroke: n <= s.rating ? '#F59E0B' : '#CBD5E1' })),
+      rated: s.rating > 0, ratingNote: s.rating ? notes[s.rating] : 'Atinge o stea. Evaluarea deblochează următoarea programare.'
+    };
+  }
+}
+</script>
+</body>
+</html>
