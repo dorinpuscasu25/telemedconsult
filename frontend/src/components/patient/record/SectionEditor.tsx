@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Check, Minus, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Check, Minus, Plus, X } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import { Textarea } from '../../ui/textarea';
@@ -15,7 +15,7 @@ type Answer = 'yes' | 'no' | 'unknown';
  * Editorul unei secțiuni din fișă: o singură secțiune, completată din butoane,
  * salvată automat la scurt timp după fiecare schimbare.
  */
-export function SectionEditor({ profileId, sectionKey, record, patientName, birthDate, onRecordChange, footer }: {
+export function SectionEditor({ profileId, sectionKey, record, patientName, birthDate, onRecordChange, footer, onClose }: {
   profileId: number;
   sectionKey: string;
   record: MedicalRecord;
@@ -24,6 +24,8 @@ export function SectionEditor({ profileId, sectionKey, record, patientName, birt
   onRecordChange: (record: MedicalRecord) => void;
   /** Acțiunea de jos a panoului (ex. „Gata”), fixată sub conținut. */
   footer?: ReactNode;
+  /** Închiderea: săgeată înapoi pe telefon (D3), × în panoul de pe desktop (D2b). */
+  onClose?: () => void;
 }) {
   const section = sectionByKey(sectionKey);
   const [saveState, setSaveState] = useState<SaveState>('idle');
@@ -57,15 +59,17 @@ export function SectionEditor({ profileId, sectionKey, record, patientName, birt
   // Panou: antet fix (secțiunea, pacientul, starea salvării), conținut care se derulează, acțiune jos.
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex shrink-0 items-start gap-3 border-b border-slate-100 py-4 pl-5 pr-16 sm:pl-6">
-        <div className="min-w-0 flex-1">
-          <h3 className="truncate text-lg font-semibold text-slate-950">{section.title}</h3>
-          <p className="truncate text-sm text-slate-500">{patientName}{ageInYears(birthDate) !== null ? ` · ${ageInYears(birthDate)} ani` : ''}</p>
+      <header className="flex shrink-0 items-center gap-1 border-b border-slate-100 px-2 pb-2.5 pt-[calc(10px+env(safe-area-inset-top))] lg:h-[60px] lg:gap-3 lg:px-5 lg:py-0">
+        {onClose && <button type="button" onClick={onClose} aria-label="Înapoi" className="grid h-10 w-10 shrink-0 place-items-center text-slate-700 lg:hidden"><ArrowLeft className="h-5 w-5" /></button>}
+        <div className={cn('flex min-w-0 flex-1 flex-col', !onClose && 'pl-3 lg:pl-0')}>
+          <h3 className="truncate text-[17px] font-semibold text-slate-950 lg:text-base">{section.title}</h3>
+          <p className="truncate text-xs text-slate-500 lg:hidden">{patientName}</p>
         </div>
         <SaveIndicator state={saveState} />
+        {onClose && <button type="button" onClick={onClose} aria-label="Închide" className="hidden h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 lg:grid"><X className="h-[18px] w-[18px]" /></button>}
       </header>
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
-        {section.description && <p className="text-sm leading-6 text-slate-500">{section.description}</p>}
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
+        {section.description && !section.repeated && <p className="text-sm leading-6 text-slate-500">{section.description}</p>}
         {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
         {section.repeated
           ? <ListEditor sectionKey={sectionKey} record={record} patientName={patientName} saveNow={send} saveSoon={saveSoon} />
@@ -79,8 +83,8 @@ export function SectionEditor({ profileId, sectionKey, record, patientName, birt
 function SaveIndicator({ state }: { state: SaveState }) {
   if (state === 'idle') return null;
   return (
-    <span className={cn('flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium', state === 'saved' ? 'bg-emerald-50 text-emerald-700' : state === 'error' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600')} aria-live="polite">
-      {state === 'saved' ? <><Check className="h-3.5 w-3.5" />Salvat</> : state === 'error' ? 'Nesalvat' : 'Se salvează…'}
+    <span className={cn('shrink-0 pr-3 text-xs lg:pr-0', state === 'saved' ? 'text-green-600' : state === 'error' ? 'text-red-600' : 'text-slate-500')} aria-live="polite">
+      {state === 'saved' ? '✓ Salvat' : state === 'error' ? 'Nesalvat' : 'Se salvează…'}
     </span>
   );
 }
@@ -97,6 +101,7 @@ function ListEditor({ sectionKey, record, patientName, saveNow, saveSoon }: { se
   const [refusal, setRefusal] = useState(vaccination.refusal ?? 'unknown');
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [other, setOther] = useState('');
+  const [otherOpen, setOtherOpen] = useState(false);
   const [relative, setRelative] = useState(RELATIVES[0]);
   const firstName = patientName.split(' ')[0] || 'pacientul';
 
@@ -125,6 +130,7 @@ function ListEditor({ sectionKey, record, patientName, saveNow, saveSoon }: { se
     const name = other.trim();
     if (!name) return;
     setOther('');
+    setOtherOpen(false);
     toggleChip(name);
   };
 
@@ -135,44 +141,56 @@ function ListEditor({ sectionKey, record, patientName, saveNow, saveSoon }: { se
       {isVaccination ? (
         <ChipGroup label="Opțiunea privind vaccinarea" value={refusal} options={[['unknown', 'Nu am precizat'], ['none', 'Fără refuz'], ['temporary', 'Refuz temporar'], ['categorical', 'Refuz categoric']]} onChange={(value) => { setRefusal(value); persist(entries, value, true); }} />
       ) : (
-        <ChipGroup label={prompt?.question ?? section.title} value={answer} options={[['no', 'Nu'], ['yes', 'Da'], ['unknown', 'Nu știu']]} onChange={(value) => choose(value as Answer)} />
+        <div className="flex flex-col gap-[18px] lg:gap-4">
+          <span className="text-xl font-semibold tracking-tight text-slate-950 lg:text-[15px] lg:tracking-normal">{prompt?.question ?? section.title}</span>
+          <div className="grid grid-cols-3 gap-2 lg:gap-1.5" role="radiogroup" aria-label={prompt?.question ?? section.title}>
+            {([['no', 'Nu'], ['yes', 'Da'], ['unknown', 'Nu știu']] as const).map(([key, label]) => (
+              <button key={key} type="button" role="radio" aria-checked={answer === key} onClick={() => choose(key)}
+                className={cn('h-12 rounded-[10px] text-[15px] font-medium lg:h-[42px] lg:text-sm', answer === key ? 'border-[1.5px] border-blue-600 bg-blue-50 text-blue-700' : 'border border-slate-200 bg-white text-slate-700 hover:border-slate-300')}>{label}</button>
+            ))}
+          </div>
+        </div>
       )}
 
-      {!isVaccination && answer === 'no' && <p className="flex gap-2 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800"><Check className="h-4 w-4 shrink-0" />Gata. {prompt?.noText(firstName)}</p>}
-      {!isVaccination && answer === 'unknown' && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">Rămâne necompletată. Poți reveni oricând, de exemplu după ce întrebi medicul de familie.</p>}
+      {!isVaccination && answer === 'no' && <p className="flex items-center gap-2.5 rounded-xl bg-slate-100 p-3.5 text-sm leading-[1.45] text-slate-700 lg:px-3.5 lg:py-3 lg:text-[13px]"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-slate-500 text-xs text-white lg:h-[22px] lg:w-[22px]">✓</span>Gata. {prompt?.noText(firstName)}</p>}
+      {!isVaccination && answer === 'unknown' && <p className="rounded-xl bg-slate-50 p-3.5 text-sm leading-[1.45] text-slate-600">Rămâne necompletată. Poți reveni oricând, de exemplu după ce întrebi medicul de familie.</p>}
 
       {showList && (
         <>
           {sectionKey === 'family_history' && <ChipGroup label="1. Cine?" value={relative} options={RELATIVES.map((item) => [item, item])} onChange={setRelative} />}
           {prompt && (
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-slate-700">{sectionKey === 'family_history' ? '2. Ce boală?' : isVaccination ? prompt.question : 'Atinge ce se potrivește'}</p>
-              <div className="flex flex-wrap gap-2">
-                {prompt.chips.map((chip) => <Chip key={chip} selected={hasChip(chip)} onClick={() => toggleChip(chip)}>{hasChip(chip) && <Check className="h-3.5 w-3.5" />}{chip}</Chip>)}
+            <div className="flex flex-col gap-2.5">
+              <p className="text-sm text-slate-600">{sectionKey === 'family_history' ? '2. Ce boală?' : isVaccination ? prompt.question : 'Atinge ce se potrivește'}</p>
+              <div className="flex flex-wrap gap-2 lg:gap-1.5">
+                {prompt.chips.map((chip) => <Chip key={chip} selected={hasChip(chip)} onClick={() => toggleChip(chip)}>{hasChip(chip) ? '✓' : '+'} {chip}</Chip>)}
+                {!otherOpen && <button type="button" onClick={() => setOtherOpen(true)} className="inline-flex h-10 items-center rounded-full border border-dashed border-slate-300 bg-white px-3.5 text-sm font-medium text-slate-600 lg:h-[34px] lg:px-3 lg:text-[13px]">Altceva…</button>}
               </div>
-              <div className="flex gap-2">
-                <Input value={other} onChange={(event) => setOther(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addOther(); } }} placeholder="Altceva…" maxLength={255} className="h-10 rounded-xl" />
-                <Button type="button" variant="outline" onClick={addOther} disabled={!other.trim()}><Plus className="h-4 w-4" />Adaugă</Button>
-              </div>
+              {otherOpen && (
+                <div className="flex gap-2">
+                  <Input autoFocus value={other} onChange={(event) => setOther(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addOther(); } if (event.key === 'Escape') setOtherOpen(false); }} placeholder="Scrie denumirea" maxLength={255} className="h-10 rounded-[10px]" />
+                  <Button type="button" variant="outline" className="h-10 rounded-[10px]" onClick={addOther} disabled={!other.trim()}>Adaugă</Button>
+                </div>
+              )}
             </div>
           )}
 
           {entries.length > 0 && (
-            <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+            <ul className="flex flex-col gap-2">
               {entries.map((entry, index) => {
                 const detailFields = section.fields.filter((field) => !['name', 'relationship'].includes(field.key));
                 const update = (patch: RecordEntry) => persist(entries.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+                const meta = [entry.relationship, typeLabel(section.fields, entry), entry.date || entry.period].filter(Boolean).join(' · ');
                 return (
-                  <li key={index} className="p-3">
-                    <div className="flex items-center gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium text-slate-900">{String(entry.name ?? '')}</p>
-                        <p className="truncate text-xs text-slate-500">{[entry.relationship, typeLabel(section.fields, entry), entry.date || entry.period].filter(Boolean).join(' · ')}</p>
-                      </div>
-                      {detailFields.length > 0 && <Button type="button" variant="ghost" size="sm" onClick={() => setOpenIndex(openIndex === index ? null : index)}>{openIndex === index ? 'Gata' : '+ Detalii'}</Button>}
-                      <Button type="button" variant="ghost" size="icon-sm" aria-label={`Elimină ${entry.name}`} onClick={() => persist(entries.filter((_, i) => i !== index), refusal, true)}><Trash2 className="h-4 w-4 text-red-600" /></Button>
+                  <li key={index} className="flex flex-col gap-1.5 rounded-xl border border-slate-200 px-3.5 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="truncate text-sm font-semibold text-slate-950">{String(entry.name ?? '')}</span>
+                      {meta && <span className="shrink-0 text-xs text-slate-500">{meta}</span>}
                     </div>
-                    {openIndex === index && <div className="mt-3 space-y-4 rounded-xl bg-slate-50 p-3"><DetailFields fields={detailFields} entry={entry} onChange={update} /></div>}
+                    <div className="flex gap-4 text-[13px] font-medium">
+                      {detailFields.length > 0 && <button type="button" onClick={() => setOpenIndex(openIndex === index ? null : index)} className="text-blue-600 hover:underline">{openIndex === index ? 'Gata' : 'Adaugă detalii'}</button>}
+                      <button type="button" onClick={() => persist(entries.filter((_, i) => i !== index), refusal, true)} className="text-slate-500 hover:text-red-600">Elimină</button>
+                    </div>
+                    {openIndex === index && <div className="mt-1.5 space-y-4 rounded-xl bg-slate-50 p-3"><DetailFields fields={detailFields} entry={entry} onChange={update} /></div>}
                   </li>
                 );
               })}
@@ -308,8 +326,8 @@ export function ChipGroup({ label, value, options, onChange, allowCustom = false
   const isCustom = allowCustom && value !== '' && !options.some(([key]) => key === value);
   return (
     <div className="space-y-2">
-      <p className="text-sm font-medium text-slate-700">{label}</p>
-      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={label}>
+      <p className="text-sm font-medium text-slate-950">{label}</p>
+      <div className="flex flex-wrap gap-2 lg:gap-1.5" role="radiogroup" aria-label={label}>
         {options.map(([key, text]) => <Chip key={key} role="radio" selected={value === key} onClick={() => onChange(key)}>{text}</Chip>)}
       </div>
       {allowCustom && (value === 'Da' || isCustom) && <Input value={value === 'Da' ? '' : value} onChange={(event) => onChange(event.target.value || 'Da')} placeholder="Câte pe zi, de câți ani" className="h-10 rounded-xl" />}
@@ -320,7 +338,7 @@ export function ChipGroup({ label, value, options, onChange, allowCustom = false
 function Chip({ selected, onClick, children, role }: { selected: boolean; onClick: () => void; children: React.ReactNode; role?: string }) {
   return (
     <button type="button" role={role} aria-checked={role ? selected : undefined} aria-pressed={role ? undefined : selected} onClick={onClick}
-      className={cn('inline-flex h-9 items-center gap-1 rounded-full border px-3 text-sm font-medium transition', selected ? 'border-primary bg-primary/10 text-primary' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300')}>
+      className={cn('inline-flex h-10 items-center gap-1 rounded-full px-3.5 text-sm font-medium transition lg:h-[34px] lg:px-3 lg:text-[13px]', selected ? 'border-[1.5px] border-blue-600 bg-blue-50 text-blue-700' : 'border border-slate-200 bg-white text-slate-700 hover:border-slate-300')}>
       {children}
     </button>
   );

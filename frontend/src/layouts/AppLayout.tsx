@@ -149,7 +149,7 @@ export function AppLayout() {
 
   // Chatul ocupă tot spațiul, fără antet și fără margini (C1a / C2a).
   const bleed = location.pathname.endsWith('/chat');
-  const ownMobileHeader = bleed || location.pathname === '/patient/more';
+  const ownMobileHeader = bleed || location.pathname === '/patient/more' || location.pathname.startsWith('/patient/patients/');
   // Conversația deschisă pe telefon ocupă tot ecranul (C2b).
   const chatParams = new URLSearchParams(location.search);
   const fullScreenChat = role === 'patient' && bleed && ['doctor', 'operator', 'conversation', 'request'].some((key) => chatParams.has(key));
@@ -283,7 +283,7 @@ export function AppLayout() {
       <nav className={cn('fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white pb-[max(12px,env(safe-area-inset-bottom))] lg:hidden', fullScreenChat && 'hidden')} aria-label="Navigație principală">
         <div className="grid" style={{ gridTemplateColumns: `repeat(${mobileItems.length}, minmax(0, 1fr))` }}>
           {mobileItems.map((item) => {
-            const active = isActive(item.path) || (item.path === '/patient/more' && ['/patient/profile', '/patient/complaints', '/patient/noutati', '/patient/telegram'].some((path) => location.pathname.startsWith(path)));
+            const active = isActive(item.path) || (item.path === '/patient/more' && ['/patient/profile', '/patient/patients', '/patient/complaints', '/patient/noutati', '/patient/telegram'].some((path) => location.pathname.startsWith(path)));
             const badge = badgeFor(item);
             return (
               <Link key={item.path} to={item.path} aria-current={active ? 'page' : undefined}
