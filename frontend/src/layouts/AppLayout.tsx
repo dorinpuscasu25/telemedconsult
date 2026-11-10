@@ -153,6 +153,8 @@ export function AppLayout() {
   // Conversația deschisă pe telefon ocupă tot ecranul (C2b).
   const chatParams = new URLSearchParams(location.search);
   const fullScreenChat = role === 'patient' && bleed && ['doctor', 'operator', 'conversation', 'request'].some((key) => chatParams.has(key));
+  // În asistentul de pornire (5a/5b) bara cu pașii ține locul antetului.
+  const wizardHeader = location.pathname === '/patient/doctors' && chatParams.get('from') === 'start';
 
   // Pe telefon pacientul are patru pagini și „Mai mult” (N2b).
   const mobileItems: NavItem[] = role === 'patient'
@@ -258,7 +260,7 @@ export function AppLayout() {
 
       <div className="flex min-h-screen flex-col lg:pl-[232px]">
         {/* Antetul: pe desktop doar clopoțelul; pe telefon logo + clopoțel. */}
-        <header className={cn('sticky top-0 z-20 border-b border-slate-200 bg-white', bleed && 'lg:hidden', ownMobileHeader && 'max-lg:hidden')}>
+        <header className={cn('sticky top-0 z-20 border-b border-slate-200 bg-white', bleed && 'lg:hidden', ownMobileHeader && 'max-lg:hidden', wizardHeader && 'hidden')}>
           <div className="flex h-14 items-center justify-between gap-3 pl-4 pr-2 pt-[env(safe-area-inset-top)] lg:h-16 lg:justify-end lg:px-6">
             <span className="lg:hidden">{logo('sm')}</span>
             <span className="lg:hidden"><NotificationBell bare /></span>

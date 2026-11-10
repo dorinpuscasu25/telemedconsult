@@ -99,8 +99,8 @@ export function PatientHome() {
   const todo = showAll ? rest : rest.slice(0, TODO_VISIBLE);
   const hiddenCount = rest.length - TODO_VISIBLE;
   const recentConsultations = useMemo(() => [...requests].sort((a, b) => new Date(b.scheduled_at ?? b.created_at).getTime() - new Date(a.scheduled_at ?? a.created_at).getTime()).slice(0, 4), [requests]);
-  // Butonul plutitor lipsește când cardul „Acum” are deja programarea sau când nu există pacient.
-  const showFab = doctorsEnabled && requestableProfiles.length > 0 && current !== undefined;
+  // Butonul plutitor: doar în stările B și D (lipsește la configurare, apel în curs și când totul e liniștit).
+  const showFab = doctorsEnabled && requestableProfiles.length > 0 && current !== undefined && current.kind !== 'setup' && current.kind !== 'live';
 
   const dismiss = (id: string) => {
     const next = [...dismissed, id];
@@ -201,9 +201,9 @@ export function PatientHome() {
       </div>
 
       {showFab && (
-        <Button asChild size="lg" className="fixed bottom-20 right-4 z-30 rounded-full shadow-lg lg:hidden">
-          <Link to="/patient/doctors"><Plus className="h-5 w-5" />Programează</Link>
-        </Button>
+        <Link to="/patient/doctors" className="fixed bottom-[calc(76px+max(12px,env(safe-area-inset-bottom)))] right-4 z-30 flex h-12 items-center gap-2 rounded-full border border-blue-200 bg-white px-5 text-sm font-semibold text-blue-700 shadow-[0_4px_16px_rgba(37,99,235,.12)] lg:hidden">
+          <Plus className="h-4 w-4" />Programează
+        </Link>
       )}
     </div>
   );

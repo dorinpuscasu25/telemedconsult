@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Award, Check, ChevronLeft, CreditCard, Home, Info, Lock, MapPin, Search, Send, Star, Stethoscope, Video, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronLeft, CreditCard, Home, Info, Lock, MapPin, Send, Star, Stethoscope, Video, X } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -16,7 +16,6 @@ import { Input } from '../../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '../../components/ui/select';
 import { ListSkeleton } from '../../components/ui/skeleton';
 import { cn } from '../../components/ui/utils';
-import { PageHeader } from '../../components/app/PageHeader';
 import { EmptyState } from '../../components/app/EmptyState';
 import { ConsultationComplaintFields } from '../../components/ConsultationComplaintFields';
 import { BonusSlider, PrepareDoctorCard, ShortfallNotice, SlotPicker, longDateTime, mdl } from '../../components/patient/BookingParts';
@@ -81,11 +80,6 @@ interface CostPreview {
   };
 }
 
-interface Specialty {
-  id: number;
-  name: string;
-}
-
 interface PatientProfile {
   id: number;
   first_name?: string | null;
@@ -131,10 +125,7 @@ export function DoctorsList() {
   const withExamEnabled = !featuresLoading && isEnabled('with_exam_consultations') && isEnabled('operators');
   const videoEnabled = !featuresLoading && isEnabled('video_consultations');
   const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [patientProfiles, setPatientProfiles] = useState<PatientProfile[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [specFilter, setSpecFilter] = useState('toate');
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   const [detailDoctor, setDetailDoctor] = useState<Doctor | null>(null);
   const [doctorReviews, setDoctorReviews] = useState<DoctorReview[]>([]);
@@ -172,9 +163,6 @@ export function DoctorsList() {
       .then((response) => setDoctors(response.data ?? []))
       .catch(() => setDoctors([]))
       .finally(() => setIsLoading(false));
-    apiRequest<{data: Specialty[]}>('/catalog/specialties', { auth: false })
-      .then((response) => setSpecialties(response.data ?? []))
-      .catch(() => setSpecialties([]));
     loadProfiles()
       .then((profiles) => {
         const requestableProfiles = profiles.filter(canRequestConsultation);
@@ -201,12 +189,6 @@ export function DoctorsList() {
       .then((response) => setDoctorReviews(response.data ?? []))
       .catch(() => setDoctorReviews([]));
   }, [detailDoctor, isDetailOpen]);
-
-  const filteredDoctors = useMemo(() => doctors.filter((doctor) => {
-    const matchesSearch = doctor.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesSpec = specFilter === 'toate' || String(doctor.specialty_id) === specFilter;
-    return matchesSearch && matchesSpec;
-  }), [doctors, searchTerm, specFilter]);
 
   const openRequestDialog = (doctor: Doctor, kind: 'with_exam' | 'video' = 'video') => {
     const availableKind = kind === 'with_exam' && withExamEnabled
@@ -433,95 +415,75 @@ export function DoctorsList() {
     setStep((current) => (current < 3 ? (current + 1) as 1 | 2 | 3 : current));
   };
 
+  const patientPicker = (className: string) => pinnedProfile && (
+    <Select value={patientProfileId} onValueChange={setPatientProfileId}>
+      <SelectTrigger aria-label="Schimbă pacientul" className={cn('h-12 gap-2.5 rounded-[10px] border border-slate-200 bg-white px-3 text-left shadow-none [&>svg:last-child]:hidden', className)}>
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-blue-50 text-[11px] font-semibold text-blue-600">{initials(patientProfileName(pinnedProfile))}</span>
+        <span className="flex min-w-0 flex-1 flex-col"><span className="text-[11px] text-slate-500">Pentru</span><span className="truncate text-sm font-medium text-slate-950">{patientProfileName(pinnedProfile)}</span></span>
+        <span className="text-[13px] font-medium text-blue-600 lg:hidden">Schimbă</span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
+      </SelectTrigger>
+      <SelectContent align="end" className="w-64">
+        {requestablePatientProfiles.map((profile) => <SelectItem key={profile.id} value={String(profile.id)}>{patientProfileName(profile)}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
+
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Alege un medic"
-        description="Compară specialiștii, prețurile și recenziile, apoi programează consultația în trei pași."
-      />
-
+    <div className="flex flex-col">
+      {/* 5a / 5b: în asistent, bara cu pașii ține locul antetului. */}
       {fromWizard && (
-        <ol className="flex flex-wrap items-center gap-2 text-sm" aria-label="Pașii de pornire">
-          <li className="flex items-center gap-1.5 text-emerald-700"><Check className="h-4 w-4" />Pachet</li>
-          <li className="flex items-center gap-1.5 text-emerald-700"><Check className="h-4 w-4" />Pacient</li>
-          <li className="flex items-center gap-1.5 font-semibold text-slate-950" aria-current="step"><span className="grid h-5 w-5 place-items-center rounded-full bg-primary text-xs text-white">3</span>Programare</li>
-        </ol>
-      )}
-
-      {pinnedProfile && (
-        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          <Avatar className="h-10 w-10"><AvatarFallback className="bg-primary/10 text-sm font-semibold text-primary">{initials(patientProfileName(pinnedProfile))}</AvatarFallback></Avatar>
-          <p className="min-w-0 flex-1 truncate text-sm text-slate-600">Pentru <span className="font-semibold text-slate-950">{patientProfileName(pinnedProfile)}</span></p>
-          {requestablePatientProfiles.length > 1 ? (
-            <Select value={patientProfileId} onValueChange={setPatientProfileId}>
-              <SelectTrigger className="h-9 w-auto gap-2 rounded-xl border-0 bg-transparent font-semibold text-primary shadow-none hover:bg-primary/5" aria-label="Schimbă pacientul">Schimbă</SelectTrigger>
-              <SelectContent align="end" className="w-56">
-                {requestablePatientProfiles.map((profile) => <SelectItem key={profile.id} value={String(profile.id)}>{patientProfileName(profile)}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          ) : (
-            <Button asChild variant="ghost" size="sm" className="text-primary"><Link to="/patient/profile">Schimbă</Link></Button>
-          )}
+        <div className="-mx-4 -mt-5 border-b border-slate-200 bg-white px-5 pb-0 pt-[calc(16px+env(safe-area-inset-top))] lg:-mx-8 lg:-mt-7 lg:flex lg:h-[68px] lg:items-center lg:px-8 lg:pt-0">
+          <ol className="grid grid-cols-3 gap-1.5 lg:flex lg:w-[420px] lg:gap-2.5" aria-label="Pașii de pornire">
+            {['Pachet', 'Pacient', 'Programare'].map((label, index) => (
+              <li key={label} className="flex flex-col gap-1.5 lg:flex-1" aria-current={index === 2 ? 'step' : undefined}>
+                <span className="h-1 rounded-sm bg-blue-600" />
+                <span className="text-xs font-semibold text-blue-600">{index < 2 ? `✓ ${label}` : <><span className="lg:hidden">{label}</span><span className="hidden lg:inline">3 · {label}</span></>}</span>
+              </li>
+            ))}
+          </ol>
         </div>
       )}
 
-      <div className="space-y-3">
-        <div className="relative max-w-xl">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <Input placeholder="Caută după numele medicului" aria-label="Caută după numele medicului" className="h-12 pl-10" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} />
+      {/* Telefon: blocul alb de sus. Desktop: titlul în stânga, pacientul în dreapta. */}
+      <div className={cn('-mx-4 flex flex-col gap-4 border-b border-slate-200 bg-white px-5 pb-4 pt-4 lg:mx-0 lg:flex-row lg:items-end lg:justify-between lg:border-0 lg:bg-transparent lg:p-0', fromWizard ? 'lg:pt-8' : '-mt-5 lg:mt-0')}>
+        <div className="flex flex-col gap-1.5">
+          <h1 className="text-2xl font-bold leading-[1.2] tracking-tight text-slate-950 lg:text-[28px]">Alege medicul</h1>
+          <span className="hidden text-sm text-slate-500 lg:block">Prețurile sunt pentru o consultație.</span>
         </div>
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0" role="radiogroup" aria-label="Specialitate">
-          {[{ id: 'toate', name: 'Toate specialitățile' }, ...specialties.map((item) => ({ id: String(item.id), name: item.name }))].map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="radio"
-              aria-checked={specFilter === item.id}
-              onClick={() => setSpecFilter(item.id)}
-              className={cn('h-9 shrink-0 whitespace-nowrap rounded-full border px-4 text-sm font-medium transition', specFilter === item.id ? 'border-primary bg-primary text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900')}>
-              {item.name}
-            </button>
-          ))}
-        </div>
+        {patientPicker('w-full lg:h-[46px] lg:w-[300px]')}
       </div>
 
-      {isLoading ? <ListSkeleton rows={3} /> : filteredDoctors.length === 0 ? (
-        <EmptyState
-          icon={Stethoscope}
-          title={doctors.length === 0 ? 'Nu există medici disponibili momentan' : 'Niciun medic nu corespunde filtrului'}
-          description={doctors.length === 0 ? 'Revino puțin mai târziu — medicii noi sunt adăugați după verificare.' : 'Încearcă altă specialitate sau alt nume.'}
-          action={doctors.length > 0 && <Button variant="outline" onClick={() => { setSearchTerm(''); setSpecFilter('toate'); }}>Resetează filtrele</Button>}
-        />
+      {isLoading ? <div className="pt-4 lg:pt-6"><ListSkeleton rows={3} /></div> : doctors.length === 0 ? (
+        <div className="pt-4 lg:pt-6">
+          <EmptyState icon={Stethoscope} title="Nu există medici disponibili momentan" description="Revino puțin mai târziu — medicii noi sunt adăugați după verificare." />
+        </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filteredDoctors.map((doctor) => (
-            <article key={doctor.id} className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300 hover:shadow-md">
-              <button type="button" className="flex items-start gap-4 text-left" onClick={() => { setDetailDoctor(doctor); setIsDetailOpen(true); }}>
-                <Avatar className="size-14 shrink-0">
-                  <AvatarFallback className="bg-primary/10 text-base font-semibold text-primary">{initialsOf(doctor.name)}</AvatarFallback>
-                </Avatar>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-base font-semibold text-slate-950">{doctor.name}</span>
-                  <span className="block text-sm font-medium text-primary">{doctor.specialty || 'Medic'}</span>
-                  <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                    <span className="inline-flex items-center gap-1 font-semibold text-slate-700"><Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />{Number(doctor.rating || 0).toFixed(1)}<span className="font-normal text-slate-400">({doctor.reviews_count})</span></span>
-                    {doctor.experience_years > 0 && <span className="inline-flex items-center gap-1"><Award className="h-3.5 w-3.5" />{doctor.experience_years} ani experiență</span>}
+        <div className="grid grid-cols-1 gap-3 pt-4 lg:grid-cols-2 lg:gap-4 lg:pt-6">
+          {doctors.map((doctor) => {
+            const exam = withExamEnabled ? `${doctor.consultation_price} MDL` : null;
+            const video = videoEnabled ? `${doctor.video_price ?? 500} MDL` : null;
+            const book = () => openRequestDialog(doctor, videoEnabled ? 'video' : 'with_exam');
+            return (
+              <article key={doctor.id} className="flex flex-col gap-3.5 rounded-2xl border border-slate-200 bg-white p-4 lg:gap-4 lg:p-5">
+                <button type="button" className="flex items-center gap-3 text-left lg:gap-3.5" onClick={() => { setDetailDoctor(doctor); setIsDetailOpen(true); }}>
+                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-slate-200 text-[15px] font-semibold text-slate-700 lg:h-[52px] lg:w-[52px] lg:text-base">{initialsOf(doctor.name)}</span>
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="truncate text-base font-semibold text-slate-950">{doctor.name}</span>
+                    <span className="truncate text-[13px] text-slate-500">{doctor.specialty || 'Medic'}<span className="hidden lg:inline">{doctor.experience_years > 0 ? ` · ${doctor.experience_years} ani experiență` : ''}</span></span>
                   </span>
-                </span>
-              </button>
-
-              <dl className="mt-4 space-y-2 rounded-xl bg-slate-50 p-3 text-sm">
-                {withExamEnabled && <PriceRow icon={Home} label="Cu examinare la domiciliu" value={`de la ${doctor.consultation_price} MDL`} />}
-                {videoEnabled && <PriceRow icon={Video} label={`Video · ${doctor.video_duration_minutes ?? 10} min`} value={`${doctor.video_price ?? 500} MDL`} />}
-                {!withExamEnabled && !videoEnabled && <p className="text-slate-500">Consultațiile sunt momentan dezactivate.</p>}
-              </dl>
-
-              <div className="mt-auto flex gap-2 pt-4">
-                <Button variant="ghost" className="flex-1" onClick={() => { setDetailDoctor(doctor); setIsDetailOpen(true); }}>Vezi profilul</Button>
-                {(withExamEnabled || videoEnabled) && <Button className="flex-1" onClick={() => openRequestDialog(doctor, videoEnabled ? 'video' : 'with_exam')}>Programează</Button>}
-              </div>
-            </article>
-          ))}
+                  <span className="flex shrink-0 items-center gap-1 text-sm font-semibold text-slate-950"><Star className="h-4 w-4 fill-amber-400 text-amber-400" />{Number(doctor.rating || 0).toFixed(1)}<span className="text-xs font-normal text-slate-400">({doctor.reviews_count})</span></span>
+                </button>
+                <div className="grid grid-cols-2 gap-2 lg:flex lg:items-stretch lg:gap-2.5">
+                  {video && <PriceTile label="Video" value={video} />}
+                  {exam && <PriceTile label="Cu examinare acasă" value={exam} />}
+                  {(video || exam) && <button type="button" onClick={book} className="hidden rounded-[10px] bg-blue-600 px-[18px] text-sm font-semibold text-white hover:bg-blue-700 lg:block">Programează</button>}
+                </div>
+                {(video || exam) && <button type="button" onClick={book} className="h-11 rounded-[10px] bg-blue-600 text-sm font-semibold text-white hover:bg-blue-700 lg:hidden">Programează</button>}
+                {!video && !exam && <p className="text-sm text-slate-500">Consultațiile sunt momentan dezactivate.</p>}
+              </article>
+            );
+          })}
         </div>
       )}
 
@@ -886,4 +848,13 @@ function CostLine({ label, value, first = false, accent = false }: { label: stri
 
 function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function PriceTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-0.5 rounded-[10px] bg-slate-50 px-3 py-2.5 lg:flex-1">
+      <span className="text-xs text-slate-500">{label}</span>
+      <span className="text-[15px] font-semibold text-slate-950">{value}</span>
+    </div>
+  );
 }
