@@ -15,6 +15,20 @@ class TelegramChannel
         private readonly FeatureFlags $features,
     ) {}
 
+    /** Ce primește utilizatorul pe Telegram când nu a ales altceva. */
+    public const DEFAULT_PREFERENCES = ['requests' => true, 'messages' => true, 'payments' => true, 'reminders' => false];
+
+    /** @return array<string, bool> */
+    public static function preferences(object $notifiable): array
+    {
+        return array_merge(self::DEFAULT_PREFERENCES, array_map('boolval', array_intersect_key((array) ($notifiable->telegram_preferences ?? []), self::DEFAULT_PREFERENCES)));
+    }
+
+    public static function wants(object $notifiable, ?string $category): bool
+    {
+        return $category === null || (self::preferences($notifiable)[$category] ?? true);
+    }
+
     public function send(object $notifiable, Notification $notification): void
     {
         if (! method_exists($notification, 'toTelegram')) {
@@ -27,6 +41,10 @@ class TelegramChannel
 
         // Comutatorul per utilizator: contul rămâne conectat, dar tace.
         if (($notifiable->telegram_notifications_enabled ?? true) === false) {
+            return;
+        }
+
+        if (method_exists($notification, 'telegramCategory') && ! self::wants($notifiable, $notification->telegramCategory())) {
             return;
         }
 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Notifications\Channels\TelegramChannel;
 use App\Services\FeatureFlags;
 use App\Services\TelegramBot;
 use Illuminate\Http\JsonResponse;
@@ -68,11 +69,22 @@ class TelegramController extends Controller
     public function preferences(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'enabled' => ['required', 'boolean'],
+            'enabled' => ['required_without:categories', 'boolean'],
+            'categories' => ['required_without:enabled', 'array'],
+            'categories.*' => ['boolean'],
         ]);
 
         $user = $request->user();
-        $user->forceFill(['telegram_notifications_enabled' => $validated['enabled']])->save();
+        if (array_key_exists('enabled', $validated)) {
+            $user->forceFill(['telegram_notifications_enabled' => $validated['enabled']]);
+        }
+        if (array_key_exists('categories', $validated)) {
+            $user->forceFill(['telegram_preferences' => array_merge(
+                TelegramChannel::preferences($user),
+                array_intersect_key(array_map('boolval', $validated['categories']), TelegramChannel::DEFAULT_PREFERENCES),
+            )]);
+        }
+        $user->save();
 
         return response()->json(['data' => $this->payload($user->refresh())]);
     }
@@ -146,6 +158,7 @@ class TelegramController extends Controller
             'telegram_username' => $user->telegram_username,
             'linked_at' => $user->telegram_linked_at,
             'notifications_enabled' => (bool) $user->telegram_notifications_enabled,
+            'categories' => TelegramChannel::preferences($user),
             'deep_link' => ! $linked && $tokenValid ? $this->bot->deepLink($user->telegram_link_token) : null,
             'token_expires_at' => ! $linked && $tokenValid ? $user->telegram_link_token_expires_at : null,
         ];

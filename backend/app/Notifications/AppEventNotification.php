@@ -17,7 +17,28 @@ class AppEventNotification extends Notification
         private readonly ?string $url = null,
         private readonly string $level = 'info',
         private readonly bool $sendEmail = true,
+        private readonly ?string $category = null,
     ) {}
+
+    /**
+     * Categoria pentru preferințele de Telegram: requests, messages, payments
+     * sau reminders. Când nu e dată, se deduce din titlu; restul trec mereu.
+     */
+    public function telegramCategory(): ?string
+    {
+        if ($this->category !== null) {
+            return $this->category;
+        }
+
+        $title = mb_strtolower($this->title);
+
+        return match (true) {
+            str_contains($title, 'mesaj') => 'messages',
+            str_contains($title, 'plat') || str_contains($title, 'ai primit') || str_contains($title, 'extrager') => 'payments',
+            str_contains($title, 'consultație nouă') || str_contains($title, 'examinare nouă') || str_contains($title, 'cere alte ore') || str_contains($title, 'a ales ora') => 'requests',
+            default => null,
+        };
+    }
 
     public function via(object $notifiable): array
     {

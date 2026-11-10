@@ -188,6 +188,7 @@ class CatalogController extends Controller
                 'excerpt' => $post->excerpt,
                 'cover_image_url' => $post->cover_image_url,
                 'author_name' => $post->author_name,
+                'category' => $post->category,
                 'published_at' => $post->published_at,
             ]);
 

@@ -20,3 +20,10 @@ Schedule::command('higo:pull')
     ->everyFiveMinutes()
     ->withoutOverlapping()
     ->runInBackground();
+
+/*
+ * Reamintirea medicului cu 15 minute înainte de consultație.
+ */
+Schedule::command('consultations:remind')
+    ->everyMinute()
+    ->withoutOverlapping();

@@ -132,6 +132,7 @@ class User extends Authenticatable
             'telegram_linked_at' => 'datetime',
             'telegram_link_token_expires_at' => 'datetime',
             'telegram_notifications_enabled' => 'boolean',
+            'telegram_preferences' => 'array',
         ];
     }
 }

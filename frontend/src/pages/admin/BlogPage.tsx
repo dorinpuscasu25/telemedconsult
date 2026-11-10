@@ -21,6 +21,7 @@ export type BlogPost = {
   body: string;
   cover_image_url: string | null;
   author_name: string | null;
+  category?: string | null;
   is_published: boolean;
   published_at: string | null;
   created_at: string;

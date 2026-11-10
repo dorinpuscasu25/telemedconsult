@@ -31,6 +31,7 @@ class UpsertBlogPostRequest extends FormRequest
                 'max:5120',
             ],
             'remove_cover_image' => ['nullable', 'boolean'],
+            'category' => ['nullable', 'string', 'max:40'],
             'author_name' => ['nullable', 'string', 'max:255'],
             'is_published' => ['nullable', 'boolean'],
         ];
