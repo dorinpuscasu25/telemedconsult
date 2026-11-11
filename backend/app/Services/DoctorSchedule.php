@@ -24,6 +24,12 @@ class DoctorSchedule
     private const ACTIVE_STATUSES = ['new', 'accepted', 'rescheduled'];
 
     /**
+     * Programul propus pacientului când medicul nu și-a setat unul: luni–vineri,
+     * 09:00–18:00. Doar pentru orele afișate; medicul confirmă sau propune alta.
+     */
+    private const DEFAULT_WINDOW = ['starts_at' => '09:00:00', 'ends_at' => '18:00:00'];
+
+    /**
      * Motivul pentru care medicul nu poate fi programat la ora dată, sau null dacă se poate.
      */
     public function unavailableReason(User $doctor, CarbonImmutable $scheduledAt, ?int $ignoreRequestId = null): ?string
@@ -75,10 +81,10 @@ class DoctorSchedule
     /**
      * Orele libere ale medicului pe următoarele zile, în intervale de 30 de minute.
      *
-     * Fără program săptămânal nu există ore „libere” de propus: răspunsul spune
-     * `has_schedule: false`, iar pacientul alege ora liber.
+     * Fără program săptămânal se propun orele programului implicit (luni–vineri,
+     * 09:00–18:00), cu `default_schedule: true`; pacientul poate alege și altă oră.
      *
-     * @return array{has_schedule: bool, is_available: bool, timezone: string, days: list<array{date: string, slots: list<array{starts_at: string, time: string}>}>}
+     * @return array{has_schedule: bool, default_schedule: bool, is_available: bool, timezone: string, days: list<array{date: string, slots: list<array{starts_at: string, time: string}>}>}
      */
     public function freeSlots(User $doctor, int $days = 7, ?CarbonImmutable $now = null, bool $includeTaken = false, ?int $ignoreRequestId = null): array
     {
@@ -86,10 +92,14 @@ class DoctorSchedule
         $now ??= CarbonImmutable::now();
         $schedule = $this->activeSchedule($doctor);
         $isAvailable = (bool) $doctor->doctorProfile?->is_available;
-        $result = ['has_schedule' => $schedule->isNotEmpty(), 'is_available' => $isAvailable, 'timezone' => self::LOCAL_TIMEZONE, 'days' => []];
+        $usesDefault = $schedule->isEmpty();
+        if ($usesDefault) {
+            $schedule = collect(range(1, 5))->map(fn (int $weekday) => (object) ['weekday' => $weekday, ...self::DEFAULT_WINDOW]);
+        }
+        $result = ['has_schedule' => true, 'default_schedule' => $usesDefault, 'is_available' => $isAvailable, 'timezone' => self::LOCAL_TIMEZONE, 'days' => []];
 
-        if (! $isAvailable || $schedule->isEmpty()) {
-            return $result;
+        if (! $isAvailable) {
+            return [...$result, 'has_schedule' => ! $usesDefault];
         }
 
         $firstDay = $now->setTimezone(self::LOCAL_TIMEZONE)->startOfDay();

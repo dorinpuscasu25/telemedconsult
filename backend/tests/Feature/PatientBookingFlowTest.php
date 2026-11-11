@@ -46,15 +46,19 @@ class PatientBookingFlowTest extends TestCase
         $this->assertCount(4, $response->json('days.7.slots'));
     }
 
-    public function test_free_slots_are_empty_on_vacation_and_without_a_schedule(): void
+    public function test_without_a_schedule_the_default_weekday_hours_are_offered_and_vacation_is_empty(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-11-09 08:00', 'Europe/Chisinau')->utc());
         $scenario = $this->scenario(balanceMinor: 0);
 
-        $this->getJson('/api/v1/catalog/doctors/'.$scenario['doctor']->id.'/slots')
+        // Fără program setat: luni–vineri 09:00–18:00, câte 30 de minute; weekendul gol.
+        $default = $this->getJson('/api/v1/catalog/doctors/'.$scenario['doctor']->id.'/slots')
             ->assertOk()
-            ->assertJsonPath('has_schedule', false)
-            ->assertJsonPath('days', []);
+            ->assertJsonPath('has_schedule', true)
+            ->assertJsonPath('default_schedule', true);
+        $this->assertSame('09:00', $default->json('days.0.slots.0.time'));
+        $this->assertCount(18, $default->json('days.0.slots'));
+        $this->assertSame([], $default->json('days.5.slots'));
 
         $this->availability($scenario['doctor'], Carbon::MONDAY, '09:00', '11:00');
         DoctorVacation::create(['doctor_id' => $scenario['doctor']->id, 'starts_on' => '2026-11-09', 'ends_on' => '2026-11-09']);

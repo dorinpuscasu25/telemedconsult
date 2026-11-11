@@ -9,7 +9,10 @@ import { cn } from '../ui/utils';
 import { apiRequest } from '../../lib/api';
 
 type SlotDay = { date: string; slots: Array<{ starts_at: string; time: string }> };
-type SlotsResponse = { has_schedule: boolean; is_available: boolean; days: SlotDay[] };
+type SlotsResponse = { has_schedule: boolean; default_schedule?: boolean; is_available: boolean; days: SlotDay[] };
+
+/** Câte zile cu ore libere arată selectorul (ca în design: o săptămână de lucru și încă o zi). */
+const VISIBLE_DAYS = 6;
 
 const WEEKDAY = new Intl.DateTimeFormat('ro-RO', { weekday: 'short', timeZone: 'Europe/Chisinau' });
 const DAY_LONG = new Intl.DateTimeFormat('ro-RO', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Chisinau' });
@@ -29,8 +32,9 @@ export function longDateTime(value: string): string {
 }
 
 /**
- * „Când îți convine?”: zilele și orele libere ale medicului, după programul lui.
- * Fără program configurat, sau cu „Altă oră”, pacientul alege liber data și ora.
+ * „Când îți convine?”: zilele cu ore libere ale medicului (programul lui sau,
+ * fără program, luni–vineri 09:00–18:00) și orele lor. „Altă oră” lasă
+ * pacientul să aleagă liber data și ora.
  */
 export function SlotPicker({ doctorId, value, onChange }: { doctorId: string; value: string; onChange: (value: string) => void }) {
   const [data, setData] = useState<SlotsResponse | null>(null);
@@ -42,13 +46,14 @@ export function SlotPicker({ doctorId, value, onChange }: { doctorId: string; va
     let cancelled = false;
     setData(null);
     setFailed(false);
-    apiRequest<SlotsResponse>(`/catalog/doctors/${doctorId}/slots?days=7`, { auth: false })
+    apiRequest<SlotsResponse>(`/catalog/doctors/${doctorId}/slots?days=14`, { auth: false })
       .then((response) => {
         if (cancelled) return;
-        setData(response);
-        const selectedDay = response.days.findIndex((day) => day.slots.some((slot) => slot.starts_at === value));
-        const firstWithSlots = response.days.findIndex((day) => day.slots.length > 0);
-        setDayIndex(selectedDay >= 0 ? selectedDay : Math.max(0, firstWithSlots));
+        // Doar zilele în care chiar sunt ore libere: weekendul și concediul dispar.
+        const days = response.days.filter((day) => day.slots.length > 0).slice(0, VISIBLE_DAYS);
+        setData({ ...response, days });
+        const selectedDay = days.findIndex((day) => day.slots.some((slot) => slot.starts_at === value));
+        setDayIndex(Math.max(0, selectedDay));
         if (value && selectedDay < 0) setCustom(true);
       })
       .catch(() => { if (!cancelled) setFailed(true); });
@@ -57,7 +62,7 @@ export function SlotPicker({ doctorId, value, onChange }: { doctorId: string; va
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doctorId]);
 
-  const freeChoice = failed || (data && (!data.has_schedule || data.days.every((day) => day.slots.length === 0)));
+  const freeChoice = failed || (data && data.days.length === 0);
   const day = data?.days[dayIndex];
 
   return (
@@ -66,31 +71,31 @@ export function SlotPicker({ doctorId, value, onChange }: { doctorId: string; va
       {!data && !failed && <Skeleton className="h-24 w-full rounded-xl" />}
       {data && !freeChoice && (
         <>
-          <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]" role="radiogroup" aria-label="Ziua">
+          <div className="grid grid-cols-5 gap-2 sm:grid-cols-6" role="radiogroup" aria-label="Ziua">
             {data.days.map((item, index) => {
               const date = new Date(`${item.date}T12:00:00Z`);
-              const empty = item.slots.length === 0;
+              const on = index === dayIndex;
               return (
-                <button key={item.date} type="button" role="radio" aria-checked={index === dayIndex} disabled={empty} onClick={() => { setDayIndex(index); setCustom(false); }}
-                  className={cn('flex h-[58px] min-w-[52px] flex-1 flex-col items-center justify-center gap-0.5 rounded-[10px] transition disabled:opacity-40', index === dayIndex ? 'border-[1.5px] border-blue-600 bg-blue-50' : 'border border-slate-200 bg-white hover:border-slate-300')}>
-                  <span className={cn('text-xs capitalize', index === dayIndex ? 'text-blue-600' : 'text-slate-500')}>{WEEKDAY.format(date).replace('.', '')}</span>
-                  <span className={cn('text-base font-semibold', index === dayIndex ? 'text-blue-700' : 'text-slate-900')}>{date.getUTCDate()}</span>
+                <button key={item.date} type="button" role="radio" aria-checked={on} onClick={() => { setDayIndex(index); setCustom(false); }}
+                  className={cn('flex h-[60px] flex-col items-center justify-center gap-0.5 rounded-xl transition', index === VISIBLE_DAYS - 1 && 'max-sm:hidden', on ? 'border-[1.5px] border-blue-600 bg-blue-50' : 'border border-slate-200 bg-white hover:border-slate-300')}>
+                  <span className={cn('text-[13px] capitalize', on ? 'text-blue-600' : 'text-slate-500')}>{WEEKDAY.format(date).replace('.', '')}</span>
+                  <span className={cn('text-lg font-semibold leading-none', on ? 'text-blue-700' : 'text-slate-950')}>{date.getUTCDate()}</span>
                 </button>
               );
             })}
           </div>
           {day && (
             <>
-              <p className="text-[13px] text-slate-500">Ore libere {DAY_LONG.format(new Date(`${day.date}T12:00:00Z`))}</p>
-              <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label="Ora">
+              <p className="text-[13px] text-slate-500 sm:hidden">Ore libere {DAY_LONG.format(new Date(`${day.date}T12:00:00Z`))}</p>
+              <div className="grid grid-cols-4 gap-2 sm:flex sm:flex-wrap" role="radiogroup" aria-label="Ora">
                 {day.slots.map((slot) => (
                   <button key={slot.starts_at} type="button" role="radio" aria-checked={!custom && value === slot.starts_at} onClick={() => { setCustom(false); onChange(slot.starts_at); }}
-                    className={cn('h-11 rounded-[10px] text-sm tabular-nums transition', !custom && value === slot.starts_at ? 'bg-blue-600 font-semibold text-white' : 'border border-slate-200 bg-white font-medium text-slate-900 hover:border-slate-300')}>
+                    className={cn('h-11 rounded-[10px] text-sm tabular-nums transition sm:w-[72px]', !custom && value === slot.starts_at ? 'bg-blue-600 font-semibold text-white' : 'border border-slate-200 bg-white font-medium text-slate-900 hover:border-slate-300')}>
                     {slot.time}
                   </button>
                 ))}
                 <button type="button" aria-pressed={custom} onClick={() => { setCustom(true); onChange(''); }}
-                  className={cn('h-11 rounded-[10px] border border-dashed text-[13px] font-medium transition', custom ? 'border-blue-600 text-blue-700' : 'border-slate-300 text-slate-600 hover:border-slate-400')}>
+                  className={cn('h-11 rounded-[10px] border border-dashed text-[13px] font-medium transition sm:px-4', custom ? 'border-blue-600 text-blue-700' : 'border-slate-300 text-slate-600 hover:border-slate-400')}>
                   Altă oră
                 </button>
               </div>
