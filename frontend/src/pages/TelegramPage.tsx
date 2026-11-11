@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Loader2, Send } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { apiRequest } from '../lib/api';
+import { useAuth } from '../contexts/AuthContext';
 import { usePageTitle } from '../lib/use-page-title';
 
 type Category = 'requests' | 'messages' | 'payments' | 'reminders';
@@ -36,6 +37,7 @@ const CATEGORIES: Array<[Category, string, string]> = [
  * utilizatorul alege ce primește.
  */
 export function TelegramPage() {
+  const { role } = useAuth();
   usePageTitle('Notificări Telegram');
   const [status, setStatus] = useState<TelegramStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -135,7 +137,7 @@ export function TelegramPage() {
   const categories = status?.categories ?? { requests: true, messages: true, payments: true, reminders: false };
 
   return (
-    <div className="flex max-w-[760px] flex-col gap-5">
+    <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1.5">
         <h1 className="text-[28px] font-bold tracking-[-.02em] text-slate-950">Notificări Telegram</h1>
         <span className="text-sm text-slate-500">Primești pe loc fiecare cerere nouă, mesaj sau plată.</span>
@@ -148,6 +150,8 @@ export function TelegramPage() {
           {!status?.configured ? 'Botul de Telegram nu este configurat pe server. Contactează administratorul platformei.' : 'Notificările prin Telegram sunt oprite momentan la nivel de platformă.'}
         </div>
       )}
+
+      {role === 'admin' && <BotHealthCard />}
 
       {status?.linked ? (
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -193,6 +197,7 @@ export function TelegramPage() {
           <span className="text-base font-semibold text-slate-950">Conectează-ți contul în doi pași</span>
           <div className="flex items-center gap-3 text-sm text-slate-950"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-slate-100 text-xs font-semibold">1</span>Apasă butonul de mai jos. Se deschide conversația cu botul.</div>
           <div className="flex items-center gap-3 text-sm text-slate-950"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-slate-100 text-xs font-semibold">2</span>Apasă Start în Telegram. Contul se leagă singur.</div>
+          {status?.bot_username && <span className="text-[13px] text-slate-500">Sau caută în Telegram <b className="text-slate-700">@{status.bot_username}</b>, apasă Start și apoi „📱 Trimite numărul meu”: te conectăm după telefonul din cont.</span>}
           {status?.deep_link ? (
             <a href={status.deep_link} target="_blank" rel="noopener noreferrer" onClick={() => setWaiting(true)} className="flex h-11 items-center gap-2 self-start rounded-[10px] bg-blue-600 px-[18px] text-[15px] font-semibold text-white hover:bg-blue-700">
               <Send className="h-4 w-4" />Conectează Telegram
@@ -213,5 +218,52 @@ function Toggle({ on }: { on: boolean }) {
     <span className={cn('flex h-5 w-9 shrink-0 items-center rounded-full p-0.5', on ? 'bg-blue-600' : 'bg-slate-300')}>
       <span className={cn('h-4 w-4 rounded-full bg-white transition-transform', on && 'translate-x-4')} />
     </span>
+  );
+}
+
+type BotHealth = { configured: boolean; mode: 'webhook' | 'polling'; healthy: boolean; webhook_set: boolean; webhook_matches: boolean; pending_updates: number; last_error: string | null; problem: string | null };
+
+/** Doar pentru admin: botul primește mesajele sau nu, de ce, și reparare cu un clic. */
+function BotHealthCard() {
+  const [health, setHealth] = useState<BotHealth | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
+
+  const load = useCallback(() => {
+    apiRequest<{ data: BotHealth }>('/admin/telegram/bot').then((response) => setHealth(response.data)).catch((err) => setNote(err instanceof Error ? err.message : 'Nu am putut verifica botul.'));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const repair = async () => {
+    setBusy(true);
+    setNote('');
+    try {
+      const response = await apiRequest<{ message: string; data: BotHealth }>('/admin/telegram/bot/repair', { method: 'POST' });
+      setHealth(response.data);
+      setNote(response.message);
+    } catch (err) {
+      setNote(err instanceof Error ? err.message : 'Repararea nu a reușit.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className={cn('flex flex-col gap-3 rounded-2xl border p-5', !health ? 'border-slate-200 bg-white' : health.healthy ? 'border-emerald-200 bg-emerald-50' : 'border-red-200 bg-red-50')}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs font-semibold tracking-[.04em] text-slate-500">BOTUL (VIZIBIL DOAR PENTRU ADMIN)</span>
+          <span className="text-base font-semibold text-slate-950">{!health ? 'Se verifică…' : health.healthy ? 'Botul primește mesajele' : 'Botul nu primește mesajele'}</span>
+          {health?.problem && <span className="text-sm text-red-800">{health.problem}</span>}
+          {health && <span className="text-xs text-slate-500">Mod: {health.mode === 'polling' ? 'serverul citește singur mesajele' : 'webhook'}{health.pending_updates ? ` · ${health.pending_updates} mesaje în așteptare` : ''}</span>}
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <button type="button" onClick={load} className="h-9 rounded-[10px] border border-slate-200 bg-white px-3 text-[13px] font-medium hover:bg-slate-50">Verifică</button>
+          {health && !health.healthy && health.configured && <button type="button" disabled={busy} onClick={() => void repair()} className="h-9 rounded-[10px] bg-blue-600 px-3 text-[13px] font-semibold text-white hover:bg-blue-700 disabled:opacity-60">{busy ? 'Se repară…' : 'Repară'}</button>}
+        </div>
+      </div>
+      {note && <span className="text-[13px] text-slate-700">{note}</span>}
+      <span className="text-xs text-slate-500">Serverul verifică și repară singur legătura la fiecare 5 minute.</span>
+    </div>
   );
 }

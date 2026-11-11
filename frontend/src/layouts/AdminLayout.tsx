@@ -171,6 +171,7 @@ export function AdminLayout() {
     path: '/admin/settings'
   }];
   const currentTitle =
+    location.pathname.startsWith('/admin/operators/') ? 'Operator' :
     location.pathname === '/admin/operators' || location.pathname === '/admin/users' || location.pathname === '/coordinator/users' ?
     'Utilizatori' :
     navItems.find((item) => location.pathname === item.path || (item.path !== '/admin' && location.pathname.startsWith(item.path)))?.label || 'Admin Panel';

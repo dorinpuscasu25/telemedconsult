@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Ban, MoreHorizontal, Pencil, Plus, RefreshCw, Search, ShieldCheck, Trash2, Unlock, UsersRound, Wallet } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -470,7 +470,9 @@ export function UsersPage() {
                   return (
                   <TableRow key={adminUser.id}>
                     <TableCell>
-                      <div className="font-medium text-slate-900">{adminUser.name}</div>
+                      {adminUser.roles.includes('operator')
+                        ? <Link to={`/admin/operators/${adminUser.id}`} className="font-medium text-blue-700 hover:underline">{adminUser.name}</Link>
+                        : <div className="font-medium text-slate-900">{adminUser.name}</div>}
                       <div className="text-sm text-slate-500">{adminUser.email}</div>
                       {adminUser.phone && <div className="text-xs text-slate-400">{adminUser.phone}</div>}
                     </TableCell>
@@ -504,9 +506,9 @@ export function UsersPage() {
                             Portofel
                           </DropdownMenuItem>
                           {adminUser.roles.includes('operator') && (
-                            <DropdownMenuItem className="cursor-pointer" onClick={() => navigate(`/admin/referrals/${adminUser.id}`)}>
+                            <DropdownMenuItem className="cursor-pointer" onClick={() => navigate(`/admin/operators/${adminUser.id}`)}>
                               <UsersRound className="h-4 w-4" />
-                              Pacienți aduși
+                              Pagina operatorului
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem

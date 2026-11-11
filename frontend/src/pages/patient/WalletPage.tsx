@@ -170,7 +170,7 @@ export function WalletPage() {
 
   if (historyOnly) {
     return (
-      <div className="mx-auto max-w-2xl space-y-4">
+      <div className="space-y-4">
         <button type="button" onClick={() => setParam('view', null)} className="flex items-center gap-2 text-lg font-semibold text-slate-950"><ArrowLeft className="h-5 w-5" />Istoric</button>
         <PocketFilter value={filter} onChange={setFilter} stretch />
         <HistoryList rows={visibleRows} loading={!walletData} compact onOpen={setSelectedRow} />
@@ -180,7 +180,7 @@ export function WalletPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
+    <div className="space-y-5">
       <h1 className="text-[26px] font-bold tracking-tight text-slate-950 lg:text-[28px]">Portofel</h1>
 
       {error && !isTopUpOpen && <div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}<Button variant="outline" size="sm" onClick={() => void loadWallet()}>Reîncearcă</Button></div>}

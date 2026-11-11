@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\AdminHigoController;
 use App\Http\Controllers\Api\AdminInstitutionController;
 use App\Http\Controllers\Api\AdminInvestigationTypeController;
 use App\Http\Controllers\Api\AdminOperationsController;
+use App\Http\Controllers\Api\AdminOperatorController;
 use App\Http\Controllers\Api\AdminPartnerController;
 use App\Http\Controllers\Api\AdminPatientCardPackageController;
 use App\Http\Controllers\Api\AdminRegionController;
@@ -143,6 +144,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/admin/financial', [AdminOperationsController::class, 'financial']);
         Route::get('/admin/referral-stats', [ReferralController::class, 'adminStats']);
         Route::get('/admin/referral-stats/{user}', [ReferralController::class, 'adminReferrer']);
+        Route::get('/admin/operators/{user}', [AdminOperatorController::class, 'show']);
         Route::put('/admin/withdrawals/{withdrawalRequest}', [AdminOperationsController::class, 'updateWithdrawal']);
         Route::get('/admin/complaints', [AdminOperationsController::class, 'complaints']);
         Route::put('/admin/complaints/{complaint}/resolve', [AdminOperationsController::class, 'resolveComplaint']);
@@ -155,6 +157,8 @@ Route::prefix('v1')->group(function () {
         Route::delete('/admin/patient-card-packages/{patientCardPackage}', [AdminPatientCardPackageController::class, 'destroy']);
         Route::get('/admin/settings', [AdminOperationsController::class, 'settings']);
         Route::put('/admin/settings', [AdminOperationsController::class, 'updateSettings']);
+        Route::get('/admin/telegram/bot', [TelegramController::class, 'adminHealth']);
+        Route::post('/admin/telegram/bot/repair', [TelegramController::class, 'adminRepair'])->middleware('throttle:10,1');
         Route::get('/admin/feature-flags', [AdminFeatureFlagController::class, 'index']);
         Route::put('/admin/feature-flags', [AdminFeatureFlagController::class, 'update']);
         Route::get('/admin/regions', [AdminOperationsController::class, 'regions']);

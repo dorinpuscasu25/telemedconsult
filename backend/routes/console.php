@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\TelegramBot;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -27,3 +28,18 @@ Schedule::command('higo:pull')
 Schedule::command('consultations:remind')
     ->everyMinute()
     ->withoutOverlapping();
+
+/*
+ * Botul de Telegram se repară singur: dacă webhook-ul s-a pierdut sau arată
+ * spre altă adresă, îl înregistrează din nou. În modul polling (TELEGRAM_MODE)
+ * serverul citește singur mesajele la câteva secunde, fără webhook.
+ */
+Schedule::command('telegram:webhook ensure')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->when(fn () => app(TelegramBot::class)->configured());
+
+Schedule::command('telegram:poll')
+    ->everyFiveSeconds()
+    ->withoutOverlapping()
+    ->when(fn () => app(TelegramBot::class)->configured() && app(TelegramBot::class)->polling());

@@ -61,13 +61,15 @@ class TelegramChannel
             return;
         }
 
-        DB::afterCommit(function () use ($notifiable, $chatId, $text) {
+        $markup = $payload['reply_markup'] ?? null;
+
+        DB::afterCommit(function () use ($notifiable, $chatId, $text, $markup) {
             if (config('queue.default') === 'sync') {
-                $this->bot->sendMessage((string) $chatId, $text);
+                $this->bot->sendMessage((string) $chatId, $text, $markup);
 
                 return;
             }
-            SendTelegramEvent::dispatch((int) $notifiable->id, (string) $chatId, $text);
+            SendTelegramEvent::dispatch((int) $notifiable->id, (string) $chatId, $text, $markup);
         });
     }
 }

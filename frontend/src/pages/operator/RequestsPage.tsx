@@ -574,7 +574,7 @@ function VisitDetail({ request, now, actions }: { request: RequestItem; now: num
   const index = stepIndex(request);
   const status = statusOf(request);
   return (
-    <div className="flex max-w-[880px] flex-col gap-4">
+    <div className="flex flex-col gap-4">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3.5">
           <Avatar name={patientNameOf(request)} size={52} />

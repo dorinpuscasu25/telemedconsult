@@ -69,6 +69,7 @@ import { SpecialtiesPage } from './pages/admin/SpecialtiesPage';
 import { TransactionsPage } from './pages/admin/TransactionsPage';
 import { ReferralStatsPage } from './pages/admin/ReferralStatsPage';
 import { ReferralReferrerPage } from './pages/admin/ReferralReferrerPage';
+import { OperatorAdminPage } from './pages/admin/OperatorAdminPage';
 import { ComplaintsPage } from './pages/admin/ComplaintsPage';
 import { ContractsPage } from './pages/admin/ContractsPage';
 import { SettingsPage } from './pages/admin/SettingsPage';
@@ -208,6 +209,7 @@ function AppRoutes() {
         <Route path="transactions" element={<TransactionsPage />} />
         <Route path="referrals" element={<ReferralStatsPage />} />
         <Route path="referrals/:id" element={<ReferralReferrerPage />} />
+        <Route path="operators/:id" element={<OperatorAdminPage />} />
         <Route path="complaints" element={<ComplaintsPage />} />
         <Route path="contracts" element={<ContractsPage />} />
         <Route path="card-packages" element={<PatientCardPackagesPage />} />

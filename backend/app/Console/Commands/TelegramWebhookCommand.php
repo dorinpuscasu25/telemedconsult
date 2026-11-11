@@ -7,7 +7,7 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
-#[Signature('telegram:webhook {action=set : set|delete|info} {--url= : URL-ul public al webhook-ului (implicit APP_URL)}')]
+#[Signature('telegram:webhook {action=set : set|delete|info|ensure} {--url= : URL-ul public al webhook-ului (implicit APP_URL)}')]
 #[Description('Înregistrează, șterge sau inspectează webhook-ul botului de Telegram.')]
 class TelegramWebhookCommand extends Command
 {
@@ -23,8 +23,24 @@ class TelegramWebhookCommand extends Command
             'set' => $this->set($bot),
             'delete' => $this->dump($bot->deleteWebhook()),
             'info' => $this->dump($bot->webhookInfo()),
-            default => tap(self::FAILURE, fn () => $this->error('Acțiuni valide: set, delete, info.')),
+            // Verifică și repară: din scheduler, la câteva minute.
+            'ensure' => $this->ensure($bot),
+            default => tap(self::FAILURE, fn () => $this->error('Acțiuni valide: set, delete, info, ensure.')),
         };
+    }
+
+    private function ensure(TelegramBot $bot): int
+    {
+        try {
+            $result = $bot->ensure();
+        } catch (\Throwable $exception) {
+            $this->error('Telegram nu răspunde: '.$exception->getMessage());
+
+            return self::FAILURE;
+        }
+        $result['changed'] ? $this->warn($result['message']) : $this->line($result['message']);
+
+        return $result['ok'] ? self::SUCCESS : self::FAILURE;
     }
 
     private function set(TelegramBot $bot): int

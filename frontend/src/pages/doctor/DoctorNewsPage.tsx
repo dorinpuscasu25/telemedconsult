@@ -24,7 +24,7 @@ export function DoctorNewsPage() {
   }, []);
 
   return (
-    <div className="flex max-w-[800px] flex-col gap-4">
+    <div className="flex flex-col gap-4">
       <div className="mb-1 flex flex-col gap-1.5">
         <h1 className="text-[28px] font-bold tracking-[-.02em] text-slate-950">Noutăți</h1>
         <span className="text-sm text-slate-500">Anunțuri de la platformă pentru medici.</span>

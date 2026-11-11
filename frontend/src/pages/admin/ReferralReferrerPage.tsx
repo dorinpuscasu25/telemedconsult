@@ -46,8 +46,9 @@ type ReferrerDetail = {
 const FILTERS: Array<[string, string]> = [['all', 'Toți'], ['paid', 'Au alimentat'], ['spent', 'Au cheltuit'], ['none', 'Fără alimentare']];
 
 /** Un invitator în detaliu: fiecare pacient adus și ce a adus platformei. */
-export function ReferralReferrerPage() {
-  const { id } = useParams();
+export function ReferralReferrerPage({ userId, embedded = false }: { userId?: string; embedded?: boolean } = {}) {
+  const params = useParams();
+  const id = userId ?? params.id;
   const [period, setPeriod] = usePeriod();
   const [data, setData] = useState<ReferrerDetail | null>(null);
   const [error, setError] = useState('');
@@ -74,11 +75,12 @@ export function ReferralReferrerPage() {
 
   return (
     <div className="space-y-6">
-      <div>
+      {!embedded && <div>
         <Link to={`/admin/referrals?${query}`} className="mb-3 inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900"><ArrowLeft className="h-4 w-4" />Afiliere</Link>
         <h1 className="mb-1 text-3xl font-bold tracking-tight text-slate-900">{data?.referrer.name ?? 'Invitator'}</h1>
         {data && <p className="text-slate-500">{data.referrer.email}{data.referrer.phone ? ` · ${data.referrer.phone}` : ''} · cod <span className="font-mono text-xs">{data.referrer.code ?? '—'}</span></p>}
-      </div>
+        {data?.referrer.roles.includes('operator') && <Link to={`/admin/operators/${data.referrer.id}`} className="mt-2 inline-block text-sm font-medium text-blue-600 hover:underline">Pagina operatorului (portofel, vizite)</Link>}
+      </div>}
 
       <PeriodPicker period={period} onChange={setPeriod} />
 

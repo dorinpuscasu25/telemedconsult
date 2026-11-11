@@ -168,9 +168,12 @@ export function ReferralStatsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {shown.map((row) => (
+                {shown.map((row) => {
+                  // Operatorii se deschid pe pagina lor (portofel, vizite, pacienți).
+                  const href = row.roles.includes('operator') ? `/admin/operators/${row.id}?${query}` : `/admin/referrals/${row.id}?${query}`;
+                  return (
                   <TableRow key={row.id} className="cursor-pointer hover:bg-slate-50">
-                    <TableCell><Link to={`/admin/referrals/${row.id}?${query}`} className="block"><p className="font-medium text-slate-900">{row.name}</p><p className="text-xs text-slate-500">{row.email}</p></Link></TableCell>
+                    <TableCell><Link to={href} className="block"><p className="font-medium text-slate-900">{row.name}</p><p className="text-xs text-slate-500">{row.email}</p></Link></TableCell>
                     <TableCell className="text-sm">{row.roles.map((item) => ROLE_LABELS[item] ?? item).join(', ')}</TableCell>
                     <TableCell className="text-right font-semibold">{row.invited_count}</TableCell>
                     <TableCell className="text-right">{row.invited_in_period}</TableCell>
@@ -179,9 +182,10 @@ export function ReferralStatsPage() {
                     <TableCell className="text-right tabular-nums">{money(row.spent_total)}</TableCell>
                     <TableCell className="text-right font-semibold tabular-nums text-emerald-700">{money(row.revenue_total)}</TableCell>
                     <TableCell className="text-right tabular-nums text-slate-500">{money(row.earned_total)}</TableCell>
-                    <TableCell className="w-8"><Link to={`/admin/referrals/${row.id}?${query}`} aria-label={`Detalii ${row.name}`}><ChevronRight className="h-4 w-4 text-slate-400" /></Link></TableCell>
+                    <TableCell className="w-8"><Link to={href} aria-label={`Detalii ${row.name}`}><ChevronRight className="h-4 w-4 text-slate-400" /></Link></TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
                 {rows && shown.length === 0 && <TableRow><TableCell colSpan={10} className="py-8 text-center text-slate-500">Nimeni nu a adus încă pacienți prin link.</TableCell></TableRow>}
                 {!rows && !error && <TableRow><TableCell colSpan={10} className="py-8 text-center text-slate-500">Se încarcă...</TableCell></TableRow>}
               </TableBody>

@@ -47,6 +47,11 @@ return [
         'bot_token' => env('TELEGRAM_BOT_TOKEN'),
         'bot_username' => env('TELEGRAM_BOT_USERNAME'),
         'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET'),
+        // webhook = Telegram ne trimite mesajele (cere domeniu public cu HTTPS);
+        // polling = serverul le cere singur la câteva secunde (merge oriunde).
+        'mode' => env('TELEGRAM_MODE', 'webhook'),
+        // Adresa publică a API-ului pentru webhook; implicit APP_URL.
+        'webhook_base_url' => env('TELEGRAM_WEBHOOK_BASE_URL'),
     ],
 
 ];

@@ -18,7 +18,8 @@ class SendTelegramEvent implements ShouldQueue
 
     public int $timeout = 30;
 
-    public function __construct(public int $userId, public string $chatId, public string $text) {}
+    /** @param  array<string, mixed>|null  $replyMarkup */
+    public function __construct(public int $userId, public string $chatId, public string $text, public ?array $replyMarkup = null) {}
 
     public function backoff(): array
     {
@@ -31,7 +32,7 @@ class SendTelegramEvent implements ShouldQueue
         if (! $user || (string) $user->telegram_chat_id !== $this->chatId || ! $user->telegram_notifications_enabled || ! $features->enabled('telegram_notifications') || ! $bot->configured()) {
             return;
         }
-        if (! $bot->sendMessage($this->chatId, $this->text) && $user->fresh()->telegram_chat_id) {
+        if (! $bot->sendMessage($this->chatId, $this->text, $this->replyMarkup) && $user->fresh()->telegram_chat_id) {
             throw new \RuntimeException('Trimiterea notificării Telegram va fi reîncercată.');
         }
     }

@@ -449,7 +449,7 @@ function ProfilePageContent() {
         </TabsContent>
 
         <TabsContent value="account">
-          <Card className="max-w-2xl border-slate-200/70 bg-white shadow-sm">
+          <Card className="border-slate-200/70 bg-white shadow-sm">
             <CardHeader>
               <CardTitle>Cont utilizator</CardTitle>
               <CardDescription>Emailul rămâne cheia de autentificare.</CardDescription>

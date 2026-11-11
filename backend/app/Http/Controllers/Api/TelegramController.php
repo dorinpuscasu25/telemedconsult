@@ -115,6 +115,28 @@ class TelegramController extends Controller
         return response()->json(['message' => 'Mesaj de test trimis.']);
     }
 
+    /** Starea botului pentru admin: primește mesajele sau nu, și de ce. */
+    public function adminHealth(Request $request): JsonResponse
+    {
+        abort_unless($request->user()?->loadMissing('roles')->hasRole('admin'), 403);
+
+        return response()->json(['data' => $this->bot->health()]);
+    }
+
+    /** Butonul „Repară” din admin: refacere webhook (sau scoatere, în polling). */
+    public function adminRepair(Request $request): JsonResponse
+    {
+        abort_unless($request->user()?->loadMissing('roles')->hasRole('admin'), 403);
+
+        try {
+            $result = $this->bot->ensure();
+        } catch (\Throwable $exception) {
+            return response()->json(['message' => 'Serverul nu ajunge la Telegram: '.$exception->getMessage()], 502);
+        }
+
+        return response()->json(['message' => $result['message'], 'data' => $this->bot->health()], $result['ok'] ? 200 : 422);
+    }
+
     /**
      * Webhook-ul botului. Ruta este publică (Telegram nu poate autentifica), dar
      * este protejată de secretul din URL plus antetul semnat de Telegram.

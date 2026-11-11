@@ -14,7 +14,7 @@ export function OperatorProfilePage() {
   const { user } = useAuth();
 
   return (
-    <div className="mx-auto flex max-w-[880px] flex-col gap-5">
+    <div className="flex flex-col gap-5">
       <h1 className="text-2xl font-bold tracking-[-.02em] text-slate-950 lg:text-[28px]">Profilul meu</h1>
 
       <section className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5">

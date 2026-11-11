@@ -96,11 +96,13 @@ docker compose exec app php artisan higo:pull
 
 ## Pași manuali, o singură dată
 
-**Webhook Telegram** — se înregistrează automat la fiecare pornire dacă ai pus `TELEGRAM_BOT_TOKEN` și `TELEGRAM_WEBHOOK_AUTO_SET=true`. Dacă domeniul nu era public la primul deploy, rulează după:
+**Botul Telegram** — nu mai cere pași manuali. Containerul `scheduler` verifică la 5 minute dacă Telegram trimite mesajele la adresa corectă și reface webhook-ul dacă s-a pierdut. Starea se vede în admin → **Notificări Telegram**, cu buton „Repară”. Dacă serverul nu are domeniu public pe HTTPS, pune `TELEGRAM_MODE=polling`: serverul citește singur mesajele la 5 secunde, fără webhook. Ca să verifici sau să repari pe loc:
 
 ```bash
-docker compose exec app php artisan telegram:webhook set
+docker compose exec app php artisan telegram:webhook ensure
 ```
+
+Un bot poate avea un singur webhook. Dacă același `TELEGRAM_BOT_TOKEN` e folosit și pe alt server (test, local), cele două își fură mesajele: fiecare server are nevoie de botul lui.
 
 **Abonarea la notificările HIGO** — NU se face automat: fiecare rulare creează o abonare nouă la ei. Rulează o singură dată, după ce domeniul e public și pe HTTPS:
 

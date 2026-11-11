@@ -72,9 +72,13 @@ class AppEventNotification extends Notification
     public function toTelegram(object $notifiable): array
     {
         $text = '<b>'.e($this->title).'</b>'."\n".'Ai o actualizare în platformă. Deschide contul pentru detalii.';
+        $url = $this->url ? (str_starts_with($this->url, '/') ? rtrim(config('services.frontend_url'), '/').$this->url : $this->url) : null;
 
-        if ($this->url) {
-            $url = str_starts_with($this->url, '/') ? rtrim(config('services.frontend_url'), '/').$this->url : $this->url;
+        // Telegram primește butoane doar cu adrese https; altfel linkul rămâne în text.
+        if ($url && str_starts_with($url, 'https://')) {
+            return ['text' => $text, 'reply_markup' => ['inline_keyboard' => [[['text' => 'Deschide în aplicație', 'url' => $url]]]]];
+        }
+        if ($url) {
             $text .= "\n".e($url);
         }
 

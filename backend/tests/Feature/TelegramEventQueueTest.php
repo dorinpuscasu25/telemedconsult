@@ -23,7 +23,8 @@ class TelegramEventQueueTest extends TestCase
         $user = User::factory()->create(['telegram_chat_id' => '4242']);
         $user->notify(new AppEventNotification('Mesaj nou', 'Detalii medicale private', '/patient/chat?conversation=42'));
         Queue::assertPushed(SendTelegramEvent::class, function ($job) {
-            $this->assertStringContainsString('https://telemedconsult.example/patient/chat?conversation=42', $job->text);
+            // Linkul https devine butonul „Deschide în aplicație” de sub mesaj.
+            $this->assertSame('https://telemedconsult.example/patient/chat?conversation=42', $job->replyMarkup['inline_keyboard'][0][0]['url'] ?? null);
             $this->assertStringNotContainsString('Detalii medicale private', $job->text);
 
             return true;

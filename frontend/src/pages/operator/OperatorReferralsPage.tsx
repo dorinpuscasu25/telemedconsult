@@ -103,7 +103,7 @@ export function OperatorReferralsPage() {
   const people = (data?.latest_referrals ?? []).filter((item) => filter === 'all' || item.status === filter);
 
   return (
-    <div className="mx-auto flex max-w-[1040px] flex-col gap-5">
+    <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-bold tracking-[-.02em] text-slate-950 lg:text-[28px]">Pacienți aduși</h1>
         <span className="text-sm text-slate-500">Trimite linkul tău persoanelor care au nevoie de medic. Cine își face cont prin el rămâne înregistrat ca adus de tine.</span>

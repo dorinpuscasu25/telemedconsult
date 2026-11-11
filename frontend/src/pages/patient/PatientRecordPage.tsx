@@ -165,10 +165,10 @@ export function PatientRecordPage() {
             </div>
           )}
 
-          {tab === 'date' && <div className="-m-4 bg-white p-5 lg:m-0 lg:max-w-2xl lg:rounded-2xl lg:border lg:border-slate-200 lg:p-6"><PersonalDataForm key={profile.id} profile={profile} regions={regions} onSaved={() => void loadProfile()} /></div>}
-          {tab === 'documente' && <div className="lg:max-w-[1040px]"><DocumentsPanel profileId={profile.id} documents={documents} onChanged={() => void loadRecord()} /></div>}
+          {tab === 'date' && <div className="-m-4 bg-white p-5 lg:m-0 lg:rounded-2xl lg:border lg:border-slate-200 lg:p-6"><PersonalDataForm key={profile.id} profile={profile} regions={regions} onSaved={() => void loadProfile()} /></div>}
+          {tab === 'documente' && <div><DocumentsPanel profileId={profile.id} documents={documents} onChanged={() => void loadRecord()} /></div>}
           {tab === 'consultatii' && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 lg:max-w-4xl lg:p-6">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 lg:p-6">
               <PatientMedicalRecord profile={profile} regions={regions} only="consultations" requestedConsultationId={searchParams.get('request')} onSaved={() => void loadRecord()} onDirtyChange={() => undefined} />
             </div>
           )}
