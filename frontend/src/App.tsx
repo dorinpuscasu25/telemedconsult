@@ -130,6 +130,12 @@ function FeatureRoute({ feature, children }: { feature: FeatureKey; children: Re
 
   return <>{children}</>;
 }
+/** Paginile vizitelor la domiciliu: cu modulul oprit, trimite la `fallback`. */
+function HomeVisitsRoute({ fallback, children }: { fallback: string; children: React.ReactNode }) {
+  const { isEnabled, isLoading } = useFeatureFlags();
+  if (isLoading) return <div className="grid min-h-64 place-items-center text-slate-500">Se încarcă...</div>;
+  return isEnabled('with_exam_consultations') ? <>{children}</> : <Navigate to={fallback} replace />;
+}
 function AppRoutes() {
   const { isAuthenticated, role, user, isLoading } = useAuth();
   if (isLoading) {
@@ -278,9 +284,9 @@ function AppRoutes() {
           </ProtectedRoute>
         }>
         
-        <Route index element={<OperatorHome />} />
-        <Route path="patients" element={<RequestsPage />} />
-        <Route path="chat" element={<OperatorChatPage />} />
+        <Route index element={<HomeVisitsRoute fallback="/operator/referrals"><OperatorHome /></HomeVisitsRoute>} />
+        <Route path="patients" element={<HomeVisitsRoute fallback="/operator/referrals"><RequestsPage /></HomeVisitsRoute>} />
+        <Route path="chat" element={<HomeVisitsRoute fallback="/operator/referrals"><OperatorChatPage /></HomeVisitsRoute>} />
         <Route path="profile" element={<OperatorProfilePage />} />
         <Route path="referrals" element={<OperatorReferralsPage />} />
         <Route path="more" element={<OperatorMorePage />} />

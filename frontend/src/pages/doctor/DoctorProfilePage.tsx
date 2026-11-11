@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ArrowLeft, Building2, Check, ChevronRight, Eye, GripVertical, Lock, Pencil, Plus, Trash2, X } from 'lucide-react';
@@ -53,6 +54,8 @@ export function DoctorProfilePage() {
   const dialogs = useDialogs();
   const { user, refreshUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  // Fără vizite la domiciliu, serviciile „la domiciliu” nu se mai arată.
+  const homeVisits = useFeatureFlags().isEnabled('with_exam_consultations');
   const [data, setData] = useState<ProfileResponse | null>(null);
   const [form, setForm] = useState({ name: '', phone: '', specialty_id: '', license_number: '', experience_years: '0', bio: '', clinic_name: '', clinic_details: '', accepts_points: false, is_available: true, payout_bank: '', payout_iban: '' });
   const [adminOpen, setAdminOpen] = useState(false);
@@ -73,7 +76,7 @@ export function DoctorProfilePage() {
   const load = useCallback(async () => {
     const response = await apiRequest<ProfileResponse>('/doctor/profile');
     setData(response);
-    setServices(response.services ?? []);
+    setServices((response.services ?? []).filter((item) => homeVisits || item.type !== 'home'));
     setSlots((response.availability ?? []).map((slot) => ({ ...slot, starts_at: slot.starts_at.slice(0, 5), ends_at: slot.ends_at.slice(0, 5) })));
     setForm({
       name: response.user.name ?? '', phone: response.user.phone ?? '', specialty_id: response.profile?.specialty_id ? String(response.profile.specialty_id) : '',
@@ -82,7 +85,7 @@ export function DoctorProfilePage() {
       payout_bank: response.profile?.payout_bank ?? '', payout_iban: response.profile?.payout_iban ?? ''
     });
     setDirty(false);
-  }, []);
+  }, [homeVisits]);
 
   useEffect(() => {
     load().catch((err) => toast.error(err instanceof Error ? err.message : 'Profilul nu a putut fi încărcat.'));

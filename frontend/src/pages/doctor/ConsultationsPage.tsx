@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ArrowLeft, MapPin, MessageSquare, MoreHorizontal, Search, Stethoscope, Video } from 'lucide-react';
@@ -430,6 +431,7 @@ function Detail({ request, now, actions, linkState, onChart }: {
   request: ConsultationRequest & { stage: Stage }; now: number; actions: Actions; linkState: { returnTo: string }; onChart: () => void;
 }) {
   const { primary, secondary, menu, hint } = actions;
+  const homeVisits = useFeatureFlags().isEnabled('with_exam_consultations');
   const stage = request.stage;
   const banner = bannerFor(request, stage, now);
   const index = { new: 0, prop: 0, ask: 0, conf: 1, live: 2, done: 3, cancel: -1, expired: -1 }[stage];
@@ -483,7 +485,7 @@ function Detail({ request, now, actions, linkState, onChart }: {
         <div className="flex flex-col gap-1"><span className="text-xs font-semibold tracking-[.04em] text-slate-500">FIȘA MEDICALĂ</span><button type="button" onClick={onChart} className="self-start text-sm font-medium text-blue-600 hover:underline">Vezi fișa{progress ? ` · ${progress}` : ''}</button></div>
       </div>
 
-      {(['new', 'conf'] as Stage[]).includes(stage) && <HigoConsultationProposal requestId={request.id} />}
+      {homeVisits && (['new', 'conf'] as Stage[]).includes(stage) && <HigoConsultationProposal requestId={request.id} />}
 
       {(primary || secondary.length > 0) && (
         <div className="flex flex-wrap items-center gap-2.5">

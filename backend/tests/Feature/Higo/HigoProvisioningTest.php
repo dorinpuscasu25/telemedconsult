@@ -215,7 +215,7 @@ class HigoProvisioningTest extends TestCase
     public function test_nothing_is_sent_when_the_higo_module_is_disabled(): void
     {
         $this->fakeHigo();
-        app(PlatformConfig::class)->upsert('feature.higo_devices', false, 'features', 'boolean');
+        app(PlatformConfig::class)->upsert('feature.with_exam_consultations', false, 'features', 'boolean');
         Sanctum::actingAs($this->userWithRole('admin'));
 
         $this->postJson('/api/v1/admin/users', [

@@ -45,11 +45,13 @@ class CatalogController extends Controller
         }
 
         $catalog = app(DoctorServiceCatalog::class);
+        // Fără vizite la domiciliu, serviciile „la domiciliu” nu se mai arată.
+        $homeVisits = app(FeatureFlags::class)->homeVisits();
         $doctors = DoctorProfile::with(['user.doctorServices', 'specialty', 'investigationRequirements.investigationType', 'medicalInstitution'])
             ->where('is_approved', true)
             ->latest()
             ->get()
-            ->map(function (DoctorProfile $profile) use ($catalog) {
+            ->map(function (DoctorProfile $profile) use ($catalog, $homeVisits) {
                 $isOnVacation = $profile->user->doctorVacations()
                     ->whereDate('starts_on', '<=', now()->toDateString())
                     ->whereDate('ends_on', '>=', now()->toDateString())
@@ -73,7 +75,7 @@ class CatalogController extends Controller
                         'required' => $this->investigationRequirements($profile, 'required'),
                         'optional' => $this->investigationRequirements($profile, 'optional'),
                     ],
-                    'services' => $catalog->serialize($profile->user->doctorServices->where('is_active', true)->values()),
+                    'services' => $catalog->serialize($profile->user->doctorServices->where('is_active', true)->when(! $homeVisits, fn ($services) => $services->where('type', '!=', 'home'))->values()),
                     'institution' => $profile->medicalInstitution ? [
                         'name' => $profile->medicalInstitution->name,
                         'address' => $profile->medicalInstitution->address,

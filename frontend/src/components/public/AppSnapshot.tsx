@@ -1,11 +1,13 @@
 import { FileText, Search } from 'lucide-react';
 import { cn } from '../ui/utils';
+import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 
 /**
  * „Captura aplicatie”: fragmente reale din aplicație, pe pașii din „Cum
  * funcționează”. Textele sunt exemple, la fel ca în design.
  */
 export function AppSnapshot({ kind }: { kind: 'search' | 'service' | 'conclusion' }) {
+  const homeVisits = useFeatureFlags().isEnabled('with_exam_consultations');
   return (
     <div className="flex w-full flex-col gap-2.5 rounded-2xl border border-slate-200 bg-slate-50 p-3.5 text-slate-950">
       {kind === 'search' && (
@@ -23,7 +25,7 @@ export function AppSnapshot({ kind }: { kind: 'search' | 'service' | 'conclusion
       {kind === 'service' && (
         <>
           <span className="px-0.5 pt-0.5 text-[13px] font-semibold">Alege serviciul</span>
-          {[['Consultație video', 'Video · 30 min', '250 MDL'], ['Întrebare în chat', 'Chat · răspuns în 24 h', '150 MDL'], ['Vizită la domiciliu', 'Include ECG, tensiune', '600 MDL']].map(([name, meta, price], index) => (
+          {[['Consultație video', 'Video · 30 min', '250 MDL'], ['Întrebare în chat', 'Chat · răspuns în 24 h', '150 MDL'], ...(homeVisits ? [['Vizită la domiciliu', 'Include ECG, tensiune', '600 MDL']] : [])].map(([name, meta, price], index) => (
             <div key={name} className={cn('flex items-center gap-2.5 rounded-xl bg-white px-3 py-2.5', index === 0 ? 'border-[1.5px] border-blue-600' : 'border border-slate-200')}>
               <span className={cn('h-4 w-4 shrink-0 rounded-full', index === 0 ? 'border-[5px] border-blue-600 bg-white' : 'border-[1.5px] border-slate-300')} />
               <span className="flex flex-1 flex-col gap-px"><span className="text-xs font-semibold">{name}</span><span className="text-[11px] text-slate-500">{meta}</span></span>

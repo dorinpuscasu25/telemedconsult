@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Activity, Menu, X } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../contexts/AuthContext';
+import { useFeatureFlags } from '../contexts/FeatureFlagsContext';
 import { useSiteContent } from '../contexts/SiteContentContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 
@@ -26,6 +27,7 @@ function Logo({ small = false }: { small?: boolean }) {
 export function PublicLayout() {
   const { isAuthenticated, role, user } = useAuth();
   const { text } = useSiteContent();
+  const homeVisits = useFeatureFlags().isEnabled('with_exam_consultations');
   const location = useLocation();
   const [menuOpen, setMenuOpen] = React.useState(false);
   const target = dashboardPath(role, user?.status);
@@ -96,7 +98,7 @@ export function PublicLayout() {
           <div className="grid grid-cols-2 gap-[18px] md:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))] md:gap-8">
             <div className="col-span-2 flex flex-col gap-3 md:col-span-1">
               <Logo small />
-              <span className="hidden max-w-[280px] text-sm leading-[1.55] text-slate-500 md:block">Consultații online și examinări la domiciliu, cu dispozitive HIGO.</span>
+              <span className="hidden max-w-[280px] text-sm leading-[1.55] text-slate-500 md:block">{homeVisits ? 'Consultații online și examinări la domiciliu, cu dispozitive HIGO.' : 'Consultații online cu medici verificați, video și în chat.'}</span>
             </div>
             <FooterColumn title="Pacienți" links={[['Caută medic', '/medici'], ['Cum funcționează', '/#cum-functioneaza'], ['Întrebări frecvente', '/#intrebari']]} />
             <FooterColumn title="Profesioniști" links={[['Înscrie-te ca medic', '/register/specialist'], ['Înscrie-te ca operator', '/register/specialist?type=operator']]} />

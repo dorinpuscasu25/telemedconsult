@@ -9,6 +9,8 @@ use App\Models\PatientProfile;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\FeatureFlags;
+use App\Services\PlatformConfig;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -102,6 +104,28 @@ class DoctorServicesTest extends TestCase
             ->assertJsonCount(2, 'data.0.services')
             ->assertJsonPath('data.0.services.0.name', 'Primul')
             ->assertJsonPath('data.0.services.1.name', 'Al doilea');
+    }
+
+    public function test_home_services_disappear_when_home_visits_are_off(): void
+    {
+        $doctor = $this->doctor();
+        DoctorService::create(['doctor_id' => $doctor->id, 'name' => 'Video', 'type' => 'video', 'price' => 200, 'duration' => 15]);
+        DoctorService::create(['doctor_id' => $doctor->id, 'name' => 'La domiciliu', 'type' => 'home', 'price' => 600, 'duration' => 60]);
+        $this->getJson('/api/v1/catalog/doctors')->assertOk()->assertJsonCount(2, 'data.0.services');
+
+        app(PlatformConfig::class)->upsert('feature.with_exam_consultations', false, FeatureFlags::GROUP, 'boolean');
+
+        $this->getJson('/api/v1/catalog/doctors')->assertOk()
+            ->assertJsonCount(1, 'data.0.services')
+            ->assertJsonPath('data.0.services.0.type', 'video');
+        $this->getJson('/api/v1/catalog/features')->assertOk()
+            ->assertJsonPath('data.operators', false)
+            ->assertJsonPath('data.higo_devices', false);
+
+        Sanctum::actingAs($doctor);
+        $this->postJson('/api/v1/doctor/services', ['name' => 'Acasă', 'type' => 'home', 'price' => 500, 'duration' => 60])
+            ->assertUnprocessable()->assertJsonValidationErrors('type');
+        $this->postJson('/api/v1/doctor/services', ['name' => 'Chat', 'type' => 'chat', 'price' => 100, 'duration' => 24])->assertCreated();
     }
 
     public function test_saving_the_profile_without_prices_keeps_the_prices_from_services(): void

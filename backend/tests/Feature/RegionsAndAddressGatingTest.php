@@ -178,7 +178,6 @@ class RegionsAndAddressGatingTest extends TestCase
         $doctor = $this->userWithRole('doctor');
         DoctorProfile::create(['user_id' => $doctor->id, 'consultation_price' => 700, 'video_price' => 500, 'is_available' => true, 'is_approved' => true]);
         Wallet::create(['user_id' => $patient->id, 'balance_minor' => 100000, 'currency' => 'MDL']);
-        app(PlatformConfig::class)->upsert('feature.operators', false, 'features', 'boolean');
         app(PlatformConfig::class)->upsert('feature.with_exam_consultations', false, 'features', 'boolean');
         Sanctum::actingAs($patient);
         $this->postJson('/api/v1/requests/preview', ['consultation_kind' => 'video', 'patient_profile_id' => $profile->id, 'doctor_id' => $doctor->id])

@@ -57,28 +57,7 @@ export function FeatureFlagsPage() {
     }
   };
 
-  const applyMode = async (withOperators: boolean) => {
-    setSavingKey('mode');
-    setError('');
-    setMessage('');
-    try {
-      const response = await apiRequest<{ data: FeatureFlag[] }>('/admin/feature-flags', {
-        method: 'PUT',
-        body: JSON.stringify({ flags: [
-          { key: 'doctors', enabled: true },
-          { key: 'video_consultations', enabled: true },
-          ...['operators', 'with_exam_consultations', 'higo_devices'].map((key) => ({ key, enabled: withOperators }))
-        ] })
-      });
-      setFlags(response.data);
-      await refreshPublicFeatures();
-      setMessage(withOperators ? 'Consultațiile cu operator sunt activate. Consultațiile video directe rămân disponibile.' : 'Doar consultații directe cu medicul. Operatorii și examinările sunt dezactivate pentru solicitări noi.');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nu am putut schimba modul.');
-    } finally {
-      setSavingKey(null);
-    }
-  };
+  const homeVisits = flags.find((flag) => flag.key === 'with_exam_consultations');
 
   return (
     <div className="max-w-4xl space-y-6">
@@ -95,14 +74,21 @@ export function FeatureFlagsPage() {
         </Button>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-        <p className="font-semibold">Modul consultațiilor</p>
-        <p className="text-sm text-slate-500">Alege consultații directe până când ai operatori și aparate. Solicitările existente își păstrează fluxul.</p>
-        <div className="flex flex-wrap gap-2">
-          <Button disabled={savingKey !== null || flags.length === 0} onClick={() => applyMode(false)}>Doar consultații directe</Button>
-          <Button variant="outline" disabled={savingKey !== null || flags.length === 0} onClick={() => applyMode(true)}>Cu operatori</Button>
+      {homeVisits && (
+        <div className={`flex flex-col gap-4 rounded-xl border p-5 sm:flex-row sm:items-center sm:justify-between ${homeVisits.enabled ? 'border-slate-200 bg-white' : 'border-amber-200 bg-amber-50'}`}>
+          <div className="min-w-0 space-y-1">
+            <p className="font-semibold text-slate-900">{homeVisits.label}</p>
+            <p className="text-sm text-slate-600">{homeVisits.enabled
+              ? 'Pornit: pacienții pot cere vizite la domiciliu, operatorii le preiau cu aparatul HIGO, iar datele ajung la medic.'
+              : 'Oprit: consultațiile sunt doar online (video și chat). Vizitele la domiciliu, serviciile „la domiciliu”, HIGO și investigațiile sunt ascunse peste tot. Operatorii văd doar linkul lor și pacienții aduși.'}</p>
+            <p className="text-xs text-slate-500">Cererile deja trimise își păstrează fluxul pe server.</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className={`text-xs font-medium ${homeVisits.enabled ? 'text-emerald-600' : 'text-amber-700'}`}>{homeVisits.enabled ? 'Pornit' : 'Oprit'}</span>
+            <Switch checked={homeVisits.enabled} disabled={savingKey !== null} aria-label={`${homeVisits.enabled ? 'Oprește' : 'Pornește'} ${homeVisits.label}`} onCheckedChange={(value) => toggle(homeVisits.key, value)} />
+          </div>
         </div>
-      </div>
+      )}
       <Card className="glass-card border-0">
         <CardHeader>
           <CardTitle className="flex items-center"><ToggleLeft className="mr-2 h-5 w-5 text-primary" /> Module</CardTitle>
@@ -111,7 +97,7 @@ export function FeatureFlagsPage() {
           {error && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
           )}
-          {flags.map((flag) => (
+          {flags.filter((flag) => flag.key !== 'with_exam_consultations').map((flag) => (
             <div key={flag.key} className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white/70 p-4">
               <div className="min-w-0">
                 <p className="font-semibold text-slate-900">{flag.label}</p>

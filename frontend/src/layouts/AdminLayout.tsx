@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { RoleName, useAuth } from '../contexts/AuthContext';
+import { useFeatureFlags } from '../contexts/FeatureFlagsContext';
 import {
   LayoutDashboard,
   Users,
@@ -45,6 +46,9 @@ export function AdminLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
+  // Fără vizite la domiciliu nu au rost investigațiile la domiciliu și HIGO.
+  const homeVisits = useFeatureFlags().isEnabled('with_exam_consultations');
+  const homeOnly = ['/admin/higo', '/admin/investigations'];
   const handleSwitchRole = async (nextRole: RoleName) => {
     await switchRole(nextRole);
     navigate(roleHome(nextRole));
@@ -183,7 +187,7 @@ export function AdminLayout() {
       </div>
 
       <nav className="flex-1 py-6 px-4 space-y-1.5 overflow-y-auto">
-        {navItems.map((item) => {
+        {navItems.filter((item) => homeVisits || !homeOnly.includes(item.path)).map((item) => {
           const isActive =
           location.pathname === item.path ||
           location.pathname.startsWith(item.path) &&

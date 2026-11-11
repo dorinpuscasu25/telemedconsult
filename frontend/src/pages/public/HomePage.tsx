@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowRight, ChevronDown, Search } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { ArrowRight, ChevronDown, Stethoscope, Users } from 'lucide-react';
 import { cn } from '../../components/ui/utils';
 import { ServiceIcon } from '../../components/doctor/ServiceIcon';
 import { AppSnapshot } from '../../components/public/AppSnapshot';
+import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 import { useSiteContent } from '../../contexts/SiteContentContext';
 import { apiRequest } from '../../lib/api';
 import { mdl, type DoctorServiceItem, type ServiceType } from '../../lib/doctor';
@@ -12,9 +13,7 @@ import type { SiteContentKey } from '../../lib/site-content-defaults';
 type CatalogDoctor = { id: string; services?: DoctorServiceItem[] };
 type Partner = { id: number; name: string; logo_url: string | null };
 type Post = { id: number; slug: string; title: string; excerpt: string | null; category?: string | null; cover_image_url: string | null; published_at: string | null };
-type Specialty = { id: number; name: string };
 
-const TYPES: Array<[ServiceType, string, string]> = [['video', 'Consultație video', 'Video'], ['chat', 'Chat', 'Chat'], ['home', 'La domiciliu', 'Domiciliu']];
 const SERVICES: Array<{ type: ServiceType; title: string; desc: string; meta: string }> = [
   { type: 'video', title: 'Consultație video', desc: 'Vorbești cu medicul față în față, de pe telefon sau calculator.', meta: '15–30 min' },
   { type: 'chat', title: 'Întrebare în chat', desc: 'Scrii întrebarea și atașezi analize sau poze. Medicul răspunde în scris.', meta: 'răspuns în 24 h' },
@@ -28,33 +27,35 @@ const FAQ: Array<[string, string]> = [
   ['Cum funcționează vizita la domiciliu?', 'Un operator vine la adresa ta cu dispozitive HIGO și face investigațiile incluse în serviciu. Medicul vede rezultatele și scrie concluzia.'],
   ['Cine îmi vede datele medicale?', 'Doar tu și medicii cu care ai consultații. Operatorul vede doar datele necesare vizitei.']
 ];
+/** Cu vizitele la domiciliu oprite, totul e online. */
+const FAQ_ONLINE: Array<[string, string]> = [
+  ...FAQ.filter(([question]) => !question.includes('domiciliu')).slice(0, 3),
+  ['Cine îmi vede datele medicale?', 'Doar tu și medicii cu care ai consultații.']
+];
+const ONLINE_SUBTITLE = 'Consultații video și în chat cu medici verificați și o fișă medicală digitală pentru toată familia.';
 const MONTHS = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'];
 export const longDate = (value?: string | null) => { if (!value) return ''; const date = new Date(value); return `${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`; };
 
 /**
- * Pagina publică începe cu căutarea unui medic (Ha). Urmează serviciile cu
+ * Pagina publică începe cu titlul și două butoane: medicii și contul. Urmează serviciile cu
  * prețul de la care pornesc, pașii cu fragmente din aplicație, partenerii,
  * noutățile, întrebările frecvente și secțiunea pentru profesioniști.
  */
 export function HomePage() {
   const { text } = useSiteContent();
   const t = (key: string) => text(key as SiteContentKey);
-  const navigate = useNavigate();
   const location = useLocation();
-  const [type, setType] = useState<ServiceType>('video');
-  const [query, setQuery] = useState('');
+  const homeVisits = useFeatureFlags().isEnabled('with_exam_consultations');
   const [openFaq, setOpenFaq] = useState(1);
   const [doctors, setDoctors] = useState<CatalogDoctor[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
-  const [specialties, setSpecialties] = useState<Specialty[]>([]);
 
   useEffect(() => {
     document.title = 'telemedconsult.md — Platformă de telemedicină';
     apiRequest<{ data: CatalogDoctor[] }>('/catalog/doctors', { auth: false }).then((response) => setDoctors(response.data ?? [])).catch(() => undefined);
     apiRequest<{ data: Partner[] }>('/catalog/partners', { auth: false }).then((response) => setPartners(response.data ?? [])).catch(() => undefined);
     apiRequest<{ data: Post[] }>('/catalog/blog', { auth: false }).then((response) => setPosts(response.data ?? [])).catch(() => undefined);
-    apiRequest<{ data: Specialty[] }>('/catalog/specialties', { auth: false }).then((response) => setSpecialties(response.data ?? [])).catch(() => undefined);
   }, []);
 
   // Linkurile din subsol (#cum-functioneaza, #intrebari) duc la secțiune.
@@ -71,59 +72,46 @@ export function HomePage() {
     return result;
   }, [doctors]);
 
-  const search = (event?: React.FormEvent, term = query) => {
-    event?.preventDefault();
-    const params = new URLSearchParams({ type });
-    if (term.trim()) params.set('q', term.trim());
-    navigate(`/medici?${params.toString()}`);
-  };
-
-  const popular = specialties.slice(0, 5).map((item) => item.name);
-  const pros = [2, 3].map((slot) => ({ eyebrow: slot === 2 ? 'PENTRU MEDICI' : 'PENTRU OPERATORI', title: t(`home.audiences.${slot}.title`), text: t(`home.audiences.${slot}.text`), cta: t(`home.audiences.${slot}.cta`), to: slot === 2 ? '/register/specialist' : '/register/specialist?type=operator' }));
+  const services = SERVICES.filter((service) => homeVisits || service.type !== 'home');
+  const faq = homeVisits ? FAQ : FAQ_ONLINE;
+  const pros = [2, 3].map((slot) => ({
+    eyebrow: slot === 2 ? 'PENTRU MEDICI' : 'PENTRU OPERATORI',
+    title: t(`home.audiences.${slot}.title`),
+    // Fără vizite, operatorul aduce pacienți prin linkul lui.
+    text: slot === 3 && !homeVisits ? 'Recomanzi platforma oamenilor din zona ta prin linkul tău personal și vezi câți pacienți ai adus.' : t(`home.audiences.${slot}.text`),
+    cta: t(`home.audiences.${slot}.cta`),
+    to: slot === 2 ? '/register/specialist' : '/register/specialist?type=operator'
+  }));
 
   return (
     <div>
-      {/* Căutarea */}
+      {/* Titlul */}
       <section className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-[1200px] flex-col gap-4 px-5 pb-7 pt-8 md:items-center md:gap-[22px] md:px-10 md:pb-16 md:pt-20 md:text-center">
           <span className="hidden rounded-full bg-blue-50 px-3 py-1.5 text-[13px] font-semibold text-blue-700 md:inline-block">{t('home.hero.badge')}</span>
           <h1 className="max-w-[860px] text-[34px] font-bold leading-[1.08] tracking-[-.03em] [text-wrap:balance] md:text-[60px] md:leading-[1.05] md:tracking-[-.035em]">
             {t('home.hero.title')} <span className="text-blue-600">{t('home.hero.title_highlight')}</span>{t('home.hero.title_end') ? ` ${t('home.hero.title_end')}` : ''}
           </h1>
-          <p className="max-w-[640px] text-[15px] leading-[1.55] text-slate-600 md:text-lg">{t('home.hero.subtitle')}</p>
-          <form onSubmit={search} className="flex w-full flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-1.5 text-left shadow-[0_8px_24px_rgba(15,23,42,.06)] md:mt-2.5 md:w-[780px] md:rounded-[18px] md:p-2 md:shadow-[0_12px_32px_rgba(15,23,42,.08)]">
-            <div className="grid grid-cols-3 gap-1 md:flex">
-              {TYPES.map(([key, label, short]) => (
-                <button key={key} type="button" onClick={() => setType(key)} aria-pressed={type === key}
-                  className={cn('flex h-10 items-center justify-center gap-2 rounded-[10px] text-[13px] font-semibold md:h-[38px] md:px-3.5 md:text-sm', type === key ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50')}>
-                  <ServiceIcon type={key} className="hidden h-[18px] w-[18px] md:block" /><span className="md:hidden">{short}</span><span className="hidden md:inline">{label}</span>
-                </button>
-              ))}
-            </div>
-            <div className="flex flex-col gap-2 md:flex-row">
-              <label className="flex h-12 flex-1 items-center gap-2.5 rounded-[10px] bg-slate-50 px-3.5 md:h-14 md:rounded-xl md:px-4">
-                <Search className="h-[18px] w-[18px] shrink-0 text-slate-500" />
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Specialitate sau numele medicului" aria-label="Specialitate sau numele medicului" className="min-w-0 flex-1 bg-transparent text-[15px] text-slate-950 outline-none placeholder:text-slate-500 md:text-base" />
-              </label>
-              <button type="submit" className="h-12 rounded-[10px] bg-blue-600 px-[26px] text-[15px] font-semibold text-white hover:bg-blue-700 md:h-14 md:rounded-xl md:text-base">Caută medic</button>
-            </div>
-          </form>
-          {popular.length > 0 && (
-            <div className="-mx-5 flex items-center gap-1.5 overflow-x-auto px-5 text-[13px] text-slate-500 [scrollbar-width:none] md:mx-0 md:flex-wrap md:justify-center md:gap-2 md:px-0">
-              <span className="hidden md:inline">Des căutate:</span>
-              {popular.map((name) => <button key={name} type="button" onClick={() => search(undefined, name)} className="shrink-0 rounded-full border border-slate-200 bg-white px-[11px] py-[5px] text-slate-700 hover:border-slate-300">{name}</button>)}
-            </div>
-          )}
+          <p className="max-w-[640px] text-[15px] leading-[1.55] text-slate-600 md:text-lg">{homeVisits ? t('home.hero.subtitle') : ONLINE_SUBTITLE}</p>
+          <div className="flex flex-col gap-2 sm:flex-row md:mt-2.5">
+            <Link to="/medici" className="flex h-12 items-center justify-center gap-2 rounded-[10px] bg-blue-600 px-[26px] text-[15px] font-semibold text-white hover:bg-blue-700 md:h-14 md:rounded-xl md:text-base">Vezi medicii<ArrowRight className="h-4 w-4" /></Link>
+            <Link to="/register" className="flex h-12 items-center justify-center rounded-[10px] border border-slate-200 bg-white px-[26px] text-[15px] font-semibold text-slate-950 hover:bg-slate-50 md:h-14 md:rounded-xl md:text-base">Creează cont</Link>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-[13px] md:justify-center">
+            <span className="text-slate-500">Ești specialist?</span>
+            <Link to="/register/specialist" className="flex h-9 items-center gap-1.5 rounded-full bg-blue-50 px-3.5 font-semibold text-blue-700 ring-1 ring-blue-200 hover:bg-blue-100"><Stethoscope className="h-4 w-4" />Înscrie-te ca medic</Link>
+            <Link to="/register/specialist?type=operator" className="flex h-9 items-center gap-1.5 rounded-full bg-emerald-50 px-3.5 font-semibold text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"><Users className="h-4 w-4" />Înscrie-te ca operator</Link>
+          </div>
         </div>
       </section>
 
       <div className="mx-auto flex max-w-[1200px] flex-col gap-12 px-4 pt-10 md:gap-24 md:px-10 md:pt-20">
         {/* Serviciile */}
         <section className="flex flex-col gap-3.5 md:gap-7">
-          <div className="flex flex-col gap-2 px-1 md:px-0"><h2 className="text-2xl font-bold tracking-[-.02em] md:text-[32px]">Trei feluri de a ajunge la medic</h2><p className="hidden text-base text-slate-600 md:block">Fiecare medic își alege serviciile și prețurile. Vezi totul înainte să programezi.</p></div>
-          <div className="grid gap-3.5 md:grid-cols-3 md:gap-5">
-            {SERVICES.map((service) => (
-              <Link key={service.type} to={`/medici?type=${service.type}`} className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-[18px] hover:border-slate-300 md:gap-3.5 md:p-6">
+          <div className="flex flex-col gap-2 px-1 md:px-0"><h2 className="text-2xl font-bold tracking-[-.02em] md:text-[32px]">{services.length === 3 ? 'Trei' : 'Două'} feluri de a ajunge la medic</h2><p className="hidden text-base text-slate-600 md:block">Fiecare medic își alege serviciile și prețurile. Vezi totul înainte să programezi.</p></div>
+          <div className={cn('grid gap-3.5 md:gap-5', services.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2')}>
+            {services.map((service) => (
+              <Link key={service.type} to="/medici" className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-[18px] hover:border-slate-300 md:gap-3.5 md:p-6">
                 <span className="hidden h-11 w-11 place-items-center rounded-xl bg-blue-50 text-blue-600 md:grid"><ServiceIcon type={service.type} className="h-[22px] w-[22px]" /></span>
                 <div className="flex flex-1 flex-col gap-1.5">
                   <span className="flex items-center justify-between text-base font-semibold md:text-lg">{service.title}{fromPrice[service.type] !== undefined && <span className="text-sm font-bold md:hidden">de la {mdl(fromPrice[service.type])}</span>}</span>
@@ -191,7 +179,7 @@ export function HomePage() {
         <section id="intrebari" className="grid scroll-mt-24 gap-3.5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] md:items-start md:gap-12">
           <div className="flex flex-col gap-2.5 px-1 md:px-0"><h2 className="text-2xl font-bold tracking-[-.02em] md:text-[32px]">Întrebări frecvente</h2><p className="hidden text-[15px] leading-[1.55] text-slate-600 md:block">Nu găsești răspunsul? Scrie-ne la <a href="mailto:suport@telemedconsult.md" className="font-medium text-blue-600">suport@telemedconsult.md</a>.</p></div>
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-            {FAQ.map(([question, answer], index) => {
+            {faq.map(([question, answer], index) => {
               const open = openFaq === index;
               return (
                 <div key={question} className={cn(index > 0 && 'border-t border-slate-100')}>
@@ -205,16 +193,23 @@ export function HomePage() {
           </div>
         </section>
 
-        {/* Profesioniști */}
+        {/* Profesioniști: medicul în albastru, operatorul în verde, ca să se vadă înscrierea. */}
         <section className="grid gap-3 pb-10 md:grid-cols-2 md:gap-5 md:pb-20">
-          {pros.map((pro) => (
-            <div key={pro.eyebrow} className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-[18px] md:gap-3.5 md:p-7">
-              <span className="hidden text-xs font-semibold tracking-[.04em] text-slate-500 md:block">{pro.eyebrow}</span>
-              <span className="text-[17px] font-semibold md:text-[22px] md:font-bold md:tracking-[-.01em]">{pro.title}</span>
-              <span className="text-sm leading-[1.55] text-slate-600 md:text-[15px]">{pro.text}</span>
-              <Link to={pro.to} className="mt-1.5 flex h-11 items-center justify-center gap-2 rounded-[10px] border border-slate-200 text-sm font-semibold hover:bg-slate-50 md:h-[42px] md:self-start md:px-4">{pro.cta}<ArrowRight className="hidden h-4 w-4 md:block" /></Link>
-            </div>
-          ))}
+          {pros.map((pro, index) => {
+            const doctor = index === 0;
+            return (
+              <div key={pro.eyebrow} className={cn('flex flex-col gap-2 rounded-2xl p-[18px] text-white md:gap-3.5 md:p-7', doctor ? 'bg-blue-600' : 'bg-emerald-600')}>
+                <span className="flex items-center gap-2 text-xs font-semibold tracking-[.04em] text-white/80">
+                  {doctor ? <Stethoscope className="h-4 w-4" /> : <Users className="h-4 w-4" />}{pro.eyebrow}
+                </span>
+                <span className="text-[19px] font-bold md:text-[22px] md:tracking-[-.01em]">{pro.title}</span>
+                <span className="text-sm leading-[1.55] text-white/90 md:text-[15px]">{pro.text}</span>
+                <Link to={pro.to} className={cn('mt-1.5 flex h-11 items-center justify-center gap-2 rounded-[10px] bg-white text-sm font-semibold md:h-[46px] md:self-start md:px-5 md:text-[15px]', doctor ? 'text-blue-700 hover:bg-blue-50' : 'text-emerald-700 hover:bg-emerald-50')}>
+                  {pro.cta}<ArrowRight className="h-4 w-4" />
+                </Link>
+              </div>
+            );
+          })}
         </section>
       </div>
     </div>

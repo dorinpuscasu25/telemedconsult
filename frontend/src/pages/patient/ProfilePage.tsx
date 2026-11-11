@@ -504,7 +504,7 @@ function ProfilePageContent() {
               <p className="flex items-end rounded-xl bg-slate-50 p-3 text-sm">Vârsta: {patientAge(patientForm.birth_date)}</p>
               <Field label="Strada și numărul (opțional)">
                 <Input value={patientForm.address} onChange={(event) => setPatientForm({ ...patientForm, address: event.target.value })} className="rounded-xl" />
-                <p className="text-xs text-slate-500">Necesară doar pentru examinarea la domiciliu.</p>
+                {isEnabled('with_exam_consultations') && <p className="text-xs text-slate-500">Necesară doar pentru examinarea la domiciliu.</p>}
               </Field>
               <div className="md:col-span-2">
                 <Field label="Istoricul vieții"><Textarea placeholder="Naștere și dezvoltare, boli anterioare, accidente, operații și antecedente familiale. Detaliile se completează în compartimentele fișei." value={patientForm.medical_summary} onChange={(event) => setPatientForm({ ...patientForm, medical_summary: event.target.value })} className="rounded-xl" /></Field>

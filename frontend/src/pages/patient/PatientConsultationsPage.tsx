@@ -94,7 +94,7 @@ export function PatientConsultationsPage() {
           <EmptyState
             icon={ClipboardList}
             title="Nu ai consultații în curs"
-            description="Alege un medic sau cere o examinare la domiciliu. Cererile active apar aici."
+            description={isEnabled('with_exam_consultations') ? 'Alege un medic sau cere o examinare la domiciliu. Cererile active apar aici.' : 'Alege un medic și programează o consultație online. Cererile active apar aici.'}
             action={(isEnabled('doctors') || isEnabled('operators')) && <Button asChild><Link to={newConsultationPath}>Solicită o consultație</Link></Button>}
           />
         ) : (

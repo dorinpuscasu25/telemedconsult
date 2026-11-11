@@ -7,6 +7,7 @@ use App\Models\DoctorService;
 use App\Models\InvestigationType;
 use App\Models\User;
 use App\Services\DoctorServiceCatalog;
+use App\Services\FeatureFlags;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -97,7 +98,8 @@ class DoctorServiceController extends Controller
         $required = $partial ? 'sometimes' : 'required';
         $validated = $request->validate([
             'name' => [$required, 'string', 'max:120'],
-            'type' => [$required, Rule::in(DoctorService::TYPES)],
+            // Fără vizite la domiciliu, medicul nu poate crea servicii „la domiciliu”.
+            'type' => [$required, Rule::in(app(FeatureFlags::class)->homeVisits() ? DoctorService::TYPES : array_values(array_diff(DoctorService::TYPES, ['home'])))],
             'price' => [$required, 'integer', 'min:0', 'max:100000'],
             'duration' => [$required, 'integer', 'min:1', 'max:720'],
             'is_active' => ['sometimes', 'boolean'],
@@ -107,6 +109,7 @@ class DoctorServiceController extends Controller
             'name.required' => 'Scrie denumirea serviciului.',
             'price.required' => 'Scrie prețul serviciului.',
             'duration.min' => 'Durata trebuie să fie de cel puțin 1.',
+            'type.in' => 'Serviciile la domiciliu sunt momentan oprite.',
         ]);
 
         $type = $validated['type'] ?? $request->route('doctorService')?->type;

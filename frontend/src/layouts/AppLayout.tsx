@@ -61,7 +61,7 @@ type NavItem = { label: string; path: string; icon: LucideIcon; feature?: Featur
  * în bara de jos pe telefon. Restul (afiliere, reclamații, noutăți, Telegram)
  * stă în secțiunea „Mai mult” și în meniul contului.
  */
-function primaryNav(role: RoleName | null): NavItem[] {
+function primaryNav(role: RoleName | null, homeVisits = true): NavItem[] {
   switch (role) {
     case 'patient':
       return [
@@ -87,6 +87,13 @@ function primaryNav(role: RoleName | null): NavItem[] {
         { label: 'Setări', path: '/institution/settings', icon: Building2 }
       ];
     case 'operator':
+      // Fără vizite la domiciliu, operatorul doar aduce pacienți prin link.
+      if (!homeVisits) {
+        return [
+          { label: 'Pacienți aduși', path: '/operator/referrals', icon: Users },
+          { label: 'Profil', path: '/operator/profile', icon: UserRound }
+        ];
+      }
       return [
         { label: 'Acasă', path: '/operator', icon: Home },
         { label: 'Vizite', path: '/operator/patients', icon: ClipboardList },
@@ -130,7 +137,8 @@ export function AppLayout() {
   };
 
   const visible = (item: NavItem) => !item.feature || isEnabled(item.feature);
-  const navItems = primaryNav(role).filter(visible);
+  const homeVisits = isEnabled('with_exam_consultations');
+  const navItems = primaryNav(role, homeVisits).filter(visible);
   const moreItems = secondaryNav(role, text('header.nav_news')).filter(visible);
 
   const isActive = (target: string) => {
@@ -181,12 +189,12 @@ export function AppLayout() {
     : role === 'doctor'
       ? [...navItems.filter((item) => item.path !== '/doctor/stats'), { label: 'Mai mult', path: '/doctor/more', icon: Ellipsis }]
       : role === 'operator'
-        ? [...navItems.filter((item) => item.path !== '/operator/referrals'), { label: 'Mai mult', path: '/operator/more', icon: Ellipsis }]
+        ? [...navItems.filter((item) => !homeVisits || item.path !== '/operator/referrals'), { label: 'Mai mult', path: '/operator/more', icon: Ellipsis }]
         : navItems;
   const moreMatches = role === 'doctor'
     ? ['/doctor/more', '/doctor/stats', '/doctor/noutati', '/doctor/telegram']
     : role === 'operator'
-      ? ['/operator/more', '/operator/referrals', '/operator/noutati', '/operator/telegram']
+      ? ['/operator/more', ...(homeVisits ? ['/operator/referrals'] : []), '/operator/noutati', '/operator/telegram']
       : ['/patient/profile', '/patient/patients', '/patient/complaints', '/patient/noutati', '/patient/telegram'];
 
   const accountMenu = (
@@ -297,7 +305,7 @@ export function AppLayout() {
           </div>
         </header>
 
-        {role !== 'patient' && <ActiveConsultationBanner />}
+        {role !== 'patient' && !(role === 'operator' && !homeVisits) && <ActiveConsultationBanner />}
         <main className={cn('w-full min-w-0 flex-1', bleed ? (fullScreenChat ? '' : 'pb-[calc(60px+max(12px,env(safe-area-inset-bottom)))] lg:pb-0') : doctorSplit ? 'px-4 pb-28 pt-5 lg:p-0' : 'px-4 pb-28 pt-5 lg:px-8 lg:pb-10 lg:pt-7')}>
           {/* Boundary per pagină: o pagină care crapă nu mai omoară navigația.
               `key` resetează boundary-ul la fiecare schimbare de rută. */}

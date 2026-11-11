@@ -16,6 +16,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '../components/ui/select';
 import { AccountType, useAuth, WELCOME_BONUS_KEY } from '../contexts/AuthContext';
+import { useFeatureFlags } from '../contexts/FeatureFlagsContext';
 import { apiRequest } from '../lib/api';
 import { rememberNext, safePatientPath } from '../lib/onboarding-next';
 
@@ -34,6 +35,7 @@ const SPECIALIST_TYPES: { value: AccountType; label: string; hint: string; icon:
  */
 export function RegisterPage({ audience = 'patient' }: { audience?: 'patient' | 'specialist' }) {
   const isPatientForm = audience === 'patient';
+  const { isEnabled } = useFeatureFlags();
   const [step, setStep] = useState<RegisterStep>('details');
   // `/register/specialist?type=operator` deschide direct contul de operator.
   const [accountType, setAccountType] = useState<AccountType>(isPatientForm ? 'patient' : new URLSearchParams(window.location.search).get('type') === 'operator' ? 'operator' : 'doctor');
@@ -211,13 +213,25 @@ export function RegisterPage({ audience = 'patient' }: { audience?: 'patient' | 
                   <CardTitle className={isPatientForm ? 'text-[28px] font-bold leading-[1.2] tracking-tight' : 'text-2xl font-bold tracking-tight'}>{isPatientForm ? 'Creează-ți contul' : 'Cont de medic sau operator'}</CardTitle>
                   <CardDescription>
                     {isPatientForm
-                      ? 'Consultații video sau acasă, pentru tine și familia ta.'
+                      ? (isEnabled('with_exam_consultations') ? 'Consultații video sau acasă, pentru tine și familia ta.' : 'Consultații online cu medici, pentru tine și familia ta.')
                       : accountType === 'doctor'
                         ? 'Întâi datele tale. Apoi confirmi emailul, alegi instituția la care lucrezi și aștepți aprobarea.'
                         : 'Contul se activează după confirmarea emailului și aprobarea unui administrator.'}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {isPatientForm && (
+                    <div className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm font-semibold text-emerald-950">Ești medic sau operator?</span>
+                        <span className="text-xs text-emerald-800">Contul de specialist se face separat. Alege-l aici:</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Link to="/register/specialist" className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 text-[13px] font-semibold text-white hover:bg-blue-700"><Stethoscope className="h-4 w-4" />Sunt medic</Link>
+                        <Link to="/register/specialist?type=operator" className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-[13px] font-semibold text-white hover:bg-emerald-700"><Users className="h-4 w-4" />Sunt operator</Link>
+                      </div>
+                    </div>
+                  )}
                   <Feedback error={error} message={message} />
 
                   {referralCode && (
@@ -235,25 +249,25 @@ export function RegisterPage({ audience = 'patient' }: { audience?: 'patient' | 
                   )}
 
                   {!isPatientForm && <div className="space-y-2">
-                    <Label className="font-medium text-slate-700">Tip de cont</Label>
-                    <div className="grid grid-cols-2 gap-2">
+                    <Label className="text-[15px] font-semibold text-slate-950">Ce fel de cont îți faci?</Label>
+                    <div className="grid grid-cols-2 gap-2.5">
                       {SPECIALIST_TYPES.map((option) => {
                         const active = accountType === option.value;
+                        // Medicul în albastru, operatorul în verde: alegerea se vede de la prima privire.
+                        const tone = option.value === 'doctor'
+                          ? { on: 'border-blue-600 bg-blue-600 text-white shadow-md shadow-blue-600/20', off: 'border-blue-200 bg-blue-50 text-blue-900 hover:border-blue-400', icon: 'bg-blue-100 text-blue-700' }
+                          : { on: 'border-emerald-600 bg-emerald-600 text-white shadow-md shadow-emerald-600/20', off: 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:border-emerald-400', icon: 'bg-emerald-100 text-emerald-700' };
                         return (
                           <button
                             type="button"
                             key={option.value}
                             onClick={() => setAccountType(option.value)}
-                            className={`flex flex-col items-center gap-1.5 rounded-xl border p-3 text-center transition-all ${
-                              active
-                                ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/30'
-                                : 'border-slate-200 bg-white hover:border-slate-300'
-                            }`}>
-                            <option.icon className={`h-5 w-5 ${active ? 'text-primary' : 'text-slate-400'}`} />
-                            <span className={`text-sm font-semibold ${active ? 'text-primary' : 'text-slate-700'}`}>
-                              {option.label}
-                            </span>
-                            <span className="text-[11px] leading-tight text-slate-400">{option.hint}</span>
+                            aria-pressed={active}
+                            className={`relative flex flex-col items-center gap-2 rounded-xl border-2 px-3 py-4 text-center transition-all ${active ? tone.on : tone.off}`}>
+                            {active && <CheckCircle2 className="absolute right-2 top-2 h-4 w-4" />}
+                            <span className={`grid h-10 w-10 place-items-center rounded-full ${active ? 'bg-white/20 text-white' : tone.icon}`}><option.icon className="h-5 w-5" /></span>
+                            <span className="text-base font-bold">Sunt {option.label.toLowerCase()}</span>
+                            <span className={`text-xs leading-tight ${active ? 'text-white/85' : 'opacity-80'}`}>{option.value === 'operator' && !isEnabled('with_exam_consultations') ? 'Aduce pacienți pe platformă' : option.hint}</span>
                           </button>
                         );
                       })}
@@ -392,9 +406,11 @@ export function RegisterPage({ audience = 'patient' }: { audience?: 'patient' | 
                       {isPatientForm ? 'Intră' : 'Autentificați-vă'}
                     </Link>
                   </div>
-                  <Link to={isPatientForm ? '/register/specialist' : '/register'} className="text-center text-xs text-slate-400 hover:text-slate-600">
-                    {isPatientForm ? 'Ești medic sau operator?' : 'Vrei consultații pentru tine sau familie? Cont de pacient'}
-                  </Link>
+                  {!isPatientForm && (
+                    <Link to="/register" className="text-center text-xs text-slate-400 hover:text-slate-600">
+                      Vrei consultații pentru tine sau familie? Cont de pacient
+                    </Link>
+                  )}
                 </CardFooter>
               </form>
             ) : (

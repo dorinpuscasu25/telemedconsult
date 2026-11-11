@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 import { X } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
 import { cn } from '../ui/utils';
@@ -25,6 +26,8 @@ const toDraft = (service: DoctorServiceItem | null): Draft => service
 export function ServiceEditor({ service, open, catalog, onOpenChange, onSaved }: {
   service: DoctorServiceItem | null; open: boolean; catalog: CatalogInvestigation[]; onOpenChange: (open: boolean) => void; onSaved: () => void;
 }) {
+  const homeVisits = useFeatureFlags().isEnabled('with_exam_consultations');
+  const types = TYPES.filter(([type]) => homeVisits || type !== 'home');
   const [draft, setDraft] = useState<Draft>(toDraft(service));
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -85,8 +88,8 @@ export function ServiceEditor({ service, open, catalog, onOpenChange, onSaved }:
         <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 sm:px-6 sm:py-[18px]">
           <div className="flex flex-col gap-2">
             <span className="text-[13px] font-medium text-slate-700">Tip</span>
-            <div className="grid grid-cols-3 gap-2">
-              {TYPES.map(([type, label, short]) => {
+            <div className={cn('grid gap-2', types.length === 3 ? 'grid-cols-3' : 'grid-cols-2')}>
+              {types.map(([type, label, short]) => {
                 const on = draft.type === type;
                 return (
                   <button key={type} type="button" onClick={() => set({ type, duration: DEFAULT_DURATION[type] })}

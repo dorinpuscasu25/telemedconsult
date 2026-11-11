@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Check, Search, SlidersHorizontal } from 'lucide-react';
-import { cn } from '../../components/ui/utils';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiRequest } from '../../lib/api';
-import { mdl, SERVICE_TYPE_LABEL, whenLabel, type DoctorServiceItem, type ServiceType } from '../../lib/doctor';
+import { mdl, SERVICE_TYPE_LABEL, whenLabel, type DoctorServiceItem } from '../../lib/doctor';
 
 type PublicDoctor = {
   id: string;
@@ -17,10 +16,8 @@ type PublicDoctor = {
   institution?: { name: string } | null;
   services?: DoctorServiceItem[];
 };
-type Specialty = { id: number; name: string };
-type Filter = 'all' | ServiceType;
-
-const FILTERS: Array<[Filter, string]> = [['all', 'Toate serviciile'], ['video', 'Video'], ['chat', 'Chat'], ['home', 'La domiciliu']];
+/** Câți medici arată pagina publică; restul se văd din cont. */
+const PREVIEW_COUNT = 6;
 
 /** Unde duce „Programează-te”: direct la programare pentru pacient, altfel prin înregistrare. */
 export function bookingTarget(doctorId: string): string {
@@ -30,38 +27,30 @@ export function bookingTarget(doctorId: string): string {
 const initialsOf = (name: string) => name.replace(/^Dr\.?\s*/i, '').split(' ').filter(Boolean).map((part) => part.charAt(0)).slice(0, 2).join('').toUpperCase();
 const doctorName = (name: string) => (/^dr\.?\s/i.test(name) ? name : `Dr. ${name}`);
 const rating = (value: string | number) => Number(value || 0).toLocaleString('ro-RO', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-const isToday = (value?: string | null) => Boolean(value) && new Date(value as string).toDateString() === new Date().toDateString();
 
 /**
- * M1/M2: catalogul public. Fără cont se vede lista, cu instituția, tipurile de
- * servicii, prețul de la care pornesc și prima oră liberă. Programarea se face
- * în aplicație: „Programează-te” cere întâi contul și păstrează medicul ales.
+ * Catalogul public: câțiva medici, fără filtre și fără căutare. Lista întreagă
+ * și programarea se fac din cont: „Vezi toți medicii” și „Programează-te” cer
+ * autentificarea, iar medicul ales se păstrează.
  */
 export function DoctorsPage() {
   const navigate = useNavigate();
   const { isAuthenticated, role } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
   const [doctors, setDoctors] = useState<PublicDoctor[]>([]);
-  const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [nextSlots, setNextSlots] = useState<Record<string, string | null>>({});
-  const [chosenSpecialties, setChosenSpecialties] = useState<number[]>([]);
-  const [freeToday, setFreeToday] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const query = searchParams.get('q') ?? '';
-  const type = (['video', 'chat', 'home'].includes(searchParams.get('type') ?? '') ? searchParams.get('type') : 'all') as Filter;
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     document.title = 'Medici · telemedconsult.md';
-    Promise.all([
-      apiRequest<{ data: PublicDoctor[] }>('/catalog/doctors', { auth: false }),
-      apiRequest<{ data: Specialty[] }>('/catalog/specialties', { auth: false })
-    ])
-      .then(([doctorResponse, specialtyResponse]) => {
-        const list = doctorResponse.data ?? [];
+    apiRequest<{ data: PublicDoctor[] }>('/catalog/doctors', { auth: false })
+      .then((doctorResponse) => {
+        // Întâi cei cu cele mai multe recenzii.
+        const all = [...(doctorResponse.data ?? [])].sort((a, b) => b.reviews_count - a.reviews_count || Number(b.rating) - Number(a.rating));
+        setTotal(all.length);
+        const list = all.slice(0, PREVIEW_COUNT);
         setDoctors(list);
-        setSpecialties(specialtyResponse.data ?? []);
         // Prima oră liberă din programul fiecărui medic.
         list.forEach((doctor) => {
           apiRequest<{ days: Array<{ slots: Array<{ starts_at: string }> }> }>(`/catalog/doctors/${doctor.id}/slots?days=7`, { auth: false })
@@ -73,22 +62,7 @@ export function DoctorsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const setParam = (key: string, value: string | null) => {
-    const next = new URLSearchParams(searchParams);
-    if (value) next.set(key, value); else next.delete(key);
-    setSearchParams(next, { replace: true });
-  };
-
-  const visible = useMemo(() => {
-    const term = query.trim().toLocaleLowerCase('ro');
-    return doctors.filter((doctor) => {
-      const services = doctor.services ?? [];
-      if (type !== 'all' && !services.some((service) => service.type === type)) return false;
-      if (chosenSpecialties.length && !chosenSpecialties.includes(Number(doctor.specialty_id))) return false;
-      if (freeToday && !isToday(nextSlots[doctor.id])) return false;
-      return !term || `${doctor.name} ${doctor.specialty ?? ''} ${doctor.institution?.name ?? ''}`.toLocaleLowerCase('ro').includes(term);
-    });
-  }, [doctors, type, chosenSpecialties, freeToday, nextSlots, query]);
+  const visible = doctors;
 
   const book = (doctor: PublicDoctor) => {
     const target = bookingTarget(doctor.id);
@@ -97,68 +71,25 @@ export function DoctorsPage() {
     else navigate(`/register?next=${encodeURIComponent(target)}`);
   };
 
-  const toggleSpecialty = (id: number) => setChosenSpecialties((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
-  const count = visible.length === 1 ? '1 medic' : `${visible.length} medici`;
-
-  const sideFilters = (
-    <>
-      <div className="flex flex-col gap-2.5">
-        <span className="text-[13px] font-semibold tracking-[.04em] text-slate-500">SPECIALITATE</span>
-        {specialties.map((item) => {
-          const on = chosenSpecialties.includes(item.id);
-          return (
-            <button key={item.id} type="button" onClick={() => toggleSpecialty(item.id)} aria-pressed={on} className="flex h-7 items-center gap-2.5 text-left text-sm text-slate-700">
-              <span className={cn('grid h-[18px] w-[18px] shrink-0 place-items-center rounded-[5px] border-[1.5px] text-white', on ? 'border-blue-600 bg-blue-600' : 'border-slate-300')}>{on && <Check className="h-3 w-3" strokeWidth={3} />}</span>{item.name}
-            </button>
-          );
-        })}
-      </div>
-      <button type="button" onClick={() => setFreeToday((value) => !value)} aria-pressed={freeToday} className="flex items-center justify-between text-sm text-slate-700">
-        Liber azi
-        <span className={cn('flex h-5 w-9 items-center rounded-full p-0.5', freeToday ? 'bg-blue-600' : 'bg-slate-300')}><span className={cn('h-4 w-4 rounded-full bg-white transition-transform', freeToday && 'translate-x-4')} /></span>
-      </button>
-    </>
-  );
+  // Lista întreagă e în cont: pacientul ajunge direct, ceilalți trec prin autentificare.
+  const seeAll = () => {
+    if (isAuthenticated && role === 'patient') navigate('/patient/doctors');
+    else if (isAuthenticated) navigate(`/${role}`);
+    else navigate(`/login?next=${encodeURIComponent('/patient/doctors')}`);
+  };
 
   return (
     <div className="mx-auto flex max-w-[1200px] flex-col gap-2.5 px-4 pb-16 pt-4 md:gap-7 md:px-10 md:pb-[72px] md:pt-10">
-      {/* Titlul și căutarea */}
-      <div className="hidden items-end justify-between gap-6 md:flex">
-        <div className="flex flex-col gap-1.5"><h1 className="text-4xl font-bold tracking-[-.025em]">Medici</h1><span className="text-[15px] text-slate-600">{loading ? 'Se încarcă…' : count}</span></div>
-        <SearchBox value={query} onChange={(value) => setParam('q', value)} className="w-[420px]" />
-      </div>
-      <div className="flex flex-col gap-2.5 md:hidden">
-        <div className="flex gap-2">
-          <SearchBox value={query} onChange={(value) => setParam('q', value)} className="flex-1" small />
-          <button type="button" onClick={() => setFiltersOpen((open) => !open)} aria-expanded={filtersOpen} className="flex h-11 items-center gap-1.5 rounded-[10px] border border-slate-200 bg-white px-3 text-sm font-semibold"><SlidersHorizontal className="h-4 w-4" />Filtre{(chosenSpecialties.length || freeToday) ? ` · ${chosenSpecialties.length + Number(freeToday)}` : ''}</button>
-        </div>
-        {filtersOpen && <div className="flex flex-col gap-5 rounded-2xl border border-slate-200 bg-white p-4">{sideFilters}</div>}
-        <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none]">
-          {FILTERS.map(([key, label]) => (
-            <button key={key} type="button" onClick={() => setParam('type', key === 'all' ? null : key)}
-              className={cn('h-9 shrink-0 rounded-full px-3 text-[13px] font-semibold', type === key ? 'border border-slate-900 bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700')}>{label}</button>
-          ))}
-        </div>
-        <span className="px-0.5 text-[13px] text-slate-500">{loading ? 'Se încarcă…' : count}</span>
+      <div className="flex flex-col gap-1.5 pb-2 md:pb-0">
+        <h1 className="text-[28px] font-bold tracking-[-.025em] md:text-4xl">Medici</h1>
+        <span className="text-[15px] text-slate-600">Câțiva dintre medicii platformei. Toată lista o vezi după ce intri în cont.</span>
       </div>
 
       {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
-      <div className="grid grid-cols-1 gap-8 md:grid-cols-[240px_minmax(0,1fr)] md:items-start">
-        <aside className="hidden flex-col gap-7 md:flex">
-          <div className="flex flex-col gap-2.5">
-            <span className="text-[13px] font-semibold tracking-[.04em] text-slate-500">TIP SERVICIU</span>
-            {FILTERS.map(([key, label]) => (
-              <button key={key} type="button" onClick={() => setParam('type', key === 'all' ? null : key)}
-                className={cn('h-10 rounded-[10px] px-3 text-left text-sm', type === key ? 'bg-blue-50 font-semibold text-blue-700' : 'font-medium text-slate-700 hover:bg-white')}>{label}</button>
-            ))}
-          </div>
-          {sideFilters}
-        </aside>
-
-        <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
+      <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-3 md:gap-4">
           {loading && [0, 1, 2, 3].map((key) => <div key={key} className="h-[190px] animate-pulse rounded-2xl bg-white" />)}
-          {!loading && visible.length === 0 && <p className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 md:col-span-2">Niciun medic nu se potrivește filtrelor.</p>}
+          {!loading && visible.length === 0 && !error && <p className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 md:col-span-3">Medicii apar aici în curând.</p>}
           {visible.map((doctor) => {
             const services = doctor.services ?? [];
             const types = [...new Set(services.map((service) => service.type))];
@@ -188,20 +119,15 @@ export function DoctorsPage() {
               </article>
             );
           })}
-        </div>
       </div>
-      {!isAuthenticated && !loading && visible.length > 0 && (
-        <p className="text-center text-[13px] text-slate-500 md:text-left">Programarea se face din cont. La „Programează-te” îți creezi contul, iar medicul ales se păstrează.</p>
+      {!loading && visible.length > 0 && (
+        <div className="flex flex-col items-center gap-2 pt-2">
+          <button type="button" onClick={seeAll} className="flex h-12 items-center gap-2 rounded-[10px] border border-slate-200 bg-white px-6 text-[15px] font-semibold text-slate-950 hover:bg-slate-50">
+            {total > visible.length ? `Vezi toți medicii (${total})` : 'Vezi mai mult'}<ArrowRight className="h-4 w-4" />
+          </button>
+          {!isAuthenticated && <span className="text-center text-[13px] text-slate-500">Intri în cont și vezi toți medicii, cu orele libere. Medicul ales la „Programează-te” se păstrează.</span>}
+        </div>
       )}
     </div>
-  );
-}
-
-function SearchBox({ value, onChange, className, small = false }: { value: string; onChange: (value: string) => void; className?: string; small?: boolean }) {
-  return (
-    <label className={cn('flex items-center gap-2.5 border border-slate-200 bg-white px-3.5 focus-within:border-blue-600', small ? 'h-11 rounded-[10px] px-3' : 'h-12 rounded-xl', className)}>
-      <Search className="h-4 w-4 shrink-0 text-slate-500" />
-      <input value={value} onChange={(event) => onChange(event.target.value)} placeholder={small ? 'Specialitate sau medic' : 'Specialitate sau numele medicului'} aria-label="Caută medic" className="min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-slate-500" />
-    </label>
   );
 }
