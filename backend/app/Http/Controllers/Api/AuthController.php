@@ -71,7 +71,8 @@ class AuthController extends Controller
 
         $role = Role::where('name', $accountType)->firstOrFail();
 
-        if ($accountType === 'patient' && filled($validated['referral_code'] ?? null) && ! $referralProgram->enabled()) {
+        $referrer = $accountType === 'patient' ? $referralProgram->referrerFor($validated['referral_code'] ?? null) : null;
+        if ($referrer && ! $referralProgram->acceptsReferrer($referrer)) {
             throw ValidationException::withMessages([
                 'referral_code' => ['Programul de afiliere este momentan dezactivat.'],
             ]);

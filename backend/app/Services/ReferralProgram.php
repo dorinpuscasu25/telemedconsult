@@ -8,7 +8,6 @@ use App\Models\ReferralCommission;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
-use App\Services\WalletLedger;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -100,6 +99,21 @@ class ReferralProgram
         throw new RuntimeException('Nu am putut genera codul unic de afiliere.');
     }
 
+    public function referrerFor(?string $code): ?User
+    {
+        return blank($code) ? null : User::where('referral_code', Str::upper(trim((string) $code)))->first();
+    }
+
+    /**
+     * Linkul unui operator ține evidența pacienților aduși chiar și când
+     * programul de bonusuri e oprit: după ea se plătesc operatorii. Ceilalți
+     * invitatori (pacienți, medici) au nevoie de programul pornit.
+     */
+    public function acceptsReferrer(User $referrer): bool
+    {
+        return $this->enabled() || $referrer->loadMissing('roles')->hasRole('operator');
+    }
+
     /**
      * Leagă un utilizator nou-înregistrat de invitatorul său.
      *
@@ -108,13 +122,9 @@ class ReferralProgram
      */
     public function attachPatient(User $referredUser, ?string $code): ?Referral
     {
-        if (! $this->enabled() || blank($code)) {
-            return null;
-        }
+        $referrer = $this->referrerFor($code);
 
-        $referrer = User::where('referral_code', Str::upper(trim((string) $code)))->first();
-
-        if (! $referrer || $referrer->is($referredUser)) {
+        if (! $referrer || $referrer->is($referredUser) || ! $this->acceptsReferrer($referrer)) {
             return null;
         }
 

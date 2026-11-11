@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Ban, MoreHorizontal, Pencil, Plus, RefreshCw, Search, ShieldCheck, Trash2, Unlock, Wallet } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import { Ban, MoreHorizontal, Pencil, Plus, RefreshCw, Search, ShieldCheck, Trash2, Unlock, UsersRound, Wallet } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -164,6 +164,7 @@ export function UsersPage() {
   const [actionError, setActionError] = useState('');
   const [processingUserId, setProcessingUserId] = useState<string | null>(null);
   const [walletUser, setWalletUser] = useState<AdminUser | null>(null);
+  const navigate = useNavigate();
 
   const loadUsers = () => {
     const params = new URLSearchParams();
@@ -502,6 +503,12 @@ export function UsersPage() {
                             <Wallet className="h-4 w-4" />
                             Portofel
                           </DropdownMenuItem>
+                          {adminUser.roles.includes('operator') && (
+                            <DropdownMenuItem className="cursor-pointer" onClick={() => navigate(`/admin/referrals/${adminUser.id}`)}>
+                              <UsersRound className="h-4 w-4" />
+                              Pacienți aduși
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem
                             className={`cursor-pointer ${isSelf ? 'opacity-50' : ''}`}
                             onClick={() => {

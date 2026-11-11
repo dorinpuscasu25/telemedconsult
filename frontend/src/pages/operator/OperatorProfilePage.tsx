@@ -1,71 +1,72 @@
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronRight, KeyRound, Mail, Newspaper, Phone, Send, UserRound } from 'lucide-react';
-import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
-import { PageHeader } from '../../components/app/PageHeader';
+import { ChevronRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { usePageTitle } from '../../lib/use-page-title';
+import { Avatar } from '../doctor/DoctorHome';
 
 /**
- * Profilul operatorului. Datele contului se modifică de către administrator,
- * așa că pagina e doar de consultare, cu scurtături spre setările personale.
+ * Profilul operatorului. Datele contului le modifică administratorul, așa că
+ * pagina e de consultare, cu scurtături spre setările personale.
  */
 export function OperatorProfilePage() {
+  usePageTitle('Profil');
   const { user } = useAuth();
-  const initials = (user?.name || '?').split(' ').map((part) => part.charAt(0)).slice(0, 2).join('').toUpperCase();
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Profilul meu" description="Datele contului de operator și setările de notificare." />
+    <div className="mx-auto flex max-w-[880px] flex-col gap-5">
+      <h1 className="text-2xl font-bold tracking-[-.02em] text-slate-950 lg:text-[28px]">Profilul meu</h1>
 
-      <div className="grid items-start gap-6 lg:grid-cols-2">
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <div className="flex items-center gap-4">
-          <Avatar className="size-16">
-            {user?.avatar && <AvatarImage src={user.avatar} />}
-            <AvatarFallback className="bg-primary/10 text-lg font-semibold text-primary">{initials}</AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <p className="truncate text-lg font-semibold text-slate-950">{user?.name}</p>
-            <p className="text-sm text-slate-500">Operator · examinări la domiciliu</p>
-          </div>
+      <section className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5">
+        {user?.avatar ? <img src={user.avatar} alt="" className="h-14 w-14 rounded-full object-cover" /> : <Avatar name={user?.name ?? '?'} size={56} />}
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="truncate text-lg font-bold text-slate-950">{user?.name}</span>
+          <span className="text-[13px] text-slate-500">Operator · examinări la domiciliu</span>
         </div>
-
-        <dl className="mt-6 divide-y divide-slate-100 border-t border-slate-100">
-          <InfoRow icon={UserRound} label="Nume" value={user?.name} />
-          <InfoRow icon={Mail} label="Email" value={user?.email} />
-          <InfoRow icon={Phone} label="Telefon" value={user?.phone || 'Nu este completat'} />
-        </dl>
-        <p className="mt-4 text-xs text-slate-500">Pentru a modifica aceste date, contactează administratorul platformei.</p>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <ShortcutRow to="/operator/telegram" icon={Send} title="Notificări Telegram" description="Primește cererile noi direct pe telefon." />
-        <ShortcutRow to="/forgot-password" icon={KeyRound} title="Schimbă parola" description="Primești un cod de resetare pe email." />
-        <ShortcutRow to="/operator/noutati" icon={Newspaper} title="Noutăți" description="Anunțuri de la echipa platformei." />
-      </section>
+      <div className="grid items-start gap-5 lg:grid-cols-2">
+        <Group title="DATELE CONTULUI">
+          <Info label="Nume" value={user?.name} />
+          <Info label="Email" value={user?.email} />
+          <Info label="Telefon" value={user?.phone || 'Necompletat'} />
+          <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">Pentru a schimba aceste date, scrie administratorului platformei.</p>
+        </Group>
+
+        <Group title="SETĂRI">
+          <Row to="/operator/referrals" title="Pacienți aduși" sub="Linkul tău și pacienții înregistrați prin el" />
+          <Row to="/operator/telegram" title="Notificări Telegram" sub="Primește cererile noi direct pe telefon" />
+          <Row to="/forgot-password" title="Schimbă parola" sub="Primești un cod de resetare pe email" />
+          <Row to="/operator/noutati" title="Noutăți" sub="Anunțuri de la echipa platformei" />
+        </Group>
       </div>
     </div>
   );
 }
 
-function InfoRow({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value?: string | null }) {
+function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-3 py-3">
-      <Icon className="h-4 w-4 shrink-0 text-slate-400" />
-      <dt className="w-20 shrink-0 text-sm text-slate-500">{label}</dt>
-      <dd className="min-w-0 truncate text-sm font-medium text-slate-900">{value || '—'}</dd>
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <div className="px-5 pb-2 pt-4 text-xs font-semibold tracking-[.04em] text-slate-500">{title}</div>
+      {children}
+    </section>
+  );
+}
+
+function Info({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div className="flex items-center gap-3 border-t border-slate-100 px-5 py-3.5">
+      <span className="w-20 shrink-0 text-[13px] text-slate-500">{label}</span>
+      <span className="min-w-0 truncate text-[15px] font-medium text-slate-950">{value || '—'}</span>
     </div>
   );
 }
 
-function ShortcutRow({ to, icon: Icon, title, description }: { to: string; icon: React.ElementType; title: string; description: string }) {
+function Row({ to, title, sub }: { to: string; title: string; sub: string }) {
   return (
-    <Link to={to} className="flex items-center gap-4 border-b border-slate-100 p-4 transition last:border-b-0 hover:bg-slate-50">
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-600"><Icon className="h-5 w-5" /></span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-semibold text-slate-900">{title}</span>
-        <span className="block text-sm text-slate-500">{description}</span>
-      </span>
-      <ChevronRight className="h-4 w-4 text-slate-400" />
+    <Link to={to} className="flex items-center gap-3.5 border-t border-slate-100 px-5 py-3.5 hover:bg-slate-50">
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5"><span className="text-[15px] font-medium text-slate-950">{title}</span><span className="text-xs text-slate-500">{sub}</span></span>
+      <ChevronRight className="h-[18px] w-[18px] text-slate-400" />
     </Link>
   );
 }

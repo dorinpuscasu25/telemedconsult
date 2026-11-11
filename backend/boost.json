@@ -9,10 +9,6 @@
     "nightwatch": false,
     "sail": false,
     "skills": [
-        "fortify-development",
-        "laravel-best-practices",
-        "wayfinder-development",
-        "inertia-react-development",
-        "tailwindcss-development"
+        "laravel-best-practices"
     ]
 }

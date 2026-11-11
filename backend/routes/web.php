@@ -2,10 +2,8 @@
 
 use Illuminate\Support\Facades\Route;
 
-Route::inertia('/', 'welcome')->name('home');
-
-Route::middleware(['auth', 'verified'])->group(function () {
-    Route::inertia('dashboard', 'dashboard')->name('dashboard');
-});
-
-require __DIR__.'/settings.php';
+/*
+ * Backend-ul servește doar API-ul. Interfața e aplicația din `frontend/`,
+ * deci cine deschide rădăcina e trimis acolo.
+ */
+Route::get('/', fn () => redirect()->away(rtrim((string) config('services.frontend_url', config('app.url')), '/')))->name('home');

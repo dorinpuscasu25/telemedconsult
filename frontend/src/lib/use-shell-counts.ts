@@ -25,6 +25,7 @@ export function useShellCounts(enabled: boolean, role?: string | null) {
   const [unreadNews, setUnreadNews] = useState(0);
   const [telegramLinked, setTelegramLinked] = useState<boolean | null>(null);
   const isDoctor = role === 'doctor';
+  const isOperator = role === 'operator';
 
   const loadMessages = useCallback(() => {
     apiRequest<{ data: Array<{ unread_count?: number }> }>('/conversations')
@@ -33,11 +34,11 @@ export function useShellCounts(enabled: boolean, role?: string | null) {
   }, []);
 
   const loadRequests = useCallback(() => {
-    if (!isDoctor) return;
+    if (!isDoctor && !isOperator) return;
     apiRequest<{ data: Array<{ stage?: Stage; status: string; doctor_started_at?: string | null }> }>('/requests')
-      .then((response) => setPendingRequests((response.data ?? []).filter((item) => needsDoctor(stageOf(item))).length))
+      .then((response) => setPendingRequests((response.data ?? []).filter((item) => (isOperator ? item.status === 'new' : needsDoctor(stageOf(item)))).length))
       .catch(() => undefined);
-  }, [isDoctor]);
+  }, [isDoctor, isOperator]);
 
   const loadNews = useCallback(() => {
     if (!isDoctor) return;

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ConsultationRequest;
 use App\Models\Payment;
 use App\Models\PlatformSetting;
 use App\Models\ReferralCommission;
@@ -286,7 +287,100 @@ class PatientReferralProgramTest extends TestCase
         $this->getJson('/api/v1/admin/referral-stats?role=doctor')->assertOk()->assertJsonCount(0, 'data');
     }
 
+    public function test_admin_sees_what_each_referred_patient_topped_up_spent_and_brought(): void
+    {
+        $this->setRate(0);
+        $operator = $this->operator();
+        $code = app(ReferralProgram::class)->ensureCode($operator);
+        $invited = $this->registerAndVerifyPatient('cheltuie@example.test', $code);
+        $quiet = $this->registerAndVerifyPatient('doar-cont@example.test', $code);
+
+        $this->completeTopUp($invited, 1000.00);
+        $wallet = Wallet::where('user_id', $invited->id)->where('type', 'real')->firstOrFail();
+        $doctor = User::factory()->create();
+
+        // Consultație încheiată: 300 MDL, din care platforma păstrează 60.
+        $done = ConsultationRequest::create(['patient_id' => $invited->id, 'doctor_id' => $doctor->id, 'type' => 'video', 'consultation_kind' => 'video', 'status' => 'completed', 'amount_minor' => 30000, 'platform_fee_minor' => 6000, 'provider_amount_minor' => 24000, 'payment_status' => 'captured']);
+        $this->spend($wallet, -30000, 'service_hold', $done->id);
+        // Consultație încă deschisă: banii sunt doar rezervați.
+        $open = ConsultationRequest::create(['patient_id' => $invited->id, 'doctor_id' => $doctor->id, 'type' => 'video', 'consultation_kind' => 'video', 'status' => 'pending', 'amount_minor' => 20000, 'payment_status' => 'held']);
+        $this->spend($wallet, -20000, 'service_hold', $open->id);
+        // Pachetul de profiluri merge integral la platformă.
+        $this->spend($wallet, -24000, 'patient_card_purchase');
+        // Anulată: rezervată luna trecută, returnată acum. Nu e cheltuială în nicio lună.
+        $cancelled = ConsultationRequest::create(['patient_id' => $invited->id, 'doctor_id' => $doctor->id, 'type' => 'video', 'consultation_kind' => 'video', 'status' => 'cancelled', 'amount_minor' => 15000, 'payment_status' => 'refunded']);
+        $this->spend($wallet, -15000, 'service_hold', $cancelled->id);
+        WalletTransaction::where('consultation_request_id', $cancelled->id)->update(['created_at' => now()->subMonth()]);
+        $this->spend($wallet, 15000, 'service_refund', $cancelled->id);
+
+        $admin = $this->patient('admin-detaliu@example.test');
+        $admin->roles()->sync([Role::where('name', 'admin')->value('id')]);
+        Sanctum::actingAs($admin->fresh());
+
+        $row = $this->getJson('/api/v1/admin/referral-stats?role=operator')->assertOk()->json('data.0');
+        $this->assertSame(1, $row['active_count']);
+        $this->assertEquals(540, $row['spent_total']);
+        $this->assertEquals(300, $row['revenue_total']);
+
+        $detail = $this->getJson("/api/v1/admin/referral-stats/{$operator->id}")->assertOk();
+        $detail->assertJsonPath('totals.invited_count', 2)
+            ->assertJsonPath('totals.topped_up_count', 1)
+            ->assertJsonPath('totals.consultations_count', 1);
+        $this->assertEquals(1000, $detail->json('totals.topups_total'));
+        $this->assertEquals(540, $detail->json('totals.spent_total'));
+        $this->assertEquals(200, $detail->json('totals.reserved_total'));
+        $this->assertEquals(300, $detail->json('totals.revenue_total'));
+
+        $patients = collect($detail->json('patients'))->keyBy('id');
+        $this->assertSame('cheltuie@example.test', $patients[$invited->id]['email']);
+        $this->assertEquals(540, $patients[$invited->id]['spent_total']);
+        $this->assertEquals(0, $patients[$quiet->id]['topups_total']);
+
+        $thisMonth = $this->getJson("/api/v1/admin/referral-stats/{$operator->id}?from=".now()->startOfMonth()->toDateString().'&to='.now()->toDateString())->assertOk();
+        $this->assertEquals(540, $thisMonth->json('totals.spent_total'));
+
+        // O perioadă fără nicio operațiune nu are sume.
+        $empty = $this->getJson("/api/v1/admin/referral-stats/{$operator->id}?from=2020-01-01&to=2020-01-31")->assertOk();
+        $this->assertEquals(0, $empty->json('totals.topups_total'));
+        $this->assertSame(0, $empty->json('totals.invited_in_period'));
+
+        // Operatorul vede cifrele lui, cu datele pacienților mascate.
+        Sanctum::actingAs($operator);
+        $summary = $this->getJson('/api/v1/referrals')->assertOk();
+        $summary->assertJsonPath('stats.active_count', 1);
+        $this->assertEquals(540, $summary->json('stats.spent_total'));
+        $this->assertStringNotContainsString('cheltuie', implode(' ', array_column($summary->json('latest_referrals'), 'email')));
+    }
+
+    public function test_operator_link_keeps_counting_when_bonus_program_is_off(): void
+    {
+        $this->setSetting('feature.affiliate_program', false, 'boolean', 'features');
+        $operator = $this->operator();
+        $operatorCode = app(ReferralProgram::class)->ensureCode($operator);
+        $patientCode = app(ReferralProgram::class)->ensureCode($this->patient('pacient-invitator@example.test'));
+
+        $this->registerAndVerifyPatient('adus-cu-program-oprit@example.test', $operatorCode);
+        $this->registerPatient('respins@example.test', $patientCode)->assertUnprocessable()->assertJsonValidationErrors('referral_code');
+
+        Sanctum::actingAs($operator);
+        $this->getJson('/api/v1/referrals')->assertOk()->assertJsonPath('enabled', true)->assertJsonPath('bonus_enabled', false)->assertJsonPath('stats.invited_count', 1);
+    }
+
     // --- helpers ---------------------------------------------------------
+
+    private function operator(): User
+    {
+        $operator = User::factory()->create(['status' => 'active', 'active_role_id' => Role::where('name', 'operator')->value('id')]);
+        $operator->roles()->sync([Role::where('name', 'operator')->value('id')]);
+
+        return $operator;
+    }
+
+    private function spend(Wallet $wallet, int $amountMinor, string $type, ?int $requestId = null): void
+    {
+        $wallet->increment('balance_minor', $amountMinor);
+        WalletTransaction::create(['wallet_id' => $wallet->id, 'user_id' => $wallet->user_id, 'wallet_type' => 'real', 'amount_minor' => $amountMinor, 'currency' => 'MDL', 'type' => $type, 'status' => 'completed', 'description' => $type, 'consultation_request_id' => $requestId]);
+    }
 
     private function patient(string $email): User
     {

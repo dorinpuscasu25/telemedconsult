@@ -142,6 +142,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/admin/users/{user}/wallet/promotion', [AdminOperationsController::class, 'grantUserPromotion']);
         Route::get('/admin/financial', [AdminOperationsController::class, 'financial']);
         Route::get('/admin/referral-stats', [ReferralController::class, 'adminStats']);
+        Route::get('/admin/referral-stats/{user}', [ReferralController::class, 'adminReferrer']);
         Route::put('/admin/withdrawals/{withdrawalRequest}', [AdminOperationsController::class, 'updateWithdrawal']);
         Route::get('/admin/complaints', [AdminOperationsController::class, 'complaints']);
         Route::put('/admin/complaints/{complaint}/resolve', [AdminOperationsController::class, 'resolveComplaint']);

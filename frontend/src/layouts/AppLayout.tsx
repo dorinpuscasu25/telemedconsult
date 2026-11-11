@@ -91,7 +91,7 @@ function primaryNav(role: RoleName | null): NavItem[] {
         { label: 'Acasă', path: '/operator', icon: Home },
         { label: 'Vizite', path: '/operator/patients', icon: ClipboardList },
         { label: 'Mesaje', path: '/operator/chat', icon: MessageSquare },
-        { label: 'Afiliere', path: '/operator/referrals', icon: Gift },
+        { label: 'Pacienți aduși', path: '/operator/referrals', icon: Users },
         { label: 'Profil', path: '/operator/profile', icon: UserRound }
       ];
     default:
@@ -152,7 +152,8 @@ export function AppLayout() {
   const { unreadMessages, pendingRequests, unreadNews, telegramLinked } = useShellCounts(Boolean(role) && role !== 'admin', role);
   const badgeFor = (item: NavItem) => (item.path.endsWith('/chat') ? unreadMessages : 0);
   // La medic, „Consultații” arată cererile care așteaptă răspunsul lui (N1 medic).
-  const warnFor = (item: NavItem) => (role === 'doctor' && item.path === '/doctor/consultations' ? pendingRequests : 0);
+  // La operator, „Vizite” arată cererile noi care trebuie preluate.
+  const warnFor = (item: NavItem) => ((role === 'doctor' && item.path === '/doctor/consultations') || (role === 'operator' && item.path === '/operator/patients') ? pendingRequests : 0);
   const dotFor = (item: NavItem) => (role === 'doctor'
     ? item.path.endsWith('/noutati') && unreadNews > 0
     : item.path.endsWith('/telegram') && telegramLinked === false);
@@ -160,14 +161,16 @@ export function AppLayout() {
   // Chatul ocupă tot spațiul, fără antet și fără margini (C1a / C2a).
   const bleed = location.pathname.endsWith('/chat');
   // Consultațiile medicului: listă și detaliu pe toată înălțimea (C1a).
-  const doctorSplit = role === 'doctor' && location.pathname === '/doctor/consultations';
-  const headerTitle = doctorSplit ? 'Consultații' : null;
-  const ownMobileHeader = bleed || ['/patient/more', '/doctor/more', '/doctor', '/doctor/profile'].includes(location.pathname) || location.pathname.startsWith('/patient/patients/')
-    || (role === 'doctor' && location.pathname === '/doctor/consultations' && chatParamsHas(location.search, 'request'));
+  // Vizitele operatorului urmează același model.
+  const operatorSplit = role === 'operator' && location.pathname === '/operator/patients';
+  const doctorSplit = (role === 'doctor' && location.pathname === '/doctor/consultations') || operatorSplit;
+  const headerTitle = doctorSplit ? (operatorSplit ? 'Vizite' : 'Consultații') : null;
+  const ownMobileHeader = bleed || ['/patient/more', '/doctor/more', '/doctor', '/doctor/profile', '/operator', '/operator/more'].includes(location.pathname) || location.pathname.startsWith('/patient/patients/')
+    || (doctorSplit && chatParamsHas(location.search, 'request'));
   // Conversația deschisă pe telefon ocupă tot ecranul (C2b).
   const chatParams = new URLSearchParams(location.search);
   const fullScreenChat = (role === 'patient' && bleed && ['doctor', 'operator', 'conversation', 'request'].some((key) => chatParams.has(key)))
-    || (role === 'doctor' && location.pathname === '/doctor/consultations' && chatParams.has('request'));
+    || (doctorSplit && chatParams.has('request'));
   // În asistentul de pornire (5a/5b) bara cu pașii ține locul antetului.
   const wizardHeader = location.pathname === '/patient/doctors' && chatParams.get('from') === 'start';
 
@@ -177,10 +180,14 @@ export function AppLayout() {
     ? [...navItems.filter((item) => item.path !== '/patient/profile'), { label: 'Mai mult', path: '/patient/more', icon: Menu }]
     : role === 'doctor'
       ? [...navItems.filter((item) => item.path !== '/doctor/stats'), { label: 'Mai mult', path: '/doctor/more', icon: Ellipsis }]
-      : navItems;
+      : role === 'operator'
+        ? [...navItems.filter((item) => item.path !== '/operator/referrals'), { label: 'Mai mult', path: '/operator/more', icon: Ellipsis }]
+        : navItems;
   const moreMatches = role === 'doctor'
     ? ['/doctor/more', '/doctor/stats', '/doctor/noutati', '/doctor/telegram']
-    : ['/patient/profile', '/patient/patients', '/patient/complaints', '/patient/noutati', '/patient/telegram'];
+    : role === 'operator'
+      ? ['/operator/more', '/operator/referrals', '/operator/noutati', '/operator/telegram']
+      : ['/patient/profile', '/patient/patients', '/patient/complaints', '/patient/noutati', '/patient/telegram'];
 
   const accountMenu = (
     <DropdownMenuContent align="end" side="top" className="w-60">

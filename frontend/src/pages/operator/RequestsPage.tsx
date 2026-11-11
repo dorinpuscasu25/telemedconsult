@@ -1,35 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import {
-  ArrowLeft,
-  CalendarClock,
-  CheckCircle2,
-  ClipboardCheck,
-  ClipboardList,
-  Hourglass,
-  MapPin,
-  MessageSquare,
-  Navigation,
-  PlusCircle,
-  Send,
-  Stethoscope,
-  Wallet,
-  XCircle
-} from 'lucide-react';
+import { ArrowLeft, CheckCircle2, MapPin, MessageSquare, MoreHorizontal, Navigation, Send } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
-import { Tabs, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../components/ui/dropdown-menu';
 import { Textarea } from '../../components/ui/textarea';
 import { ListSkeleton } from '../../components/ui/skeleton';
 import { cn } from '../../components/ui/utils';
-import { PageHeader } from '../../components/app/PageHeader';
-import { EmptyState } from '../../components/app/EmptyState';
-import { ToneBadge } from '../../components/app/StatusBadge';
-import { MoreMenu, type MoreMenuItem } from '../../components/app/MoreMenu';
 import { useDialogs } from '../../components/app/DialogProvider';
 import { apiRequest } from '../../lib/api';
 import { ObjectiveDataForm, toObjectivePayload } from '../../components/ObjectiveDataForm';
@@ -37,6 +18,8 @@ import { dateTime, money, relativeDay, timeOnly, timeUntil } from '../../lib/for
 import { paymentStatusLabel } from '../../lib/status';
 import { useNow } from '../../lib/use-now';
 import { addressOf, mapsUrl, operatorStageOf, patientNameOf, type RequestItem, type Stage } from '../../lib/operator-visits';
+import { usePageTitle } from '../../lib/use-page-title';
+import { Avatar } from '../doctor/DoctorHome';
 
 interface Doctor {
   id: string;
@@ -53,6 +36,7 @@ const STAGES: Array<{ value: Stage; label: string; empty: string; description: s
 const time = (value?: string | null) => (value ? new Date(value).getTime() : 0);
 
 export function RequestsPage() {
+  usePageTitle('Vizite');
   const dialogs = useDialogs();
   const now = useNow();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -110,6 +94,13 @@ export function RequestsPage() {
     const key = selected && operatorStageOf(selected);
     if (key) setStage(key);
   }, [selected?.id, selected?.status, selected?.objective_data_completed_at]); // eslint-disable-line react-hooks/exhaustive-deps
+  // La prima încărcare, fără cereri noi, se deschide direct ce e în lucru.
+  const [stageChosen, setStageChosen] = useState(false);
+  useEffect(() => {
+    if (isLoading || stageChosen) return;
+    setStageChosen(true);
+    if (!selectedId && byStage.new.length === 0 && byStage.active.length > 0) setStage('active');
+  }, [isLoading, stageChosen, selectedId, byStage]);
 
   const list = byStage[stage];
   const shown = selected ?? list[0] ?? null;
@@ -272,62 +263,68 @@ export function RequestsPage() {
     }
   };
 
+  const actionsFor = (request: RequestItem): VisitActions => {
+    const stage = operatorStageOf(request);
+    const busy = busyId === request.id;
+    const chat: VisitAction = { label: 'Mesaje', href: `/operator/chat?request=${request.id}` };
+    if (request.status === 'new') {
+      return {
+        primary: { label: busy ? 'Se preia…' : 'Preia cazul', run: () => void acceptRequest(request), disabled: busy },
+        secondary: [],
+        menu: [{ label: 'Respinge solicitarea', run: () => void rejectRequest(request), danger: true }]
+      };
+    }
+    if (stage === 'active') {
+      return {
+        primary: { label: busy ? 'Se trimite…' : 'Am terminat examinarea', run: () => void completeExamination(request), disabled: busy },
+        secondary: [{ label: 'Adaugă măsurători', run: () => openObjective(request) }, chat],
+        menu: [
+          { label: 'Serviciu suplimentar pe loc', run: () => openAddon(request) },
+          { label: 'Transmite la alt medic', run: () => openForward(request) },
+          { label: 'Reprogramează', run: () => void proposeTime(request) },
+          ...(!request.doctor ? [{ label: 'Finalizează ca operator', run: () => openComplete(request) }] : [])
+        ]
+      };
+    }
+    return { primary: null, secondary: [chat], menu: [] };
+  };
+
+  const counts = { new: byStage.new.length, active: byStage.active.length, done: byStage.done.length };
+
   return (
-    <div className="space-y-5">
-      <PageHeader title="Vizite" description="Examinările la domiciliu din zona ta: cereri noi, vizite în lucru și cele trimise medicului." />
-
-      <div className="grid gap-5 lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)] lg:items-start">
-        <section className={cn('space-y-3 lg:sticky lg:top-24', selected && 'hidden lg:block')} aria-label="Lista vizitelor">
-          <Tabs value={stage} onValueChange={(value) => { setStage(value as Stage); selectRequest(null); }}>
-            <TabsList className="grid w-full grid-cols-3">
-              {STAGES.map((item) => (
-                <TabsTrigger key={item.value} value={item.value} className="gap-1.5 px-2 text-[13px]">
-                  {item.label}
-                  <span className={cn('tabular text-[11px] font-bold', item.value === 'new' && byStage.new.length > 0 ? 'text-amber-600' : 'text-slate-400')}>{byStage[item.value].length}</span>
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-
-          {isLoading ? <ListSkeleton rows={3} /> : list.length === 0 ? (
-            <EmptyState compact icon={ClipboardList} title={STAGES.find((item) => item.value === stage)?.empty} description={STAGES.find((item) => item.value === stage)?.description} />
-          ) : (
-            <ul className="space-y-2">
-              {list.map((request) => (
-                <li key={request.id}>
-                  <VisitListItem request={request} now={now} active={selected?.id === request.id} implicitActive={!selected && shown?.id === request.id} onSelect={() => selectRequest(request.id)} />
-                </li>
-              ))}
-            </ul>
-          )}
+    <>
+      {/* Desktop: lista și vizita pe toată înălțimea */}
+      <div className="hidden lg:grid lg:h-[calc(100dvh-64px)] lg:grid-cols-[380px_minmax(0,1fr)]">
+        <section className="flex min-h-0 flex-col border-r border-slate-200 bg-white" aria-label="Lista vizitelor">
+          <StageTabs stage={stage} counts={counts} onStage={(value) => { setStage(value); selectRequest(null); }} />
+          <div className="flex-1 overflow-y-auto">
+            {isLoading ? <div className="p-4"><ListSkeleton rows={4} /></div> : list.length === 0 ? (
+              <EmptyList stage={stage} />
+            ) : list.map((request) => (
+              <VisitRow key={request.id} request={request} now={now} active={shown?.id === request.id} onSelect={() => selectRequest(request.id)} />
+            ))}
+          </div>
         </section>
-
-        <section className={cn('min-w-0', !selected && 'hidden lg:block')} aria-label="Detaliile vizitei">
-          {selected && (
-            <Button variant="ghost" size="sm" className="-ml-2 mb-2 lg:hidden" onClick={() => selectRequest(null)}>
-              <ArrowLeft className="h-4 w-4" />Înapoi la listă
-            </Button>
-          )}
-          {shown ? (
-            <VisitDetail
-              key={shown.id}
-              request={shown}
-              now={now}
-              busy={busyId === shown.id}
-              onAccept={() => void acceptRequest(shown)}
-              onReject={() => void rejectRequest(shown)}
-              onExamDone={() => void completeExamination(shown)}
-              onObjective={() => openObjective(shown)}
-              onForward={() => openForward(shown)}
-              onAddon={() => openAddon(shown)}
-              onPropose={() => void proposeTime(shown)}
-              onComplete={() => openComplete(shown)}
-            />
-          ) : !isLoading && (
-            <EmptyState icon={MapPin} title="Selectează o vizită" description="Adresa, investigațiile și acțiunile apar aici." className="py-20" />
+        <section className="min-w-0 overflow-y-auto px-7 py-6" aria-label="Detaliile vizitei">
+          {shown ? <VisitDetail key={shown.id} request={shown} now={now} actions={actionsFor(shown)} /> : !isLoading && (
+            <div className="grid h-full place-items-center text-center text-sm text-slate-500"><span><MapPin className="mx-auto mb-3 h-8 w-8 text-slate-300" />Alege o vizită din listă.</span></div>
           )}
         </section>
       </div>
+
+      {/* Telefon: lista */}
+      <div className="flex flex-col gap-3 lg:hidden">
+        <h1 className="text-2xl font-bold tracking-[-.02em] text-slate-950">Vizite</h1>
+        <div className="-mx-4 border-y border-slate-200 bg-white">
+          <StageTabs stage={stage} counts={counts} onStage={setStage} />
+          {isLoading ? <div className="p-4"><ListSkeleton rows={3} /></div> : list.length === 0 ? <EmptyList stage={stage} /> : list.map((request) => (
+            <VisitRow key={request.id} request={request} now={now} active={false} onSelect={() => selectRequest(request.id)} />
+          ))}
+        </div>
+      </div>
+
+      {/* Telefon: vizita pe tot ecranul */}
+      {selected && <MobileVisit request={selected} now={now} actions={actionsFor(selected)} onBack={() => selectRequest(null)} />}
 
       <Dialog open={isObjectiveModalOpen} onOpenChange={setIsObjectiveModalOpen}>
         <DialogContent className="sm:max-w-[620px]">
@@ -433,162 +430,224 @@ export function RequestsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+type VisitAction = { label: string; run?: () => void; href?: string; disabled?: boolean; danger?: boolean };
+type VisitActions = { primary: VisitAction | null; secondary: VisitAction[]; menu: VisitAction[] };
+
+const STAGE_TABS: Array<[Stage, string]> = [['new', 'Cereri noi'], ['active', 'În lucru'], ['done', 'Finalizate']];
+const STEPS = ['Cerere', 'Preluată', 'Examinare făcută', 'Concluzia medicului'];
+
+function stepIndex(request: RequestItem) {
+  const stage = operatorStageOf(request);
+  if (request.status === 'completed') return 3;
+  return stage === 'done' ? 2 : stage === 'active' ? 1 : 0;
+}
+
+function statusOf(request: RequestItem): { label: string; tone: string } {
+  if (request.status === 'rescheduled') return { label: 'Așteaptă pacientul', tone: 'bg-orange-50 text-orange-800' };
+  const stage = operatorStageOf(request);
+  if (stage === 'new') return { label: 'Cerere nouă', tone: 'bg-amber-100 text-amber-800' };
+  if (stage === 'active') return { label: 'În lucru', tone: 'bg-blue-50 text-blue-700' };
+  return request.status === 'completed' ? { label: 'Consultație încheiată', tone: 'bg-slate-100 text-slate-600' } : { label: 'La medic', tone: 'bg-emerald-50 text-emerald-700' };
+}
+
+function whenOf(request: RequestItem) {
+  return request.scheduled_at ? `${relativeDay(request.scheduled_at)}, ${timeOnly(request.scheduled_at)}` : 'Cât mai curând';
+}
+
+function subtitleOf(request: RequestItem) {
+  return [request.patient_profile?.patient_code && `#${request.patient_profile.patient_code}`, request.patient?.name && request.patient.name !== patientNameOf(request) && `titular ${request.patient.name}`, request.doctor?.name && `medic ${request.doctor.name}`].filter(Boolean).join(' · ');
+}
+
+function StageTabs({ stage, counts, onStage }: { stage: Stage; counts: Record<Stage, number>; onStage: (stage: Stage) => void }) {
+  return (
+    <div className="p-4">
+      <div className="grid grid-cols-3 gap-0.5 rounded-[10px] bg-slate-100 p-[3px]">
+        {STAGE_TABS.map(([value, label]) => (
+          <button key={value} type="button" onClick={() => onStage(value)}
+            className={cn('flex h-8 items-center justify-center gap-[5px] rounded-lg text-[13px] font-medium', stage === value ? 'bg-white text-slate-950 shadow-[0_1px_2px_rgba(15,23,42,.12)]' : 'text-slate-500')}>
+            <span className="truncate">{label}</span><span className={cn('text-[11px]', value === 'new' && counts.new > 0 ? 'font-bold text-amber-600' : 'text-slate-400')}>{counts[value]}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
 
-function VisitListItem({ request, now, active, implicitActive = false, onSelect }: { request: RequestItem; now: number; active: boolean; implicitActive?: boolean; onSelect: () => void }) {
-  const address = addressOf(request);
+function EmptyList({ stage }: { stage: Stage }) {
+  const item = STAGES.find((entry) => entry.value === stage);
+  return <div className="border-t border-slate-100 px-4 py-8 text-center"><p className="text-sm font-medium text-slate-700">{item?.empty}</p><p className="mt-1 text-[13px] text-slate-500">{item?.description}</p></div>;
+}
+
+function VisitRow({ request, now, active, onSelect }: { request: RequestItem; now: number; active: boolean; onSelect: () => void }) {
   const expiresIn = request.status === 'new' ? timeUntil(request.acceptance_expires_at, now) : null;
-  const when = request.scheduled_at || request.created_at;
+  const investigations = request.pricing_snapshot?.cost_breakdown?.investigations ?? [];
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-current={active ? 'true' : undefined}
-      className={cn('w-full rounded-2xl border bg-white p-4 text-left transition', active ? 'border-primary/40 shadow-sm ring-2 ring-primary/15' : implicitActive ? 'border-slate-200 hover:border-slate-300 lg:border-primary/40 lg:shadow-sm lg:ring-2 lg:ring-primary/15' : 'border-slate-200 hover:border-slate-300 hover:shadow-sm')}>
-      <span className="flex items-start justify-between gap-3">
-        <span className="truncate font-semibold text-slate-900">{patientNameOf(request)}</span>
-        <span className="tabular shrink-0 text-xs text-slate-500">{relativeDay(when)}, {timeOnly(when)}</span>
-      </span>
-      {address && <span className="mt-1 flex items-start gap-1.5 text-sm text-slate-600"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" /><span className="line-clamp-2">{address}</span></span>}
-      <span className="mt-2.5 flex flex-wrap items-center gap-2">
-        {request.status === 'rescheduled' ? <ToneBadge tone="attention">Așteaptă răspunsul pacientului</ToneBadge>
-          : operatorStageOf(request) === 'new' ? <ToneBadge tone="warning">Cerere nouă</ToneBadge>
-            : operatorStageOf(request) === 'active' ? <ToneBadge tone="info">În lucru</ToneBadge>
-              : <ToneBadge tone={request.status === 'completed' ? 'neutral' : 'success'}>{request.status === 'completed' ? 'Consultație încheiată' : 'La medic'}</ToneBadge>}
-        {expiresIn && <span className={cn('inline-flex items-center gap-1 text-xs font-semibold', expiresIn === 'expirat' ? 'text-red-600' : 'text-amber-700')}><Hourglass className="h-3 w-3" />{expiresIn === 'expirat' ? 'Termen depășit' : `Preia în ${expiresIn}`}</span>}
+    <button type="button" onClick={onSelect} aria-current={active ? 'true' : undefined}
+      className={cn('flex w-full gap-3 border-t border-slate-100 px-4 py-3.5 text-left', active ? 'bg-blue-50 shadow-[inset_3px_0_0_#2563EB]' : 'bg-white hover:bg-slate-50')}>
+      <Avatar name={patientNameOf(request)} size={38} />
+      <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
+        <span className="flex justify-between gap-2"><span className="truncate text-sm font-semibold text-slate-950">{patientNameOf(request)}</span><span className="whitespace-nowrap text-xs text-slate-400">{whenOf(request)}</span></span>
+        <span className="truncate text-[13px] text-slate-700">{addressOf(request) || 'Adresă necompletată'}</span>
+        <span className="flex items-center justify-between gap-2">
+          <span className="truncate text-xs text-slate-500">{investigations.length ? `${investigations.length} ${investigations.length === 1 ? 'investigație' : 'investigații'}` : 'Examinare la domiciliu'}</span>
+          {expiresIn ? <span className={cn('whitespace-nowrap text-xs font-semibold', expiresIn === 'expirat' ? 'text-red-600' : 'text-amber-700')}>{expiresIn === 'expirat' ? 'Termen depășit' : `preia în ${expiresIn}`}</span>
+            : <span className="whitespace-nowrap text-[13px] font-bold text-slate-950">{money(request.amount)} MDL</span>}
+        </span>
       </span>
     </button>
   );
 }
 
-function VisitDetail({
-  request,
-  now,
-  busy,
-  onAccept,
-  onReject,
-  onExamDone,
-  onObjective,
-  onForward,
-  onAddon,
-  onPropose,
-  onComplete
-}: {
-  request: RequestItem;
-  now: number;
-  busy: boolean;
-  onAccept: () => void;
-  onReject: () => void;
-  onExamDone: () => void;
-  onObjective: () => void;
-  onForward: () => void;
-  onAddon: () => void;
-  onPropose: () => void;
-  onComplete: () => void;
-}) {
-  const stage = operatorStageOf(request);
+function ActionButton({ action, primary = false, className }: { action: VisitAction; primary?: boolean; className?: string }) {
+  const classes = cn('flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-[10px] px-4 text-sm',
+    primary ? cn('px-[18px] text-[15px] font-semibold text-white', action.disabled ? 'bg-blue-300' : 'bg-blue-600 hover:bg-blue-700')
+      : action.danger ? 'border border-slate-200 bg-white font-medium text-red-600 hover:bg-red-50' : 'border border-slate-200 bg-white font-medium text-slate-950 hover:bg-slate-50', className);
+  if (action.href) return <Link to={action.href} className={classes}>{action.href.includes('/chat') && <MessageSquare className="h-4 w-4" />}{action.label}</Link>;
+  return <button type="button" onClick={action.run} disabled={action.disabled} className={classes}>{action.label}</button>;
+}
+
+/** Ce trebuie să știe operatorul înainte să plece: termen, reprogramare. */
+function VisitBanner({ request, now }: { request: RequestItem; now: number }) {
+  const expiresIn = request.status === 'new' ? timeUntil(request.acceptance_expires_at, now) : null;
+  if (expiresIn) {
+    return expiresIn === 'expirat'
+      ? <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">Termenul de preluare a expirat.</p>
+      : <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Preia cazul în <strong>{expiresIn}</strong>, altfel cererea trece la alt operator.</p>;
+  }
+  if (request.status === 'rescheduled') return <p className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">Ai propus o oră nouă{request.proposed_scheduled_at ? ` (${dateTime(request.proposed_scheduled_at)})` : ''}. Așteptăm confirmarea pacientului.</p>;
+  if (operatorStageOf(request) === 'active') return <p className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">Datele aparatului HIGO se atașează singure. Când termini, apasă „Am terminat examinarea” și cazul trece la medic.</p>;
+  return null;
+}
+
+function AddressCard({ request }: { request: RequestItem }) {
   const address = addressOf(request);
   const investigations = request.pricing_snapshot?.cost_breakdown?.investigations ?? [];
   const travelFee = request.pricing_snapshot?.cost_breakdown?.travel_fee;
-  const expiresIn = request.status === 'new' ? timeUntil(request.acceptance_expires_at, now) : null;
-
-  let primary: React.ReactNode = null;
-  const secondary: React.ReactNode[] = [];
-  const more: MoreMenuItem[] = [];
-  const chat = <Button key="chat" asChild variant="outline"><Link to={`/operator/chat?request=${request.id}`}><MessageSquare className="h-4 w-4" />Mesaje</Link></Button>;
-
-  if (request.status === 'new') {
-    primary = <Button onClick={onAccept} disabled={busy}><CheckCircle2 className="h-4 w-4" />{busy ? 'Se preia…' : 'Preia cazul'}</Button>;
-    more.push({ label: 'Respinge solicitarea', icon: XCircle, onSelect: onReject, danger: true });
-  } else if (stage === 'active') {
-    primary = <Button onClick={onExamDone} disabled={busy}><ClipboardCheck className="h-4 w-4" />{busy ? 'Se trimite…' : 'Am terminat examinarea'}</Button>;
-    secondary.push(<Button key="manual" variant="outline" onClick={onObjective}><Stethoscope className="h-4 w-4" />Adaugă măsurători</Button>);
-    secondary.push(chat);
-    more.push({ label: 'Serviciu suplimentar pe loc', icon: PlusCircle, onSelect: onAddon });
-    more.push({ label: 'Transmite la alt medic', icon: Send, onSelect: onForward });
-    more.push({ label: 'Reprogramează', icon: CalendarClock, onSelect: onPropose });
-    if (!request.doctor) more.push({ label: 'Finalizează ca operator', icon: CheckCircle2, onSelect: onComplete, separatorBefore: true });
-  } else if (stage === 'done') {
-    secondary.push(chat);
-  }
-
+  const done = operatorStageOf(request) === 'done';
   return (
-    <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <header className="border-b border-slate-100 p-5 sm:p-6">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <h2 className="text-xl font-bold tracking-tight text-slate-950">{patientNameOf(request)}</h2>
-          {stage === 'done' && <ToneBadge tone={request.status === 'completed' ? 'neutral' : 'success'}>{request.status === 'completed' ? 'Consultație încheiată' : 'Examinare trimisă medicului'}</ToneBadge>}
+    <div className="flex flex-col gap-3.5 rounded-2xl border border-slate-200 bg-white p-5">
+      <div className="flex items-center gap-3.5">
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-700"><MapPin className="h-[22px] w-[22px]" /></span>
+        <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+          <span className="text-xs font-semibold tracking-[.04em] text-slate-500">ADRESA</span>
+          <span className="text-base font-semibold text-slate-950">{address || 'Adresă necompletată'}</span>
         </div>
-        <p className="mt-1 text-sm text-slate-500">
-          {[request.patient_profile?.patient_code && `Cod pacient ${request.patient_profile.patient_code}`, request.patient?.name && `Titular: ${request.patient.name}`, request.doctor?.name && `Medic: ${request.doctor.name}`].filter(Boolean).join(' · ')}
-        </p>
-
-        {address && (
-          <div className="mt-5 flex flex-col gap-3 rounded-xl border border-slate-200 p-4 sm:flex-row sm:items-center">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><MapPin className="h-5 w-5" /></span>
-            <p className="min-w-0 flex-1 text-sm font-medium text-slate-900">{address}</p>
-            <Button asChild variant="outline" size="sm"><a href={mapsUrl(address)} target="_blank" rel="noreferrer"><Navigation className="h-4 w-4" />Deschide în hărți</a></Button>
-          </div>
-        )}
-
-        <dl className="mt-3 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-xl border border-slate-100 bg-slate-50/60 px-3.5 py-3">
-            <dt className="flex items-center gap-1.5 text-xs font-medium text-slate-500"><CalendarClock className="h-3.5 w-3.5" />{request.scheduled_at ? 'Programare' : 'Cerere trimisă'}</dt>
-            <dd className="mt-1 text-sm font-semibold text-slate-900">{dateTime(request.scheduled_at || request.created_at)}</dd>
-            {request.proposed_scheduled_at && <dd className="text-xs text-orange-700">Propus: {dateTime(request.proposed_scheduled_at)}</dd>}
-          </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50/60 px-3.5 py-3">
-            <dt className="flex items-center gap-1.5 text-xs font-medium text-slate-500"><Wallet className="h-3.5 w-3.5" />Plată</dt>
-            <dd className="mt-1 text-sm font-semibold text-slate-900">{money(request.amount)} MDL</dd>
-            <dd className="text-xs text-slate-500">{[paymentStatusLabel(request.payment_status), travelFee != null && `deplasare ${money(travelFee)} MDL`].filter(Boolean).join(' · ')}</dd>
-          </div>
-        </dl>
-
-        {expiresIn && (
-          <p className={cn('mt-3 flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-sm', expiresIn === 'expirat' ? 'bg-red-50 text-red-800' : 'bg-amber-50 text-amber-900')}>
-            <Hourglass className="h-4 w-4 shrink-0" />{expiresIn === 'expirat' ? 'Termenul de preluare a expirat.' : <>Preia cazul în <strong>{expiresIn}</strong>, altfel cererea trece la alt operator.</>}
-          </p>
-        )}
-        {request.status === 'rescheduled' && <p className="mt-3 rounded-xl bg-orange-50 px-3.5 py-2.5 text-sm text-orange-900">Ai propus o oră nouă. Așteptăm confirmarea pacientului.</p>}
-
-        {(primary || secondary.length > 0) && (
-          <div className="mt-5 flex flex-wrap items-center gap-2">
-            {primary}
-            {secondary}
-            <MoreMenu items={more} />
-          </div>
-        )}
-      </header>
-
-      <div className="space-y-5 p-5 sm:p-6">
-        {investigations.length > 0 && (
-          <section>
-            <h3 className="text-sm font-semibold text-slate-900">Investigații de efectuat</h3>
-            <ul className="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-200">
-              {investigations.map((line) => (
-                <li key={line.id} className="flex items-center gap-3 px-3.5 py-2.5 text-sm">
-                  <span className={cn('grid h-5 w-5 shrink-0 place-items-center rounded-md border', stage === 'done' ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300')}>{stage === 'done' && <CheckCircle2 className="h-3.5 w-3.5" />}</span>
-                  <span className="flex-1 text-slate-800">{line.name}</span>
-                  <span className="text-xs text-slate-500">{line.requirement === 'required' ? 'obligatorie' : 'opțională'}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-        <section>
-          <h3 className="text-sm font-semibold text-slate-900">Acuzele pacientului</h3>
-          <p className="mt-2 whitespace-pre-wrap rounded-xl bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700">{request.symptoms || 'Fără detalii.'}</p>
-        </section>
-        {request.triage_notes && (
-          <section>
-            <h3 className="text-sm font-semibold text-slate-900">Note de triaj</h3>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{request.triage_notes}</p>
-          </section>
-        )}
+        {address && <a href={mapsUrl(address)} target="_blank" rel="noreferrer" className="hidden h-[38px] shrink-0 items-center gap-2 rounded-[10px] border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-950 hover:bg-slate-50 sm:flex"><Navigation className="h-4 w-4" />Navigare</a>}
       </div>
-    </article>
+      {address && <a href={mapsUrl(address)} target="_blank" rel="noreferrer" className="-mt-1 flex h-11 items-center justify-center gap-2 rounded-[10px] border border-slate-200 bg-white text-sm font-medium text-slate-950 sm:hidden"><Navigation className="h-4 w-4" />Deschide în hărți</a>}
+      <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-3.5">
+        <div className="flex flex-col gap-1"><span className="text-xs text-slate-500">{request.scheduled_at ? 'Programare' : 'Cerere trimisă'}</span><span className="text-sm font-semibold text-slate-950">{dateTime(request.scheduled_at || request.created_at)}</span></div>
+        <div className="flex flex-col gap-1"><span className="text-xs text-slate-500">Plată</span><span className="text-sm font-semibold text-slate-950">{money(request.amount)} MDL</span><span className="text-xs text-slate-500">{[paymentStatusLabel(request.payment_status), travelFee != null && `deplasare ${money(travelFee)} MDL`].filter(Boolean).join(' · ')}</span></div>
+      </div>
+      {investigations.length > 0 && (
+        <div className="flex flex-col gap-2 border-t border-slate-100 pt-3.5">
+          <span className="text-xs font-semibold tracking-[.04em] text-slate-500">INVESTIGAȚII DE EFECTUAT</span>
+          <ul className="flex flex-col gap-1.5">
+            {investigations.map((line) => (
+              <li key={line.id} className="flex items-center gap-2.5 text-sm">
+                <span className={cn('grid h-5 w-5 shrink-0 place-items-center rounded-md border', done ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300')}>{done && <CheckCircle2 className="h-3.5 w-3.5" />}</span>
+                <span className="flex-1 text-slate-950">{line.name}</span>
+                <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', line.requirement === 'required' ? 'bg-slate-100 text-slate-700' : 'bg-blue-50 text-blue-700')}>{line.requirement === 'required' ? 'obligatorie' : 'opțională'}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NotesCard({ request }: { request: RequestItem }) {
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-5">
+      <div className="flex flex-col gap-1.5"><span className="text-xs font-semibold tracking-[.04em] text-slate-500">ACUZE</span><span className="whitespace-pre-wrap text-[15px] leading-[1.55] text-slate-950">{request.symptoms || 'Pacientul nu a descris acuzele.'}</span></div>
+      {request.triage_notes && <div className="flex flex-col gap-1.5 border-t border-slate-100 pt-3"><span className="text-xs font-semibold tracking-[.04em] text-slate-500">NOTE DE TRIAJ</span><span className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{request.triage_notes}</span></div>}
+    </div>
+  );
+}
+
+function VisitDetail({ request, now, actions }: { request: RequestItem; now: number; actions: VisitActions }) {
+  const index = stepIndex(request);
+  const status = statusOf(request);
+  return (
+    <div className="flex max-w-[880px] flex-col gap-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <Avatar name={patientNameOf(request)} size={52} />
+          <div className="flex flex-col gap-[3px]"><h2 className="text-xl font-bold tracking-[-.01em] text-slate-950">{patientNameOf(request)}</h2><span className="text-[13px] text-slate-500">{subtitleOf(request) || `#${request.id}`}</span></div>
+        </div>
+        <span className={cn('whitespace-nowrap rounded-full px-[11px] py-[5px] text-xs font-semibold', status.tone)}>{status.label}</span>
+      </div>
+
+      <div className="grid grid-cols-4 gap-1.5">
+        {STEPS.map((label, i) => (
+          <div key={label} className="flex flex-col gap-1.5">
+            <div className={cn('h-1 rounded-sm', i <= index ? 'bg-blue-600' : 'bg-slate-200')} />
+            <span className={cn('text-xs', i <= index ? 'text-slate-950' : 'text-slate-400', i === index ? 'font-semibold' : 'font-medium')}>{label}</span>
+          </div>
+        ))}
+      </div>
+
+      <VisitBanner request={request} now={now} />
+      <AddressCard request={request} />
+      <NotesCard request={request} />
+
+      {(actions.primary || actions.secondary.length > 0) && (
+        <div className="flex flex-wrap items-center gap-2.5">
+          {actions.primary && <ActionButton action={actions.primary} primary />}
+          {actions.secondary.map((action) => <ActionButton key={action.label} action={action} />)}
+          {actions.menu.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button type="button" aria-label="Mai multe acțiuni" className="grid h-11 w-11 place-items-center rounded-[10px] border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"><MoreHorizontal className="h-[18px] w-[18px]" /></button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="top" className="min-w-[260px] rounded-xl p-1.5">
+                {actions.menu.map((action) => (
+                  <DropdownMenuItem key={action.label} onSelect={action.run} className={cn('h-10 cursor-pointer rounded-lg px-3 text-sm', action.danger ? 'text-red-600 focus:text-red-700' : 'text-slate-950')}>{action.label}</DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MobileVisit({ request, now, actions, onBack }: { request: RequestItem; now: number; actions: VisitActions; onBack: () => void }) {
+  const status = statusOf(request);
+  // Pe telefon, meniul „⋯” devine butoane pe două coloane.
+  const extra = [...actions.secondary, ...actions.menu];
+  return (
+    <div className="fixed inset-0 z-40 flex flex-col bg-slate-50 lg:hidden">
+      <div className="flex items-center gap-1 px-2 pb-2.5 pt-[max(12px,env(safe-area-inset-top))]">
+        <button type="button" onClick={onBack} aria-label="Înapoi" className="grid h-10 w-10 place-items-center text-slate-700"><ArrowLeft className="h-[22px] w-[22px]" /></button>
+        <span className="flex-1 text-[17px] font-semibold text-slate-950">{status.label}</span>
+      </div>
+      <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 pb-4 pt-1">
+        <div className="flex items-center gap-3 px-0.5 py-1">
+          <Avatar name={patientNameOf(request)} size={48} />
+          <div className="flex flex-col gap-0.5"><span className="text-lg font-bold text-slate-950">{patientNameOf(request)}</span><span className="text-[13px] text-slate-500">{subtitleOf(request) || `#${request.id}`}</span></div>
+        </div>
+        <VisitBanner request={request} now={now} />
+        <AddressCard request={request} />
+        <NotesCard request={request} />
+      </div>
+      {(actions.primary || extra.length > 0) && (
+        <div className="flex flex-col gap-2 border-t border-slate-200 bg-white px-4 pb-[max(28px,env(safe-area-inset-bottom))] pt-3">
+          {actions.primary && <ActionButton action={actions.primary} primary className="h-12 w-full" />}
+          {extra.length > 0 && (
+            <div className={cn('grid gap-2', extra.length === 1 ? 'grid-cols-1' : 'grid-cols-2')}>
+              {extra.map((action) => <ActionButton key={action.label} action={action} className="h-11 w-full px-2" />)}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
