@@ -23,6 +23,14 @@ Schedule::command('higo:pull')
     ->runInBackground();
 
 /*
+ * Banii consultațiilor: închide și plătește consultațiile fără recenzie ajunse
+ * la termen și returnează banii celor care nu au avut loc.
+ */
+Schedule::command('consultations:settle')
+    ->everyTenMinutes()
+    ->withoutOverlapping();
+
+/*
  * Reamintirea medicului cu 15 minute înainte de consultație.
  */
 Schedule::command('consultations:remind')

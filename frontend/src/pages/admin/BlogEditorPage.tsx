@@ -116,7 +116,7 @@ export function AdminBlogEditorPage() {
   }
 
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center gap-3">
         <Button type="button" variant="outline" size="icon" className="rounded-xl bg-white" onClick={() => navigate('/admin/blog')}>
           <ArrowLeft className="h-4 w-4" />

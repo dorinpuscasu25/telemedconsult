@@ -13,6 +13,7 @@ use App\Models\Specialty;
 use App\Models\User;
 use App\Models\WithdrawalRequest;
 use App\Notifications\InstitutionInvitationNotification;
+use App\Services\InstitutionLedger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Support\Facades\Notification;
@@ -184,6 +185,11 @@ class MedicalInstitutionTest extends TestCase
 
         Sanctum::actingAs($doctor);
         $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['diagnosis' => 'Test'])->assertOk();
+        // Partea instituției se fixează abia când pacientul închide consultația.
+        $this->assertSame(0, InstitutionEarning::count());
+        Sanctum::actingAs(User::findOrFail($request->patient_id));
+        $this->postJson('/api/v1/requests/'.$request->id.'/review', ['rating' => 5, 'comment' => 'Mulțumesc'])->assertCreated();
+        Sanctum::actingAs($doctor);
 
         $request->refresh();
         $earning = InstitutionEarning::firstOrFail();
@@ -274,6 +280,36 @@ class MedicalInstitutionTest extends TestCase
         $profile = DoctorProfile::where('user_id', $doctor->id)->firstOrFail();
         $this->assertNull($profile->medical_institution_id);
         $this->assertTrue($doctor->fresh()->hasRole('doctor'));
+    }
+
+    public function test_admin_deletes_an_institution_without_history_and_its_doctors_become_independent(): void
+    {
+        [$institution, $manager] = $this->institution();
+        $doctor = $this->doctor($institution);
+        Sanctum::actingAs($this->userWithRole('admin'));
+
+        $this->deleteJson('/api/v1/admin/institutions/'.$institution->id)->assertOk();
+
+        $this->assertModelMissing($institution);
+        $this->assertModelMissing($manager);
+        $profile = $doctor->doctorProfile()->first();
+        $this->assertNull($profile->medical_institution_id);
+        $this->assertNull($profile->institution_joined_at);
+        $this->assertTrue($doctor->fresh()->hasRole('doctor'));
+    }
+
+    public function test_institution_with_earnings_cannot_be_deleted(): void
+    {
+        [$institution] = $this->institution();
+        $doctor = $this->doctor($institution);
+        app(InstitutionLedger::class)->recordEarning($this->consultationFor($doctor, 10000), $doctor);
+        Sanctum::actingAs($this->userWithRole('admin'));
+
+        $this->deleteJson('/api/v1/admin/institutions/'.$institution->id)->assertUnprocessable();
+        $this->assertModelExists($institution);
+
+        Sanctum::actingAs($this->userWithRole('doctor'));
+        $this->deleteJson('/api/v1/admin/institutions/'.$institution->id)->assertForbidden();
     }
 
     /**

@@ -257,7 +257,7 @@ export function RegionsPage() {
                     </Badge>
                   )}
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                   <label className="flex items-center gap-2 text-sm text-slate-600">
                     Activă
                     <Switch checked={region.is_active} onCheckedChange={() => toggleRegionActive(region)} />

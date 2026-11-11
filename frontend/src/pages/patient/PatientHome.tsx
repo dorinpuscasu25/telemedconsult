@@ -435,7 +435,7 @@ function InlineReview({ requestId, onDone, className, compact = false }: { reque
     setSaving(true);
     try {
       await apiRequest(`/requests/${requestId}/review`, { method: 'POST', body: JSON.stringify({ rating, comment: comment.trim() }) });
-      toast.success('Mulțumim! Poți programa din nou.');
+      toast.success('Mulțumim! Consultația s-a închis și plata a ajuns la medic.');
       onDone();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Nu am putut salva evaluarea.');
@@ -458,7 +458,8 @@ function InlineReview({ requestId, onDone, className, compact = false }: { reque
     <form onSubmit={submit} className={cn('flex flex-col gap-2', compact && 'lg:shrink-0', className)}>
       {stars}
       {rating > 0 && <Textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Câteva cuvinte despre consultație" maxLength={2000} className="min-h-[64px] bg-white text-sm" required />}
-      {rating > 0 && <Button type="submit" size="sm" disabled={saving || !comment.trim()} className="self-start">{saving ? 'Se trimite…' : 'Trimite evaluarea'}</Button>}
+      {rating > 0 && <p className="text-xs leading-5 text-slate-500">Trimiterea închide consultația: abia atunci plata rezervată ajunge la medic.</p>}
+      {rating > 0 && <Button type="submit" size="sm" disabled={saving || !comment.trim()} className="self-start">{saving ? 'Se trimite…' : 'Trimite și închide consultația'}</Button>}
     </form>
   );
 }

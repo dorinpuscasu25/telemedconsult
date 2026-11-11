@@ -26,6 +26,9 @@ import { Avatar } from './DoctorHome';
 import { ServiceIcon } from '../../components/doctor/ServiceIcon';
 
 interface ConsultationRequest {
+  closed_at?: string | null;
+  auto_close_at?: string | null;
+  settlement?: { auto_close_days: number; no_show_refund_hours: number } | null;
   id: string;
   type: string;
   status: string;
@@ -133,7 +136,9 @@ function bannerFor(request: ConsultationRequest, stage: Stage, now: number): Ban
       return {
         tone: 'green',
         title: 'Concluzia a fost publicată. Pacientul a primit documentul PDF.',
-        text: `${price} au intrat în balanța ta.${request.free_chat_until && time(request.free_chat_until) > now ? ` Chatul rămâne deschis gratuit până ${whenLabel(request.free_chat_until).split(',')[0]}.` : ''}`
+        text: `${request.payment_status === 'captured'
+          ? `Pacientul a închis consultația: ${price} au intrat în balanța ta.`
+          : `${price} ajung în balanța ta când pacientul închide consultația cu o recenzie${request.auto_close_at ? ` sau automat ${whenLabel(request.auto_close_at).split(',')[0]}` : ''}.`}${request.free_chat_until && time(request.free_chat_until) > now ? ` Chatul rămâne deschis gratuit până ${whenLabel(request.free_chat_until).split(',')[0]}.` : ''}`
       };
     case 'expired':
       return { tone: 'grey', title: request.cancellation_reason || 'Cererea a expirat', text: `${price} au revenit în portofelul pacientului. Ambii ați primit notificare.` };
@@ -469,7 +474,7 @@ function Detail({ request, now, actions, linkState, onChart }: {
             <span className="text-base font-semibold text-slate-950">{service?.name ?? 'Consultație'}</span>
             {service && <span className="text-[13px] text-slate-500">{serviceMeta(service)}</span>}
           </div>
-          <div className="flex flex-col items-end gap-0.5"><span className="text-[22px] font-bold text-slate-950">{mdl(priceOf(request))}</span><span className="text-xs text-slate-500">{MONEY_NOTE[stage]}</span></div>
+          <div className="flex flex-col items-end gap-0.5"><span className="text-[22px] font-bold text-slate-950">{mdl(priceOf(request))}</span><span className="text-xs text-slate-500">{stage === 'done' && request.payment_status !== 'captured' ? 'se transferă la închidere' : MONEY_NOTE[stage]}</span></div>
         </div>
         {service?.type === 'home' && (
           <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-3.5">

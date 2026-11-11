@@ -67,6 +67,12 @@ export function getEcho() {
   return echo;
 }
 
+/** True cât conexiunea WebSocket e deschisă; altfel aplicația cade pe interogări dese. */
+export function realtimeConnected(): boolean {
+  const connector = echo?.connector as { pusher?: { connection?: { state?: string } } } | undefined;
+  return connector?.pusher?.connection?.state === 'connected';
+}
+
 export function disconnectEcho() {
   echo?.disconnect();
   echo = null;

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Events\VideoCallUpdated;
 use App\Jobs\CloseConsultationVideo;
 use App\Models\ConsultationRequest;
 use App\Models\Conversation;
@@ -17,6 +18,7 @@ use App\Services\PlatformConfig;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
@@ -58,6 +60,26 @@ class ConsultationVideoTest extends TestCase
         $this->postJson('/api/v1/requests/'.$consultation->id.'/video/invite')->assertUnprocessable();
         Sanctum::actingAs($this->userWithRole('patient'));
         $this->postJson('/api/v1/requests/'.$consultation->id.'/video/invite')->assertForbidden();
+    }
+
+    public function test_call_changes_are_pushed_to_both_participants_in_realtime(): void
+    {
+        [$patient, $doctor, $consultation] = $this->scenario();
+        Event::fake([VideoCallUpdated::class]);
+        Sanctum::actingAs($patient);
+        $this->postJson('/api/v1/requests/'.$consultation->id.'/video/invite')->assertOk();
+
+        Event::assertDispatched(VideoCallUpdated::class, function (VideoCallUpdated $event) use ($patient, $doctor) {
+            $channels = collect($event->broadcastOn())->map(fn ($channel) => $channel->name)->all();
+
+            return $event->call->status === 'ringing'
+                && $channels === ['private-App.Models.User.'.$patient->id, 'private-App.Models.User.'.$doctor->id];
+        });
+
+        Sanctum::actingAs($doctor);
+        $call = VideoCallInvitation::latest('id')->firstOrFail();
+        $this->postJson('/api/v1/video-calls/'.$call->id.'/respond', ['action' => 'decline'])->assertOk();
+        Event::assertDispatched(VideoCallUpdated::class, fn (VideoCallUpdated $event) => $event->call->status === 'declined');
     }
 
     public function test_loopback_video_server_is_allowed_only_in_local_environment(): void

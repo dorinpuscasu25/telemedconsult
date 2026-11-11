@@ -79,6 +79,7 @@ interface CostPreview {
     promo_max_payment_percent: number;
   };
   wallet?: { balance: number; points_balance: number; promo_balance: number; shortfall: number };
+  settlement?: { auto_close_days: number; no_show_refund_hours: number };
   cost?: {
     doctor_base: number;
     investigations: CostLine[];
@@ -519,7 +520,9 @@ export function DoctorsList() {
                       ? <span className="flex items-center gap-[5px] truncate text-xs text-slate-500"><Building2 className="h-3.5 w-3.5 shrink-0" />{doctor.institution.name}</span>
                       : <span className="truncate text-[13px] text-slate-500">{doctor.specialty || 'Medic'}{doctor.experience_years > 0 ? ` · ${doctor.experience_years} ani` : ''}</span>}
                   </span>
-                  <span className="shrink-0 whitespace-nowrap text-[13px] text-slate-600">★ {Number(doctor.rating || 0).toLocaleString('ro-RO', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
+                  {doctor.reviews_count > 0
+                    ? <span className="shrink-0 whitespace-nowrap text-[13px] text-slate-600">★ {Number(doctor.rating || 0).toLocaleString('ro-RO', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
+                    : <span className="shrink-0 whitespace-nowrap text-xs text-slate-400">Nou</span>}
                 </button>
                 {legacy ? (
                   <>
@@ -747,7 +750,7 @@ export function DoctorsList() {
                         ) : (
                           <div className="flex gap-2.5 rounded-xl bg-blue-50 px-3.5 py-3 text-[13px] leading-[1.45] text-blue-950">
                             <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
-                            <span>Rezervăm {mdl(preview.payment.real_amount)} MDL din Bani{preview.payment.points_amount > 0 ? ` și ${mdl(preview.payment.points_amount)} bonusuri` : ''} până după consultație. Dacă medicul refuză sau se anulează, revin în portofel.{preview.wallet ? ` Rămân ${mdl(Math.max(0, preview.wallet.balance - preview.payment.real_amount))} MDL.` : ''}</span>
+                            <span>Rezervăm {mdl(preview.payment.real_amount)} MDL din Bani{preview.payment.points_amount > 0 ? ` și ${mdl(preview.payment.points_amount)} bonusuri` : ''}{preview.wallet ? ` (rămân ${mdl(Math.max(0, preview.wallet.balance - preview.payment.real_amount))} MDL)` : ''}. Medicul primește banii abia după ce închizi consultația lăsând o recenzie{preview.settlement ? ` (sau automat după ${preview.settlement.auto_close_days} ${preview.settlement.auto_close_days === 1 ? 'zi' : 'zile'})` : ''}. Dacă medicul refuză, se anulează sau consultația nu are loc{preview.settlement ? ` în ${preview.settlement.no_show_refund_hours} h de la ora stabilită` : ''}, banii revin în portofel.</span>
                           </div>
                         )}
                       </>

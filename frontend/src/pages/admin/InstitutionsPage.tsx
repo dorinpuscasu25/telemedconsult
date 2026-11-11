@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Building2, Check, Copy, Pencil, Plus, UserPlus } from 'lucide-react';
+import { Building2, Check, Copy, Pencil, Plus, Trash2, UserPlus } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
@@ -50,6 +50,7 @@ export function AdminInstitutionsPage() {
   const [items, setItems] = useState<AdminInstitution[] | null>(null);
   const [editing, setEditing] = useState<AdminInstitution | 'new' | null>(null);
   const [managerFor, setManagerFor] = useState<AdminInstitution | null>(null);
+  const [deleting, setDeleting] = useState<AdminInstitution | null>(null);
   const [form, setForm] = useState<Form>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -130,6 +131,22 @@ export function AdminInstitutionsPage() {
     }
   };
 
+  const remove = async () => {
+    if (!deleting) return;
+    setSaving(true);
+    setError('');
+    try {
+      const response = await apiRequest<{ message: string }>(`/admin/institutions/${deleting.id}`, { method: 'DELETE' });
+      toast.success(response.message);
+      setDeleting(null);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nu am putut șterge instituția.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const set = (key: keyof Form) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm((current) => ({ ...current, [key]: event.target.value }));
 
   return (
@@ -156,6 +173,7 @@ export function AdminInstitutionsPage() {
                   <p className="mt-0.5 text-sm text-slate-500">{[institution.legal_name, institution.fiscal_code && `IDNO ${institution.fiscal_code}`].filter(Boolean).join(' · ') || 'Date juridice necompletate'}</p>
                 </div>
                 <Button size="icon-sm" variant="ghost" aria-label="Editează instituția" onClick={() => open(institution)}><Pencil className="h-4 w-4" /></Button>
+                <Button size="icon-sm" variant="ghost" aria-label="Șterge instituția" className="text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => { setError(''); setDeleting(institution); }}><Trash2 className="h-4 w-4" /></Button>
               </div>
               <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                 <Metric label="Medici" value={String(institution.doctors_count)} />
@@ -224,6 +242,20 @@ export function AdminInstitutionsPage() {
               <Button type="submit" disabled={saving}>{saving ? 'Se salvează…' : 'Adaugă managerul'}</Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(deleting)} onOpenChange={(value) => { if (!value && !saving) setDeleting(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Ștergi {deleting?.name}?</DialogTitle>
+            <DialogDescription>Acțiunea nu poate fi anulată. Medicii instituției rămân pe platformă ca medici independenți, iar conturile managerilor se șterg. Instituțiile cu consultații sau plăți nu pot fi șterse; suspendă-le în schimb.</DialogDescription>
+          </DialogHeader>
+          {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDeleting(null)} disabled={saving}>Renunță</Button>
+            <Button type="button" variant="destructive" onClick={() => { void remove(); }} disabled={saving}>{saving ? 'Se șterge…' : 'Șterge instituția'}</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

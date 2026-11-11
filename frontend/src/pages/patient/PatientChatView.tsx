@@ -91,7 +91,8 @@ export function PatientChatView() {
     if (!echo || !currentUserId) return;
     const name = `App.Models.User.${currentUserId}`;
     echo.private(name).listen('.conversation.message.sent', () => void load()).listen('.conversation.updated', () => void load());
-    return () => { echo.leave(name); };
+    // Canalul e folosit și de apelurile video: scoatem doar ascultătorii chatului.
+    return () => { echo.private(name).stopListening('.conversation.message.sent').stopListening('.conversation.updated'); };
   }, [currentUserId, load]);
 
   const peers = useMemo(() => buildPeers(conversations), [conversations]);
@@ -315,9 +316,13 @@ function Chip({ label, count }: { label: string; count: number }) {
   return <span className={cn('flex h-[22px] items-center rounded-full px-2 text-[11px] font-semibold', count ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600')}>{count ? `${label} · ${count}` : label}</span>;
 }
 
-function HeaderButton({ to, onClick, icon, children }: { to?: string; onClick?: () => void; icon: ReactNode; children: ReactNode }) {
-  const className = 'flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[10px] border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-950 hover:bg-slate-50';
-  return to ? <Link to={to} className={className}>{icon}{children}</Link> : <button type="button" onClick={onClick} className={className}>{icon}{children}</button>;
+/** Între 1024 și 1280 px coloana conversației e îngustă: butonul rămâne doar cu iconiță. */
+function HeaderButton({ to, onClick, icon, children }: { to?: string; onClick?: () => void; icon: ReactNode; children: string }) {
+  const className = 'flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[10px] border border-slate-200 bg-white px-2.5 text-[13px] font-medium text-slate-950 hover:bg-slate-50 xl:px-3';
+  const content = <>{icon}<span className="hidden xl:inline">{children}</span></>;
+  return to
+    ? <Link to={to} aria-label={children} title={children} className={className}>{content}</Link>
+    : <button type="button" onClick={onClick} aria-label={children} title={children} className={className}>{content}</button>;
 }
 
 function ChannelAvatar({ channel, size }: { channel: Channel; size: 'sm' | 'md' | 'lg' }) {

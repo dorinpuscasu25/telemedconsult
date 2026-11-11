@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Phone, PhoneOff, Video, Volume2, X } from 'lucide-react';
 import { apiRequest } from '../lib/api';
+import { getEcho, realtimeConnected } from '../lib/realtime';
 import { useAuth } from '../contexts/AuthContext';
 import { usePatientCall } from '../contexts/PatientCallContext';
 import { useRingtone } from '../lib/use-ringtone';
@@ -35,9 +36,22 @@ export function IncomingVideoCall() {
       } catch { /* Keep the current ring only until its known expiry. */ }
       finally { fetching = false; }
     };
-    void refresh(); const timer = window.setInterval(refresh, 2000);
+    // Apelurile vin în timp real pe canalul utilizatorului. Interogarea rămâne doar
+    // plasă de siguranță: rar cât realtime-ul e conectat, des când nu e.
+    const echo = getEcho();
+    const channelName = `App.Models.User.${userId}`;
+    echo?.private(channelName).listen('.video-call.updated', () => void refresh());
+    let timer = 0;
+    const schedule = () => {
+      const connected = realtimeConnected();
+      timer = window.setTimeout(() => { void refresh(); schedule(); }, connected ? 30000 : 3000);
+    };
+    void refresh(); schedule();
     window.addEventListener('focus', refresh);
-    return () => { alive = false; window.clearInterval(timer); window.removeEventListener('focus', refresh); };
+    return () => {
+      alive = false; window.clearTimeout(timer); window.removeEventListener('focus', refresh);
+      echo?.private(channelName).stopListening('.video-call.updated');
+    };
   }, [userId, role]);
   useEffect(() => {
     if (!call) return;

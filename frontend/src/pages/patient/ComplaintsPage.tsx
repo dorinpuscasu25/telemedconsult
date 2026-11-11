@@ -110,7 +110,7 @@ export function ComplaintsPage() {
         body: JSON.stringify({ rating: Number(rating), comment })
       });
       setComment('');
-      setMessage('Recenzia a fost salvată.');
+      setMessage('Recenzia a fost salvată. Consultația s-a închis și plata a ajuns la medic.');
       loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nu am putut salva recenzia.');
@@ -208,7 +208,8 @@ export function ComplaintsPage() {
                   <Label>Comentariu</Label>
                   <Textarea value={comment} onChange={(event) => setComment(event.target.value)} className="min-h-24 rounded-xl bg-white" />
                 </div>
-                <Button className="h-11 rounded-xl">Salvează recenzia</Button>
+                <p className="text-xs leading-5 text-slate-500">Recenzia închide consultația: abia atunci plata rezervată ajunge la medic.</p>
+                <Button className="h-11 rounded-xl">Salvează și închide consultația</Button>
               </form>
             )}
           </CardContent>

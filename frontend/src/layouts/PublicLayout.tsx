@@ -59,7 +59,7 @@ export function PublicLayout() {
             <Link to={target} className="flex h-10 items-center rounded-[10px] bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">{text('header.cta_dashboard')}</Link>
           ) : (
             <div className="flex items-center gap-2">
-              <Link to="/login" className="flex h-10 items-center rounded-[10px] px-3.5 text-sm font-medium text-slate-950 hover:bg-slate-50">Intră în cont</Link>
+              <Link to="/login" className="flex h-10 items-center rounded-[10px] px-3.5 text-sm font-medium text-slate-950 hover:bg-slate-50">{text('header.cta_login')}</Link>
               <Link to="/register" className="flex h-10 items-center rounded-[10px] bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">{text('header.cta_register')}</Link>
             </div>
           )}
@@ -69,7 +69,7 @@ export function PublicLayout() {
           <div className="flex-1"><Logo small /></div>
           {isAuthenticated
             ? <Link to={target} className="flex h-9 items-center rounded-[10px] bg-blue-600 px-3 text-[13px] font-semibold text-white">{text('header.cta_dashboard')}</Link>
-            : <Link to="/login" className="flex h-9 items-center rounded-[10px] border border-slate-200 px-3 text-[13px] font-semibold text-slate-950">Intră</Link>}
+            : <Link to="/login" className="flex h-9 items-center rounded-[10px] border border-slate-200 px-3 text-[13px] font-semibold text-slate-950">{text('header.cta_login_short')}</Link>}
           <button type="button" aria-label="Meniu" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)} className="grid h-11 w-11 place-items-center text-slate-700">
             {menuOpen ? <X className="h-[22px] w-[22px]" /> : <Menu className="h-[22px] w-[22px]" />}
           </button>
@@ -98,11 +98,11 @@ export function PublicLayout() {
           <div className="grid grid-cols-2 gap-[18px] md:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))] md:gap-8">
             <div className="col-span-2 flex flex-col gap-3 md:col-span-1">
               <Logo small />
-              <span className="hidden max-w-[280px] text-sm leading-[1.55] text-slate-500 md:block">{homeVisits ? 'Consultații online și examinări la domiciliu, cu dispozitive HIGO.' : 'Consultații online cu medici verificați, video și în chat.'}</span>
+              <span className="hidden max-w-[280px] text-sm leading-[1.55] text-slate-500 md:block">{text(homeVisits ? 'footer.tagline' : 'footer.tagline_online')}</span>
             </div>
-            <FooterColumn title="Pacienți" links={[['Caută medic', '/medici'], ['Cum funcționează', '/#cum-functioneaza'], ['Întrebări frecvente', '/#intrebari']]} />
-            <FooterColumn title="Profesioniști" links={[['Înscrie-te ca medic', '/register/specialist'], ['Înscrie-te ca operator', '/register/specialist?type=operator']]} />
-            <FooterColumn title="Platformă" links={[[text('header.nav_news'), '/noutati'], [text('header.nav_partners'), '/parteneri']]} />
+            <FooterColumn title={text('footer.patients.title')} links={[[text('footer.patients.find_doctor'), '/medici'], [text('footer.patients.how'), '/#cum-functioneaza'], [text('footer.patients.faq'), '/#intrebari']]} />
+            <FooterColumn title={text('footer.pros.title')} links={[[text('footer.pros.doctor'), '/register/specialist'], [text('footer.pros.operator'), '/register/specialist?type=operator']]} />
+            <FooterColumn title={text('footer.platform.title')} links={[[text('header.nav_news'), '/noutati'], [text('header.nav_partners'), '/parteneri']]} />
           </div>
           <div className="text-xs text-slate-500 md:border-t md:border-slate-100 md:pt-5 md:text-[13px]">© {new Date().getFullYear()} {text('footer.copyright')}</div>
         </div>

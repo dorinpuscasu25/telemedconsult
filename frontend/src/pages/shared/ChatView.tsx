@@ -303,8 +303,9 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă', patientProf
       channels.add(userChannelName);
     }
 
+    // Canalul utilizatorului e folosit și de apelurile video: scoatem doar ascultătorii chatului.
     return () => {
-      echo.leave(userChannelName);
+      echo.private(userChannelName).stopListening('.conversation.updated').stopListening('.conversation.message.sent');
       channels.delete(userChannelName);
     };
   }, [appendMessage, currentUserId, upsertConversation]);

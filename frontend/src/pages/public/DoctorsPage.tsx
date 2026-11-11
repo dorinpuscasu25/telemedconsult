@@ -4,6 +4,7 @@ import { ArrowRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiRequest } from '../../lib/api';
 import { mdl, SERVICE_TYPE_LABEL, whenLabel, type DoctorServiceItem } from '../../lib/doctor';
+import { useSiteContent } from '../../contexts/SiteContentContext';
 
 type PublicDoctor = {
   id: string;
@@ -36,6 +37,7 @@ const rating = (value: string | number) => Number(value || 0).toLocaleString('ro
 export function DoctorsPage() {
   const navigate = useNavigate();
   const { isAuthenticated, role } = useAuth();
+  const { text } = useSiteContent();
   const [doctors, setDoctors] = useState<PublicDoctor[]>([]);
   const [nextSlots, setNextSlots] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
@@ -81,15 +83,15 @@ export function DoctorsPage() {
   return (
     <div className="mx-auto flex max-w-[1200px] flex-col gap-2.5 px-4 pb-16 pt-4 md:gap-7 md:px-10 md:pb-[72px] md:pt-10">
       <div className="flex flex-col gap-1.5 pb-2 md:pb-0">
-        <h1 className="text-[28px] font-bold tracking-[-.025em] md:text-4xl">Medici</h1>
-        <span className="text-[15px] text-slate-600">Câțiva dintre medicii platformei. Toată lista o vezi după ce intri în cont.</span>
+        <h1 className="text-[28px] font-bold tracking-[-.025em] md:text-4xl">{text('doctors.title')}</h1>
+        <span className="text-[15px] text-slate-600">{text('doctors.subtitle')}</span>
       </div>
 
       {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
       <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-3 md:gap-4">
           {loading && [0, 1, 2, 3].map((key) => <div key={key} className="h-[190px] animate-pulse rounded-2xl bg-white" />)}
-          {!loading && visible.length === 0 && !error && <p className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 md:col-span-3">Medicii apar aici în curând.</p>}
+          {!loading && visible.length === 0 && !error && <p className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 md:col-span-3">{text('doctors.empty')}</p>}
           {visible.map((doctor) => {
             const services = doctor.services ?? [];
             const types = [...new Set(services.map((service) => service.type))];
@@ -114,7 +116,7 @@ export function DoctorsPage() {
                     <span className="text-base font-bold">{from !== null ? `de la ${mdl(from)}` : 'Prețuri în curând'}</span>
                     <span className="truncate text-xs text-slate-500">{onlyChat ? 'Răspuns în 24 h' : next ? `Prima oră liberă: ${whenLabel(next)}` : next === null ? 'Fără ore libere în 7 zile' : ' '}</span>
                   </div>
-                  <button type="button" onClick={() => book(doctor)} className="flex h-11 shrink-0 items-center rounded-[10px] bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 md:h-10">Programează-te</button>
+                  <button type="button" onClick={() => book(doctor)} className="flex h-11 shrink-0 items-center rounded-[10px] bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 md:h-10">{text('doctors.book')}</button>
                 </div>
               </article>
             );
@@ -123,9 +125,9 @@ export function DoctorsPage() {
       {!loading && visible.length > 0 && (
         <div className="flex flex-col items-center gap-2 pt-2">
           <button type="button" onClick={seeAll} className="flex h-12 items-center gap-2 rounded-[10px] border border-slate-200 bg-white px-6 text-[15px] font-semibold text-slate-950 hover:bg-slate-50">
-            {total > visible.length ? `Vezi toți medicii (${total})` : 'Vezi mai mult'}<ArrowRight className="h-4 w-4" />
+            {total > visible.length ? `${text('doctors.see_all')} (${total})` : text('doctors.see_more')}<ArrowRight className="h-4 w-4" />
           </button>
-          {!isAuthenticated && <span className="text-center text-[13px] text-slate-500">Intri în cont și vezi toți medicii, cu orele libere. Medicul ales la „Programează-te” se păstrează.</span>}
+          {!isAuthenticated && <span className="text-center text-[13px] text-slate-500">{text('doctors.login_hint')}</span>}
         </div>
       )}
     </div>

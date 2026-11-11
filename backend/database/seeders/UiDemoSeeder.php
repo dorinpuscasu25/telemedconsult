@@ -62,8 +62,9 @@ class UiDemoSeeder extends Seeder
             'consultation_price' => 400,
             'video_price' => 350,
             'video_duration_minutes' => 20,
-            'rating' => 4.8,
-            'reviews_count' => 37,
+            // Ratingul vine doar din recenziile reale (PatientEngagementController).
+            'rating' => 0,
+            'reviews_count' => 0,
             'is_available' => true,
             'is_approved' => true,
             'accepts_points' => true,

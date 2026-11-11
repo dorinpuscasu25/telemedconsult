@@ -14,25 +14,10 @@ type CatalogDoctor = { id: string; services?: DoctorServiceItem[] };
 type Partner = { id: number; name: string; logo_url: string | null };
 type Post = { id: number; slug: string; title: string; excerpt: string | null; category?: string | null; cover_image_url: string | null; published_at: string | null };
 
-const SERVICES: Array<{ type: ServiceType; title: string; desc: string; meta: string }> = [
-  { type: 'video', title: 'Consultație video', desc: 'Vorbești cu medicul față în față, de pe telefon sau calculator.', meta: '15–30 min' },
-  { type: 'chat', title: 'Întrebare în chat', desc: 'Scrii întrebarea și atașezi analize sau poze. Medicul răspunde în scris.', meta: 'răspuns în 24 h' },
-  { type: 'home', title: 'Vizită la domiciliu', desc: 'Un operator vine acasă cu dispozitive HIGO pentru ECG, tensiune și pulsoximetrie. Medicul citește rezultatele.', meta: '60 min' }
-];
+const SERVICE_TYPES: ServiceType[] = ['video', 'chat', 'home'];
 const STEP_KINDS = ['search', 'service', 'conclusion'] as const;
-const FAQ: Array<[string, string]> = [
-  ['Cât costă o consultație?', 'Fiecare medic își stabilește serviciile și prețurile. Vezi prețul exact în profilul medicului, înainte să alegi ora.'],
-  ['Ce se întâmplă cu banii dacă medicul nu confirmă?', 'Suma se rezervă din portofel când trimiți cererea. Dacă medicul refuză sau cererea expiră, banii revin integral în portofel.'],
-  ['Pot programa pentru copil sau pentru părinți?', 'Da. Adaugi membrii familiei în cont și alegi pentru cine e fiecare consultație. Fiecare are fișa lui.'],
-  ['Cum funcționează vizita la domiciliu?', 'Un operator vine la adresa ta cu dispozitive HIGO și face investigațiile incluse în serviciu. Medicul vede rezultatele și scrie concluzia.'],
-  ['Cine îmi vede datele medicale?', 'Doar tu și medicii cu care ai consultații. Operatorul vede doar datele necesare vizitei.']
-];
-/** Cu vizitele la domiciliu oprite, totul e online. */
-const FAQ_ONLINE: Array<[string, string]> = [
-  ...FAQ.filter(([question]) => !question.includes('domiciliu')).slice(0, 3),
-  ['Cine îmi vede datele medicale?', 'Doar tu și medicii cu care ai consultații.']
-];
-const ONLINE_SUBTITLE = 'Consultații video și în chat cu medici verificați și o fișă medicală digitală pentru toată familia.';
+/** Întrebarea 4 e despre vizita la domiciliu; cu vizitele oprite dispare, iar răspunsul 5 are varianta online. */
+const FAQ_SLOTS = [1, 2, 3, 4, 5];
 const MONTHS = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'];
 export const longDate = (value?: string | null) => { if (!value) return ''; const date = new Date(value); return `${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`; };
 
@@ -72,13 +57,21 @@ export function HomePage() {
     return result;
   }, [doctors]);
 
-  const services = SERVICES.filter((service) => homeVisits || service.type !== 'home');
-  const faq = homeVisits ? FAQ : FAQ_ONLINE;
+  const services = SERVICE_TYPES.filter((type) => homeVisits || type !== 'home').map((type) => ({
+    type,
+    title: t(`home.services.${type}.title`),
+    desc: t(`home.services.${type}.text`),
+    meta: t(`home.services.${type}.meta`)
+  }));
+  const faq: Array<[string, string]> = FAQ_SLOTS
+    .filter((slot) => homeVisits || slot !== 4)
+    .map((slot) => [t(`home.faq.${slot}.q`), t(slot === 5 && !homeVisits ? 'home.faq.5.a_online' : `home.faq.${slot}.a`)]);
+  const faqEmail = t('home.faq.email');
   const pros = [2, 3].map((slot) => ({
-    eyebrow: slot === 2 ? 'PENTRU MEDICI' : 'PENTRU OPERATORI',
+    eyebrow: t(`home.audiences.${slot}.eyebrow`),
     title: t(`home.audiences.${slot}.title`),
     // Fără vizite, operatorul aduce pacienți prin linkul lui.
-    text: slot === 3 && !homeVisits ? 'Recomanzi platforma oamenilor din zona ta prin linkul tău personal și vezi câți pacienți ai adus.' : t(`home.audiences.${slot}.text`),
+    text: t(slot === 3 && !homeVisits ? 'home.audiences.3.text_online' : `home.audiences.${slot}.text`),
     cta: t(`home.audiences.${slot}.cta`),
     to: slot === 2 ? '/register/specialist' : '/register/specialist?type=operator'
   }));
@@ -92,15 +85,15 @@ export function HomePage() {
           <h1 className="max-w-[860px] text-[34px] font-bold leading-[1.08] tracking-[-.03em] [text-wrap:balance] md:text-[60px] md:leading-[1.05] md:tracking-[-.035em]">
             {t('home.hero.title')} <span className="text-blue-600">{t('home.hero.title_highlight')}</span>{t('home.hero.title_end') ? ` ${t('home.hero.title_end')}` : ''}
           </h1>
-          <p className="max-w-[640px] text-[15px] leading-[1.55] text-slate-600 md:text-lg">{homeVisits ? t('home.hero.subtitle') : ONLINE_SUBTITLE}</p>
+          <p className="max-w-[640px] text-[15px] leading-[1.55] text-slate-600 md:text-lg">{t(homeVisits ? 'home.hero.subtitle' : 'home.hero.subtitle_online')}</p>
           <div className="flex flex-col gap-2 sm:flex-row md:mt-2.5">
-            <Link to="/medici" className="flex h-12 items-center justify-center gap-2 rounded-[10px] bg-blue-600 px-[26px] text-[15px] font-semibold text-white hover:bg-blue-700 md:h-14 md:rounded-xl md:text-base">Vezi medicii<ArrowRight className="h-4 w-4" /></Link>
-            <Link to="/register" className="flex h-12 items-center justify-center rounded-[10px] border border-slate-200 bg-white px-[26px] text-[15px] font-semibold text-slate-950 hover:bg-slate-50 md:h-14 md:rounded-xl md:text-base">Creează cont</Link>
+            <Link to="/medici" className="flex h-12 items-center justify-center gap-2 rounded-[10px] bg-blue-600 px-[26px] text-[15px] font-semibold text-white hover:bg-blue-700 md:h-14 md:rounded-xl md:text-base">{t('home.hero.cta_primary')}<ArrowRight className="h-4 w-4" /></Link>
+            <Link to="/register" className="flex h-12 items-center justify-center rounded-[10px] border border-slate-200 bg-white px-[26px] text-[15px] font-semibold text-slate-950 hover:bg-slate-50 md:h-14 md:rounded-xl md:text-base">{t('home.hero.cta_secondary')}</Link>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-[13px] md:justify-center">
-            <span className="text-slate-500">Ești specialist?</span>
-            <Link to="/register/specialist" className="flex h-9 items-center gap-1.5 rounded-full bg-blue-50 px-3.5 font-semibold text-blue-700 ring-1 ring-blue-200 hover:bg-blue-100"><Stethoscope className="h-4 w-4" />Înscrie-te ca medic</Link>
-            <Link to="/register/specialist?type=operator" className="flex h-9 items-center gap-1.5 rounded-full bg-emerald-50 px-3.5 font-semibold text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"><Users className="h-4 w-4" />Înscrie-te ca operator</Link>
+            <span className="text-slate-500">{t('home.hero.specialist_prompt')}</span>
+            <Link to="/register/specialist" className="flex h-9 items-center gap-1.5 rounded-full bg-blue-50 px-3.5 font-semibold text-blue-700 ring-1 ring-blue-200 hover:bg-blue-100"><Stethoscope className="h-4 w-4" />{t('home.hero.cta_doctor')}</Link>
+            <Link to="/register/specialist?type=operator" className="flex h-9 items-center gap-1.5 rounded-full bg-emerald-50 px-3.5 font-semibold text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"><Users className="h-4 w-4" />{t('home.hero.cta_operator')}</Link>
           </div>
         </div>
       </section>
@@ -108,7 +101,7 @@ export function HomePage() {
       <div className="mx-auto flex max-w-[1200px] flex-col gap-12 px-4 pt-10 md:gap-24 md:px-10 md:pt-20">
         {/* Serviciile */}
         <section className="flex flex-col gap-3.5 md:gap-7">
-          <div className="flex flex-col gap-2 px-1 md:px-0"><h2 className="text-2xl font-bold tracking-[-.02em] md:text-[32px]">{services.length === 3 ? 'Trei' : 'Două'} feluri de a ajunge la medic</h2><p className="hidden text-base text-slate-600 md:block">Fiecare medic își alege serviciile și prețurile. Vezi totul înainte să programezi.</p></div>
+          <div className="flex flex-col gap-2 px-1 md:px-0"><h2 className="text-2xl font-bold tracking-[-.02em] md:text-[32px]">{t(services.length === 3 ? 'home.services.title' : 'home.services.title_online')}</h2><p className="hidden text-base text-slate-600 md:block">{t('home.services.subtitle')}</p></div>
           <div className={cn('grid gap-3.5 md:gap-5', services.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2')}>
             {services.map((service) => (
               <Link key={service.type} to="/medici" className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-[18px] hover:border-slate-300 md:gap-3.5 md:p-6">
@@ -119,7 +112,7 @@ export function HomePage() {
                 </div>
                 <div className="hidden items-center justify-between border-t border-slate-100 pt-3.5 md:flex">
                   <span className="text-sm text-slate-500">{service.meta}{fromPrice[service.type] !== undefined && <> · <b className="text-slate-950">de la {mdl(fromPrice[service.type])}</b></>}</span>
-                  <span className="flex items-center gap-1 text-sm font-semibold text-blue-600">Vezi medicii<ArrowRight className="h-4 w-4" /></span>
+                  <span className="flex items-center gap-1 text-sm font-semibold text-blue-600">{t('home.services.link')}<ArrowRight className="h-4 w-4" /></span>
                 </div>
               </Link>
             ))}
@@ -145,7 +138,7 @@ export function HomePage() {
         {/* Parteneri */}
         {partners.length > 0 && (
           <section className="flex flex-col gap-3.5 md:gap-6">
-            <div className="flex items-baseline justify-between px-1 md:px-0"><h2 className="text-xl font-bold md:text-2xl md:tracking-[-.02em]">Parteneri</h2><Link to="/parteneri" className="text-sm font-semibold text-blue-600"><span className="md:hidden">Toți</span><span className="hidden md:inline">Toți partenerii</span></Link></div>
+            <div className="flex items-baseline justify-between px-1 md:px-0"><h2 className="text-xl font-bold md:text-2xl md:tracking-[-.02em]">{t('home.partners.title')}</h2><Link to="/parteneri" className="text-sm font-semibold text-blue-600"><span className="md:hidden">{t('home.partners.all_short')}</span><span className="hidden md:inline">{t('home.partners.all')}</span></Link></div>
             <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-4">
               {partners.slice(0, 4).map((partner) => (
                 <Link key={partner.id} to={`/parteneri?p=${partner.id}`} className="flex h-[76px] items-center justify-center rounded-xl border border-slate-200 bg-white px-2 text-center text-[15px] font-bold text-slate-700 md:h-[104px] md:rounded-[14px] md:text-xl md:tracking-[-.01em]">
@@ -159,7 +152,7 @@ export function HomePage() {
         {/* Noutăți */}
         {posts.length > 0 && (
           <section className="flex flex-col gap-3.5 md:gap-6">
-            <div className="flex items-baseline justify-between px-1 md:px-0"><h2 className="text-xl font-bold md:text-2xl md:tracking-[-.02em]">{text('news.title')}</h2><Link to="/noutati" className="text-sm font-semibold text-blue-600"><span className="md:hidden">Toate</span><span className="hidden md:inline">Toate noutățile</span></Link></div>
+            <div className="flex items-baseline justify-between px-1 md:px-0"><h2 className="text-xl font-bold md:text-2xl md:tracking-[-.02em]">{text('news.title')}</h2><Link to="/noutati" className="text-sm font-semibold text-blue-600"><span className="md:hidden">{t('home.news.all_short')}</span><span className="hidden md:inline">{t('home.news.all')}</span></Link></div>
             <div className="grid gap-3.5 md:grid-cols-3 md:gap-5">
               {posts.slice(0, 3).map((post, index) => (
                 <Link key={post.id} to={`/noutati/${post.slug}`} className={cn('flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white hover:border-slate-300', index === 2 && 'max-md:hidden')}>
@@ -177,12 +170,12 @@ export function HomePage() {
 
         {/* Întrebări frecvente */}
         <section id="intrebari" className="grid scroll-mt-24 gap-3.5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] md:items-start md:gap-12">
-          <div className="flex flex-col gap-2.5 px-1 md:px-0"><h2 className="text-2xl font-bold tracking-[-.02em] md:text-[32px]">Întrebări frecvente</h2><p className="hidden text-[15px] leading-[1.55] text-slate-600 md:block">Nu găsești răspunsul? Scrie-ne la <a href="mailto:suport@telemedconsult.md" className="font-medium text-blue-600">suport@telemedconsult.md</a>.</p></div>
+          <div className="flex flex-col gap-2.5 px-1 md:px-0"><h2 className="text-2xl font-bold tracking-[-.02em] md:text-[32px]">{t('home.faq.title')}</h2><p className="hidden text-[15px] leading-[1.55] text-slate-600 md:block">{t('home.faq.contact')} <a href={`mailto:${faqEmail}`} className="font-medium text-blue-600">{faqEmail}</a>.</p></div>
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
             {faq.map(([question, answer], index) => {
               const open = openFaq === index;
               return (
-                <div key={question} className={cn(index > 0 && 'border-t border-slate-100')}>
+                <div key={index} className={cn(index > 0 && 'border-t border-slate-100')}>
                   <button type="button" onClick={() => setOpenFaq(open ? -1 : index)} aria-expanded={open} className="flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-semibold md:min-h-[60px] md:gap-4 md:px-[22px] md:py-0 md:text-base">
                     <span className="flex-1">{question}</span><ChevronDown className={cn('h-[18px] w-[18px] shrink-0 text-slate-500 transition-transform', open && 'rotate-180')} />
                   </button>

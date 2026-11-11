@@ -31,7 +31,7 @@ class SiteContentTest extends TestCase
         $defaults = SiteContent::defaults();
 
         $this->assertSame($defaults, $data);
-        $this->assertSame('Pregătit să începi?', $data['home.cta.title']);
+        $this->assertSame('Întrebări frecvente', $data['home.faq.title']);
         $this->assertSame('Medici', $data['header.nav_doctors']);
     }
 
@@ -40,12 +40,12 @@ class SiteContentTest extends TestCase
         $this->actingAsAdmin();
 
         $this->putJson('/api/v1/admin/site-content', [
-            'values' => ['home.cta.title' => 'Hai să începem!'],
+            'values' => ['home.faq.title' => 'Hai să începem!'],
         ])->assertOk();
 
         $this->assertSame(
             'Hai să începem!',
-            $this->getJson('/api/v1/catalog/site-content')->json('data')['home.cta.title'],
+            $this->getJson('/api/v1/catalog/site-content')->json('data')['home.faq.title'],
         );
     }
 
@@ -85,7 +85,7 @@ class SiteContentTest extends TestCase
 
         $limits = SiteContent::limits();
         $this->putJson('/api/v1/admin/site-content', [
-            'values' => ['home.cta.title' => str_repeat('a', $limits['home.cta.title'] + 1)],
+            'values' => ['home.faq.title' => str_repeat('a', $limits['home.faq.title'] + 1)],
         ])->assertUnprocessable();
 
         $this->assertDatabaseCount('site_contents', 0);
@@ -97,18 +97,18 @@ class SiteContentTest extends TestCase
 
         $this->putJson('/api/v1/admin/site-content', [
             'values' => [
-                'home.cta.title' => 'Titlu schimbat',
-                'home.cta.button' => 'Buton schimbat',
+                'home.faq.title' => 'Titlu schimbat',
+                'home.faq.email' => 'contact@exemplu.md',
             ],
         ])->assertOk();
         $this->assertDatabaseCount('site_contents', 2);
 
-        $this->postJson('/api/v1/admin/site-content/reset', ['group' => 'home_cta'])->assertOk();
+        $this->postJson('/api/v1/admin/site-content/reset', ['group' => 'home_faq'])->assertOk();
 
         $this->assertDatabaseCount('site_contents', 0);
         $this->assertSame(
-            SiteContent::defaults()['home.cta.title'],
-            $this->getJson('/api/v1/catalog/site-content')->json('data')['home.cta.title'],
+            SiteContent::defaults()['home.faq.title'],
+            $this->getJson('/api/v1/catalog/site-content')->json('data')['home.faq.title'],
         );
     }
 
@@ -120,7 +120,7 @@ class SiteContentTest extends TestCase
 
         $this->getJson('/api/v1/admin/site-content')->assertForbidden();
         $this->putJson('/api/v1/admin/site-content', [
-            'values' => ['home.cta.title' => 'Hack'],
+            'values' => ['home.faq.title' => 'Hack'],
         ])->assertForbidden();
 
         $this->assertDatabaseCount('site_contents', 0);

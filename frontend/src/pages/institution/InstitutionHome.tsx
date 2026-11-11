@@ -76,7 +76,7 @@ export function InstitutionHome() {
         <StatCard label="Sold la platformă" value={`${money(summary?.platform_balance)} MDL`} detail={summary?.platform_pending ? `${money(summary.platform_pending)} MDL cerut, în procesare` : 'Disponibil pentru transfer'} icon={Banknote} loading={loading} />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <SectionHeader title="Ultimele consultații" description="Cum s-a împărțit fiecare consultație finalizată." actions={<Link to="/institution/doctors" className="text-sm font-semibold text-primary hover:underline">Medicii</Link>} />
           <div className="mt-4">

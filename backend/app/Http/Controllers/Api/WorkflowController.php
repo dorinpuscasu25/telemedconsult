@@ -22,12 +22,12 @@ use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Notifications\AppEventNotification;
 use App\Services\ConsultationCostEstimator;
+use App\Services\ConsultationSettlement;
 use App\Services\ConsultationStateMachine;
 use App\Services\DoctorSchedule;
 use App\Services\FeatureFlags;
 use App\Services\FinancialBreakdown;
 use App\Services\FirstTopupPromotion;
-use App\Services\InstitutionLedger;
 use App\Services\MedicalDocumentPublisher;
 use App\Services\ObjectiveDataSchema;
 use App\Services\OperatorAssignmentService;
@@ -130,6 +130,7 @@ class WorkflowController extends Controller
                 'consultation_kind' => $kind,
                 'payment' => $payment,
                 'wallet' => $this->previewWallet($request->user(), $payment),
+                'settlement' => $this->settlementTerms(),
                 'cost' => ['doctor_base' => $base, 'investigations' => [], 'investigations_total' => 0, 'travel_fee' => 0, 'total' => $base],
             ]);
         }
@@ -173,6 +174,7 @@ class WorkflowController extends Controller
             'cost' => $cost,
             'payment' => $payment = app(FirstTopupPromotion::class)->split($request->user()->id, $doctor, $cost['total'] * 100, $cost['doctor_base'] * 100, $validated['points_percent'] ?? 0),
             'wallet' => $this->previewWallet($request->user(), $payment),
+            'settlement' => $this->settlementTerms(),
         ]);
     }
 
@@ -520,10 +522,8 @@ class WorkflowController extends Controller
                 'completed_at' => now(),
             ]);
 
-            $this->captureHeldFunds($consultationRequest, $provider, $consultation->id);
-            if ($provider->hasRole('doctor')) {
-                app(InstitutionLedger::class)->recordEarning($consultationRequest->refresh(), $provider);
-            }
+            // Banii rămân rezervați: plata se face când pacientul închide consultația
+            // (recenzie) sau automat după termen — vezi ConsultationSettlement.
 
             $fhir = $doctorId ? $this->buildFhirEncounter($consultation->load(['patient', 'doctor'])) : null;
             $consultation->forceFill(['fhir_payload' => $fhir])->save();
@@ -542,7 +542,7 @@ class WorkflowController extends Controller
 
             $consultationRequest->patient?->notify(new AppEventNotification(
                 'Consultație finalizată',
-                'Consultația a fost finalizată. Documentul PDF este disponibil în fișa pacientului.',
+                'Concluzia și documentul PDF sunt gata. Lasă o recenzie ca să închizi consultația — abia atunci plata ajunge la medic.',
                 '/patient/profile?patient_profile='.$consultationRequest->patient_profile_id.'&section=consultations&request='.$consultationRequest->id,
                 'success',
             ));
@@ -1665,6 +1665,14 @@ class WorkflowController extends Controller
             'chat_reactivated_until' => $item->chat_reactivated_until,
             'chat_can_write' => $this->canWriteChat($item),
             'payment_status' => $item->payment_status,
+            'closed_at' => $item->closed_at?->toISOString(),
+            'settlement' => $this->settlementTerms(),
+            // Plata se face la închidere (recenzie) sau automat la această dată.
+            'auto_close_at' => app(ConsultationSettlement::class)->autoCloseAt($item)?->toISOString(),
+            // Confirmată fără concluzie: după această oră banii revin pacientului.
+            'refund_due_at' => $item->status === 'accepted' && $item->payment_status === 'held' && ! $item->objective_data_completed_at
+                ? app(ConsultationSettlement::class)->refundDueAt($item)?->toISOString()
+                : null,
             'amount' => $item->amount_minor / 100,
             'real_amount' => $item->real_amount_minor / 100,
             'points_amount' => $item->points_amount_minor / 100,
@@ -2238,88 +2246,22 @@ class WorkflowController extends Controller
         }
     }
 
-    private function captureHeldFunds(ConsultationRequest $consultationRequest, User $provider, int $consultationId): void
+    /**
+     * Regulile banilor, afișate pacientului și medicului: după câte zile se închide
+     * singură o consultație fără recenzie și după câte ore revin banii dacă nu are loc.
+     *
+     * @return array{auto_close_days: int, no_show_refund_hours: int}
+     */
+    private function settlementTerms(): array
     {
-        if ($consultationRequest->payment_status !== 'held' || $consultationRequest->amount_minor <= 0) {
-            return;
-        }
+        $settlement = app(ConsultationSettlement::class);
 
-        $providerWallet = Wallet::where('user_id', $provider->id)->where('type', 'real')->lockForUpdate()->first()
-            ?? Wallet::create(['user_id' => $provider->id, 'balance_minor' => 0, 'currency' => 'MDL']);
-
-        if ($consultationRequest->provider_amount_minor > 0) {
-            $providerWallet->increment('balance_minor', $consultationRequest->provider_amount_minor);
-
-            WalletTransaction::create([
-                'wallet_id' => $providerWallet->id,
-                'user_id' => $provider->id,
-                'amount_minor' => $consultationRequest->provider_amount_minor,
-                'currency' => $providerWallet->currency,
-                'type' => $provider->hasRole('operator') ? 'operator_exam_income' : 'consultation_income',
-                'status' => 'completed',
-                'description' => $provider->hasRole('operator') ? 'Venit examinare operator' : 'Venit consultație medic',
-                'metadata' => [
-                    'consultation_request_id' => $consultationRequest->id,
-                    'consultation_id' => $consultationId,
-                    'gross_amount_minor' => $consultationRequest->amount_minor,
-                    'platform_fee_minor' => $consultationRequest->platform_fee_minor,
-                    'promo_subsidy_minor' => (int) $consultationRequest->promo_amount_minor,
-                ],
-                'rate_snapshot' => $consultationRequest->pricing_snapshot['rate_snapshot'] ?? [],
-                'consultation_request_id' => $consultationRequest->id,
-            ]);
-        }
-
-        if ($consultationRequest->platform_fee_minor > 0) {
-            WalletTransaction::create([
-                'wallet_id' => $providerWallet->id,
-                'user_id' => $provider->id,
-                'amount_minor' => 0,
-                'currency' => $providerWallet->currency,
-                'type' => 'platform_fee',
-                'status' => 'completed',
-                'description' => 'Comision platformă',
-                'metadata' => [
-                    'consultation_request_id' => $consultationRequest->id,
-                    'consultation_id' => $consultationId,
-                    'platform_fee_minor' => $consultationRequest->platform_fee_minor,
-                ],
-                'rate_snapshot' => $consultationRequest->pricing_snapshot['rate_snapshot'] ?? [],
-                'consultation_request_id' => $consultationRequest->id,
-            ]);
-        }
-
-        $consultationRequest->forceFill(['payment_status' => 'captured'])->save();
+        return ['auto_close_days' => $settlement->autoCloseDays(), 'no_show_refund_hours' => $settlement->noShowRefundHours()];
     }
 
     private function refundHeldFunds(ConsultationRequest $consultationRequest, string $reason): void
     {
-        $consultationRequest = ConsultationRequest::lockForUpdate()->findOrFail($consultationRequest->id);
-        if ($consultationRequest->payment_status !== 'held' || $consultationRequest->amount_minor <= 0) {
-            return;
-        }
-
-        $ledger = app(WalletLedger::class);
-        $patientWallet = $ledger->locked($consultationRequest->patient_id, WalletLedger::REAL);
-        $pointsWallet = $ledger->locked($consultationRequest->patient_id, WalletLedger::POINTS);
-        $realAmount = $this->realAmountForRequest($consultationRequest);
-        $pointsAmount = (int) $consultationRequest->points_amount_minor;
-        if ($realAmount > 0) {
-            $ledger->move($patientWallet, $realAmount, 'service_refund', 'Returnare bani reali pentru consultație', ['reason' => $reason], $consultationRequest->id);
-        }
-        if ($pointsAmount > 0) {
-            $ledger->move($pointsWallet, $pointsAmount, 'points_service_refund', 'Returnare puncte pentru consultație', ['reason' => $reason], $consultationRequest->id);
-        }
-
-        if ($consultationRequest->promo_amount_minor > 0) {
-            $promoWallet = $ledger->locked($consultationRequest->patient_id, WalletLedger::PROMO);
-            $ledger->move($promoWallet, $consultationRequest->promo_amount_minor, 'promo_service_refund', 'Returnare bonus promoțional pentru consultație', ['reason' => $reason, 'promo_grant_id' => $consultationRequest->promo_grant_id], $consultationRequest->id);
-        }
-
-        $consultationRequest->forceFill([
-            'payment_status' => 'refunded',
-            'refunded_at' => now(),
-        ])->save();
+        app(ConsultationSettlement::class)->refund($consultationRequest, $reason);
     }
 
     /**
@@ -2472,6 +2414,7 @@ class WorkflowController extends Controller
     private function expireStaleRequests(): void
     {
         $this->expireUnansweredRequests();
+        app(ConsultationSettlement::class)->settleDue();
 
         ConsultationRequest::where('status', 'new')
             ->whereNotNull('acceptance_expires_at')

@@ -85,6 +85,40 @@ class AdminInstitutionController extends Controller
         ]);
     }
 
+    /**
+     * Ștergerea e permisă doar cât instituția nu are istoric financiar: câștigurile
+     * se șterg în cascadă, iar banii trecuți prin ea trebuie să rămână în evidență.
+     * Instituțiile cu consultații se suspendă. Medicii rămân pe platformă ca
+     * medici independenți; conturile managerilor (doar rol de instituție) se șterg.
+     */
+    public function destroy(Request $request, MedicalInstitution $institution): JsonResponse
+    {
+        $this->authorizeAdmin($request);
+
+        if ($institution->earnings()->exists() || $institution->withdrawalRequests()->exists()) {
+            return response()->json([
+                'message' => 'Instituția are consultații sau plăți în evidență și nu poate fi ștearsă. Suspend-o în schimb.',
+            ], 422);
+        }
+
+        DB::transaction(function () use ($institution) {
+            $managers = $institution->managers()->with('roles')->get();
+
+            $institution->doctorProfiles()->update([
+                'medical_institution_id' => null,
+                'institution_share_percent' => null,
+                'institution_joined_at' => null,
+            ]);
+            $institution->delete();
+
+            $managers
+                ->filter(fn (User $user) => $user->roles->every(fn (Role $role) => $role->name === 'institution'))
+                ->each(fn (User $user) => $user->delete());
+        });
+
+        return response()->json(['message' => 'Instituția a fost ștearsă.']);
+    }
+
     public function storeManager(Request $request, MedicalInstitution $institution): JsonResponse
     {
         $this->authorizeAdmin($request);

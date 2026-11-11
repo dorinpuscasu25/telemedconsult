@@ -274,6 +274,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/admin/institutions', [AdminInstitutionController::class, 'index']);
         Route::post('/admin/institutions', [AdminInstitutionController::class, 'store']);
         Route::put('/admin/institutions/{institution}', [AdminInstitutionController::class, 'update']);
+        Route::delete('/admin/institutions/{institution}', [AdminInstitutionController::class, 'destroy']);
         Route::post('/admin/institutions/{institution}/managers', [AdminInstitutionController::class, 'storeManager']);
 
         Route::get('/institution/dashboard', [InstitutionController::class, 'dashboard']);

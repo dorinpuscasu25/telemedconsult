@@ -56,6 +56,11 @@ class PlatformConfig
         'payout.request_day_start' => ['value' => 1, 'group' => 'payout', 'type' => 'number'],
         'payout.request_day_end' => ['value' => 10, 'group' => 'payout', 'type' => 'number'],
         'post_consultation_window_hours' => ['value' => 72, 'group' => 'consultations', 'type' => 'number'],
+        // Banii rămân rezervați până la închiderea consultației (recenzia pacientului).
+        // Fără recenzie, consultația se închide și se plătește singură după atâtea zile.
+        'consultations.auto_close_days' => ['value' => 3, 'group' => 'consultations', 'type' => 'number'],
+        // Fără concluzie la atâtea ore după ora programată, banii revin pacientului.
+        'consultations.no_show_refund_hours' => ['value' => 24, 'group' => 'consultations', 'type' => 'number'],
         'assignment.acceptance_window_minutes' => ['value' => 15, 'group' => 'consultations', 'type' => 'number'],
         'auth.email_2fa_enabled' => ['value' => true, 'group' => 'security', 'type' => 'boolean'],
         'notify_new_doctors' => ['value' => true, 'group' => 'notifications', 'type' => 'boolean'],

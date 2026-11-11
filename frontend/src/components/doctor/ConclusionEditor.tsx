@@ -11,6 +11,7 @@ import type { PatientProfileSummary } from '../PatientChart';
 
 export interface ConclusionRequest {
   id: string;
+  settlement?: { auto_close_days: number; no_show_refund_hours: number } | null;
   consultation_kind?: string | null;
   symptoms?: string | null;
   current_illness_history?: string | null;
@@ -225,7 +226,7 @@ function PublishConfirm({ request, onBack, onPublish, busy, error }: { request: 
   const first = (request.patient_profile?.name || request.patient?.name || 'Pacientul').split(' ')[0];
   const effects = [
     `${first} primește PDF-ul și o cerere de evaluare.`,
-    `${mdl(request.service?.price ?? request.amount)} trec în balanța ta.`,
+    `${mdl(request.service?.price ?? request.amount)} ajung în balanța ta când ${first} închide consultația cu o recenzie${request.settlement ? ` sau automat după ${request.settlement.auto_close_days} ${request.settlement.auto_close_days === 1 ? 'zi' : 'zile'}` : ''}.`,
     'Apelul video se închide, dacă e deschis.',
     `Chatul rămâne gratuit 3 zile, până ${freeChatUntil()}.`
   ];

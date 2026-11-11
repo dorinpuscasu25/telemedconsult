@@ -3,7 +3,7 @@ import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
 // --- merged from src/ScrollArea.tsx ---
-interface ScrollAreaProps extends React.HTMLAttributes<HTMLDivElement> {}
+type ScrollAreaProps = React.HTMLAttributes<HTMLDivElement>;
 
 const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
   ({ className, children, ...props }, ref) => (

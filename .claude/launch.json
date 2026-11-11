@@ -15,6 +15,39 @@
         "--strictPort"
       ],
       "port": 5174
+    },
+    {
+      "name": "backend-api",
+      "runtimeExecutable": "php",
+      "runtimeArgs": [
+        "backend/artisan",
+        "serve",
+        "--host=127.0.0.1",
+        "--port=8000"
+      ],
+      "port": 8000
+    },
+    {
+      "name": "reverb",
+      "runtimeExecutable": "php",
+      "runtimeArgs": [
+        "backend/artisan",
+        "reverb:start",
+        "--host=127.0.0.1",
+        "--port=8090"
+      ],
+      "port": 8090
+    },
+    {
+      "name": "design-preview",
+      "runtimeExecutable": "php",
+      "runtimeArgs": [
+        "-S",
+        "127.0.0.1:5190",
+        "-t",
+        "docs/design"
+      ],
+      "port": 5190
     }
   ]
 }

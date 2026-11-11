@@ -23,7 +23,7 @@ type BlogListItem = {
 export function BlogListPage({ basePath = '/noutati' }: { basePath?: string } = {}) {
   const { text } = useSiteContent();
   const [posts, setPosts] = useState<BlogListItem[] | null>(null);
-  const [category, setCategory] = useState('Toate');
+  const [category, setCategory] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -33,8 +33,8 @@ export function BlogListPage({ basePath = '/noutati' }: { basePath?: string } = 
       .catch((err) => { setPosts([]); setError(err instanceof Error ? err.message : 'Nu am putut încărca articolele.'); });
   }, []);
 
-  const categories = useMemo(() => ['Toate', ...new Set((posts ?? []).map((post) => post.category).filter((value): value is string => Boolean(value)))], [posts]);
-  const shown = (posts ?? []).filter((post) => category === 'Toate' || post.category === category);
+  const categories = useMemo(() => [null, ...new Set((posts ?? []).map((post) => post.category).filter((value): value is string => Boolean(value)))], [posts]);
+  const shown = (posts ?? []).filter((post) => category === null || post.category === category);
   const [featured, ...rest] = shown;
   const meta = (post: BlogListItem) => <>{post.category && <><b className="font-semibold text-blue-600">{post.category}</b> · </>}{longDate(post.published_at)}</>;
 
@@ -45,8 +45,8 @@ export function BlogListPage({ basePath = '/noutati' }: { basePath?: string } = 
         {categories.length > 1 && (
           <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:px-0">
             {categories.map((item) => (
-              <button key={item} type="button" onClick={() => setCategory(item)}
-                className={cn('h-9 shrink-0 rounded-full px-3 text-[13px] font-semibold md:px-3.5 md:text-sm', category === item ? 'border border-slate-900 bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700')}>{item}</button>
+              <button key={item ?? 'all'} type="button" onClick={() => setCategory(item)}
+                className={cn('h-9 shrink-0 rounded-full px-3 text-[13px] font-semibold md:px-3.5 md:text-sm', category === item ? 'border border-slate-900 bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700')}>{item ?? text('news.all_categories')}</button>
             ))}
           </div>
         )}
@@ -54,7 +54,7 @@ export function BlogListPage({ basePath = '/noutati' }: { basePath?: string } = 
 
       {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
       {posts === null && <div className="h-72 animate-pulse rounded-[20px] bg-white" />}
-      {posts !== null && !shown.length && <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 md:p-12 md:text-[15px]">{posts.length ? 'Nicio noutate în această categorie.' : text('news.empty')}</div>}
+      {posts !== null && !shown.length && <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 md:p-12 md:text-[15px]">{posts.length ? text('news.empty_category') : text('news.empty')}</div>}
 
       {featured && (
         <Link to={`${basePath}/${featured.slug}`} className="grid overflow-hidden rounded-2xl border border-slate-200 bg-white hover:border-slate-300 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] md:rounded-[20px]">

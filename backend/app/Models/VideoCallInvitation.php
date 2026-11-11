@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Events\VideoCallUpdated;
 use App\Models\Concerns\StoresDatesInAppTimezone;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -15,6 +16,12 @@ class VideoCallInvitation extends Model
     use StoresDatesInAppTimezone;
 
     protected $attributes = ['status' => 'ringing'];
+
+    /** Orice schimbare de stare ajunge imediat la cei doi participanți. */
+    protected static function booted(): void
+    {
+        static::saved(fn (VideoCallInvitation $call) => VideoCallUpdated::dispatch($call));
+    }
 
     protected function casts(): array
     {

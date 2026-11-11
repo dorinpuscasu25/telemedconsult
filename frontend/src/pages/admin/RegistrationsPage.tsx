@@ -69,7 +69,7 @@ export function RegistrationsPage() {
   const roleOf = (item: Registration) => item.roles.find((role) => role === 'doctor' || role === 'operator') ?? item.active_role ?? '';
 
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h1 className="mb-2 text-3xl font-bold tracking-tight text-slate-900">Cereri de înregistrare</h1>
         <p className="text-slate-500">Aprobă sau respinge conturile de medic și operator create prin înregistrare publică.</p>

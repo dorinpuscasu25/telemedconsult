@@ -1,6 +1,6 @@
 import { sectionState } from '../components/patient/record/sectionMeta';
 import { MEDICAL_SECTIONS, type MedicalRecord } from './medical-record';
-import type { PatientConsultation } from './patient-consultations';
+import { isRecentlyStarted, type PatientConsultation } from './patient-consultations';
 
 /**
  * Alertele de pe Acasă, într-o singură listă ordonată pe trei niveluri:
@@ -43,6 +43,7 @@ export interface ReviewableRequest {
 }
 
 const ACTIVE = ['new', 'accepted', 'rescheduled'];
+
 const SECTION_TITLES: Record<string, string> = Object.fromEntries(MEDICAL_SECTIONS.map((section) => [section.key, section.title]));
 export const RECORD_SECTION_KEYS = MEDICAL_SECTIONS.map((section) => section.key);
 
@@ -88,7 +89,8 @@ export function buildHomeAlerts({ requests, reviewable, profiles, needsPackage, 
 
   for (const request of active) {
     const scheduled = request.scheduled_at ? new Date(request.scheduled_at) : null;
-    if (request.status === 'accepted' && request.doctor_started_at) {
+    // Cardul verde „Apel în curs” doar cât apelul poate fi real; altfel rând „În desfășurare” mai jos.
+    if (request.status === 'accepted' && isRecentlyStarted(request, now)) {
       alerts.push({ id: `live-${request.id}`, kind: 'live', level: 1, chip: 'Apel în curs', title: `${providerName(request)} te așteaptă`, sub: `Consultație video${forWhom(request)}`, request });
     } else if (request.status === 'rescheduled') {
       alerts.push({ id: `proposal-${request.id}`, kind: 'proposal', level: 1, chip: 'Ai de răspuns', title: `${providerName(request)} propune altă oră`, sub: `${request.proposed_scheduled_at ? formatWhen(request.proposed_scheduled_at) : 'Oră nouă'}${forWhom(request)}`, request });
@@ -98,12 +100,14 @@ export function buildHomeAlerts({ requests, reviewable, profiles, needsPackage, 
   }
 
   for (const review of reviewable) {
-    alerts.push({ id: `review-${review.id}`, kind: 'review', level: 2, chip: 'Ai de evaluat', title: `Cum a fost consultația${review.doctor_name ? ` cu ${review.doctor_name}` : ''}?`, sub: 'Evaluarea e necesară înainte de următoarea programare.', reviewId: review.id });
+    alerts.push({ id: `review-${review.id}`, kind: 'review', level: 2, chip: 'Ai de evaluat', title: `Cum a fost consultația${review.doctor_name ? ` cu ${review.doctor_name}` : ''}?`, sub: 'Recenzia închide consultația și trimite plata medicului. E necesară înainte de următoarea programare.', reviewId: review.id });
   }
 
   for (const request of active) {
     if (request.status === 'new') {
       alerts.push({ id: `waiting-${request.id}`, kind: 'waiting', level: 3, chip: 'În așteptare', title: `Așteptăm confirmarea: ${providerName(request)}`, sub: `${request.scheduled_at ? formatWhen(request.scheduled_at) : 'Cât mai curând'}${forWhom(request)}`, request });
+    } else if (request.status === 'accepted' && request.doctor_started_at && !alerts.some((alert) => alert.request?.id === request.id)) {
+      alerts.push({ id: `ongoing-${request.id}`, kind: 'waiting', level: 3, chip: 'În desfășurare', title: `Consultație cu ${providerName(request)}`, sub: `Așteptăm concluzia medicului${forWhom(request)}`, request });
     } else if (request.status === 'accepted' && !request.doctor_started_at && !alerts.some((alert) => alert.request?.id === request.id)) {
       alerts.push({ id: `upcoming-${request.id}`, kind: 'upcoming', level: 3, chip: 'Confirmată', title: request.scheduled_at ? formatWhen(request.scheduled_at) : 'Consultație confirmată', sub: `${providerName(request)} · ${request.consultation_kind === 'with_exam' ? 'Cu examinare' : 'Video'}${forWhom(request)}`, request });
     }

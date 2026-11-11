@@ -251,6 +251,11 @@ class FirstTopupPromotionTest extends TestCase
         $request = ConsultationRequest::findOrFail($id);
         Sanctum::actingAs($doctor);
         $this->postJson('/api/v1/requests/'.$id.'/complete', ['diagnosis' => 'Test'])->assertOk();
+        // Concluzia nu ia banii: rămân rezervați până când pacientul închide consultația.
+        $this->assertSame('held', $request->fresh()->payment_status);
+        $this->assertSame(0, $this->balance($doctor, 'real'));
+        Sanctum::actingAs($patient);
+        $this->postJson('/api/v1/requests/'.$id.'/review', ['rating' => 5, 'comment' => 'Mulțumesc'])->assertCreated();
         $this->assertSame($request->provider_amount_minor, $this->balance($doctor, 'real'));
         $this->assertSame(25000, WalletTransaction::where('user_id', $doctor->id)->where('type', 'consultation_income')->firstOrFail()->metadata['promo_subsidy_minor']);
         $this->assertSame('captured', $request->fresh()->payment_status);
@@ -267,6 +272,8 @@ class FirstTopupPromotionTest extends TestCase
         $id = $this->postJson('/api/v1/requests', $this->requestPayload($profile, $doctor))->assertCreated()->json('request.id');
         Sanctum::actingAs($doctor);
         $this->postJson('/api/v1/requests/'.$id.'/complete', ['diagnosis' => 'Test'])->assertOk();
+        Sanctum::actingAs($patient);
+        $this->postJson('/api/v1/requests/'.$id.'/review', ['rating' => 5, 'comment' => 'Mulțumesc'])->assertCreated();
         $this->assertSame(33500, $this->balance($doctor, 'real'));
 
         Sanctum::actingAs($this->user('admin'));

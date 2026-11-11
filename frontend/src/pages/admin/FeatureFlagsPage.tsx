@@ -60,7 +60,7 @@ export function FeatureFlagsPage() {
   const homeVisits = flags.find((flag) => flag.key === 'with_exam_consultations');
 
   return (
-    <div className="max-w-4xl space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="mb-2 text-3xl font-bold tracking-tight text-slate-900">Funcționalități</h1>

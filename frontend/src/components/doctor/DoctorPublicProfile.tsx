@@ -30,9 +30,9 @@ export function PublicDoctorHeader({ doctor, compact = false }: { doctor: Public
         <div className={cn('flex flex-col', compact ? 'gap-[3px]' : 'gap-1.5')}>
           <span className={cn('font-bold text-slate-950', compact ? 'text-[19px] tracking-[-.01em]' : 'text-2xl tracking-[-.02em]')}>{displayName(doctor.name)}</span>
           <span className={cn('text-slate-600', compact ? 'text-[13px]' : 'text-sm')}>{[doctor.specialty, doctor.experience_years ? `${doctor.experience_years} ani${compact ? '' : ' experiență'}` : null].filter(Boolean).join(' · ')}</span>
-          {(doctor.reviews_count ?? 0) > 0 && (
-            <span className="flex items-center gap-1.5 text-[13px] text-slate-600"><Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" /><b className="text-slate-950">{rating(doctor.rating)}</b> · {doctor.reviews_count} recenzii</span>
-          )}
+          {Number(doctor.reviews_count ?? 0) > 0
+            ? <span className="flex items-center gap-1.5 text-[13px] text-slate-600"><Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" /><b className="text-slate-950">{rating(doctor.rating)}</b> · {doctor.reviews_count} {Number(doctor.reviews_count) === 1 ? 'recenzie' : 'recenzii'}</span>
+            : <span className="text-[13px] text-slate-500">Fără recenzii încă</span>}
         </div>
       </div>
       {doctor.institution && (

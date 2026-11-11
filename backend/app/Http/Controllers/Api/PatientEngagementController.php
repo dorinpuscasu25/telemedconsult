@@ -12,6 +12,7 @@ use App\Models\OperatorReview;
 use App\Models\PlatformSetting;
 use App\Models\User;
 use App\Notifications\AppEventNotification;
+use App\Services\ConsultationSettlement;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -182,8 +183,9 @@ class PatientEngagementController extends Controller
             $doctorDone = ! $consultationRequest->doctor_id || DoctorReview::where('patient_id', $user->id)->where('consultation_request_id', $consultationRequest->id)->exists();
             $operatorDone = ! $consultationRequest->operator_id || OperatorReview::where('patient_id', $user->id)->where('consultation_request_id', $consultationRequest->id)->exists();
 
+            // Recenzia închide consultația; abia acum plata rezervată ajunge la prestator.
             if ($doctorDone && $operatorDone) {
-                $consultationRequest->forceFill(['closed_at' => now()])->save();
+                app(ConsultationSettlement::class)->close($consultationRequest);
             }
 
             return $review;

@@ -7,7 +7,6 @@ use App\Models\InstitutionEarning;
 use App\Models\MedicalInstitution;
 use App\Models\User;
 use App\Models\WithdrawalRequest;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Banii care trec prin instituții medicale.
@@ -118,11 +117,12 @@ class InstitutionLedger
      */
     public function platformDoctorBalanceMinor(int $doctorId, ?int $exceptWithdrawalId = null): int
     {
-        $revenueMinor = (int) round((float) DB::table('consultations')
-            ->where('doctor_id', $doctorId)
-            ->where('status', 'completed')
-            ->whereNotIn('consultation_request_id', InstitutionEarning::select('consultation_request_id')->where('doctor_id', $doctorId))
-            ->sum('price') * 100);
+        // Doar consultațiile închise și plătite, cu partea medicului (fără comisionul
+        // platformei). Cele prin instituție le plătește instituția.
+        $revenueMinor = (int) ConsultationRequest::where('doctor_id', $doctorId)
+            ->where('payment_status', 'captured')
+            ->whereNotIn('id', InstitutionEarning::select('consultation_request_id')->where('doctor_id', $doctorId))
+            ->sum('provider_amount_minor');
 
         return max(0, $revenueMinor - $this->paidMinor(
             WithdrawalRequest::where('payer', self::PAYER_PLATFORM)
