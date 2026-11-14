@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
-import { Camera, Trash2, Upload } from 'lucide-react';
+import { Activity, Camera, Files, FlaskConical, ScanLine, Trash2, Upload } from 'lucide-react';
 import { Input } from '../../ui/input';
 import { Label } from '../../ui/label';
 import { cn } from '../../ui/utils';
@@ -11,6 +11,7 @@ export type RecordDocument = { id: number; title: string; type: string; performe
 
 const TYPES: Array<[string, string]> = [['analysis', 'Analize de laborator'], ['functional', 'Investigații funcționale'], ['imaging', 'Investigații imagistice']];
 const EXAMPLES: Record<string, string> = { analysis: 'De exemplu: hemoleucogramă, biochimie, hormoni.', functional: 'De exemplu: ECG, EEG, spirometrie.', imaging: 'De exemplu: radiografie, ecografie, RMN, tomografie.' };
+const CATEGORY_ICONS: Record<string, typeof Files> = { analysis: FlaskConical, functional: Activity, imaging: ScanLine, investigation: Files };
 const ACCEPT = '.jpg,.jpeg,.png,.webp,.pdf,.doc,.docx';
 const MAX_BYTES = 20 * 1024 * 1024;
 
@@ -120,42 +121,51 @@ export function DocumentsPanel({ profileId, documents, onChanged }: { profileId:
       </div>
 
       {
-        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-3 lg:items-start">
-          {groups.map(([key, label, items]) => (
-            <section key={label} className="flex flex-col gap-2 lg:gap-2.5">
-              <div className="flex justify-between px-1 lg:px-0">
-                <span className="text-[13px] font-semibold text-slate-600">{label}<span className="hidden lg:inline"> · {countLabel(items.length)}</span></span>
-                <span className="text-xs text-slate-400 lg:hidden">{countLabel(items.length)}</span>
-              </div>
-              {EXAMPLES[key] && <p className="px-1 text-xs leading-5 text-slate-500">{EXAMPLES[key]}</p>}
-              {items.length === 0 && <p className="rounded-xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">Nu sunt documente în această categorie.</p>}
-              <ul className="overflow-hidden rounded-2xl border border-slate-200 bg-white lg:contents">
-                {items.map((item, index) => {
-                  const kind = kindOf(item);
-                  const thumb = kind === 'PDF' ? 'bg-red-50 text-red-700' : 'bg-[repeating-linear-gradient(135deg,#F1F5F9_0_8px,#E2E8F0_8px_16px)] text-slate-500';
-                  const body = (
-                    <>
-                      <span className="flex min-w-0 flex-1 flex-col gap-0.5"><span className="truncate text-sm font-medium text-slate-950">{item.title}</span><span className="text-xs text-slate-500">{item.performed_at ? shortDate(item.performed_at) : 'Dată neprecizată'}</span></span>
-                      <button type="button" aria-label={`Șterge ${item.title}`} onClick={(event) => { event.preventDefault(); void remove(item); }} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
-                    </>
-                  );
-                  return (
-                    <li key={item.id} className={cn('lg:overflow-hidden lg:rounded-2xl lg:border lg:border-slate-200 lg:bg-white', index > 0 && 'border-t border-slate-100 lg:border-t')}>
-                      <a href={item.url ?? undefined} target="_blank" rel="noreferrer" className="flex items-center gap-3 px-3 py-2.5 lg:hidden">
-                        <span className={cn('grid h-[52px] w-11 shrink-0 place-items-center rounded-lg text-[10px] font-bold', thumb)}>{kind}</span>
-                        {body}
-                      </a>
-                      {key === 'investigation' && <div className="px-3 pb-3"><select aria-label={`Categoria pentru ${item.title}`} value="" disabled={classifying !== null} onChange={(event) => void classify(item, event.target.value)} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm"><option value="">Alege categoria</option>{TYPES.map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></div>}
-                      <a href={item.url ?? undefined} target="_blank" rel="noreferrer" className="hidden lg:block">
-                        <span className={cn('grid h-[110px] place-items-center font-mono text-xs font-semibold', thumb)}>{kind}</span>
-                        <span className="flex items-center gap-2 px-3 py-2.5">{body}</span>
-                      </a>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          ))}
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3 lg:gap-6">
+          {groups.map(([key, label, items]) => {
+            const CategoryIcon = CATEGORY_ICONS[key];
+            return (
+              <section key={key} className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-sm">
+                <div className="border-b border-slate-200 bg-slate-50 px-4 py-4 lg:px-5">
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-blue-100 bg-blue-50 text-blue-600"><CategoryIcon aria-hidden="true" className="h-5 w-5" /></span>
+                    <h3 className="min-w-0 flex-1 text-sm font-semibold text-slate-900">{label}</h3>
+                    <span aria-label={countLabel(items.length)} className="grid h-7 min-w-7 shrink-0 place-items-center rounded-full border border-slate-200 bg-white px-2 text-xs font-semibold tabular-nums text-slate-600">{items.length}</span>
+                  </div>
+                  {EXAMPLES[key] && <p className="mt-3 text-xs leading-5 text-slate-500">{EXAMPLES[key]}</p>}
+                </div>
+                <div className="flex flex-1 flex-col p-4 lg:p-5">
+                  {items.length === 0 ? <p className="flex min-h-32 flex-1 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-4 text-center text-sm leading-6 text-slate-500">Nu sunt documente în această categorie.</p> : (
+                    <ul className="overflow-hidden rounded-2xl border border-slate-200 bg-white lg:grid lg:gap-3 lg:overflow-visible lg:rounded-none lg:border-0">
+                      {items.map((item, index) => {
+                        const kind = kindOf(item);
+                        const thumb = kind === 'PDF' ? 'bg-red-50 text-red-700' : 'bg-[repeating-linear-gradient(135deg,#F1F5F9_0_8px,#E2E8F0_8px_16px)] text-slate-500';
+                        const body = (
+                          <>
+                            <span className="flex min-w-0 flex-1 flex-col gap-0.5"><span className="truncate text-sm font-medium text-slate-950">{item.title}</span><span className="text-xs text-slate-500">{item.performed_at ? shortDate(item.performed_at) : 'Dată neprecizată'}</span></span>
+                            <button type="button" aria-label={`Șterge ${item.title}`} onClick={(event) => { event.preventDefault(); void remove(item); }} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                          </>
+                        );
+                        return (
+                          <li key={item.id} className={cn('lg:overflow-hidden lg:rounded-2xl lg:border lg:border-slate-200 lg:bg-white', index > 0 && 'border-t border-slate-100 lg:border-t')}>
+                            <a href={item.url ?? undefined} target="_blank" rel="noreferrer" className="flex items-center gap-3 px-3 py-2.5 lg:hidden">
+                              <span className={cn('grid h-[52px] w-11 shrink-0 place-items-center rounded-lg text-[10px] font-bold', thumb)}>{kind}</span>
+                              {body}
+                            </a>
+                            {key === 'investigation' && <div className="px-3 pb-3"><select aria-label={`Categoria pentru ${item.title}`} value="" disabled={classifying !== null} onChange={(event) => void classify(item, event.target.value)} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm"><option value="">Alege categoria</option>{TYPES.map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></div>}
+                            <a href={item.url ?? undefined} target="_blank" rel="noreferrer" className="hidden lg:block">
+                              <span className={cn('grid h-[110px] place-items-center font-mono text-xs font-semibold', thumb)}>{kind}</span>
+                              <span className="flex items-center gap-2 px-3 py-2.5">{body}</span>
+                            </a>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </section>
+            );
+          })}
         </div>
       }
 
