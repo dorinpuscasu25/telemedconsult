@@ -1,3 +1,4 @@
+import { ConsultationConsentFields, type ConsentPayload } from '../../components/patient/ConsultationConsentFields';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -49,6 +50,7 @@ interface PatientProfile {
 }
 
 export function OperatorsList() {
+  const [consent, setConsent] = useState<ConsentPayload>({ valid: false, data: {} });
   const [operators, setOperators] = useState<Operator[]>([]);
   const [patientProfiles, setPatientProfiles] = useState<PatientProfile[]>([]);
   const [patientProfileId, setPatientProfileId] = useState('');
@@ -126,6 +128,7 @@ export function OperatorsList() {
       const response = await apiRequest<{conversation?: { id: number }}>('/requests', {
         method: 'POST',
         body: JSON.stringify({
+          ...consent.data,
           type: 'operator',
           operator_id: selectedOperator.id,
           patient_profile_id: Number(patientProfileId),
@@ -268,10 +271,11 @@ export function OperatorsList() {
                   <legend className="mb-2 text-sm font-semibold text-slate-900">Ce vă supără?</legend>
                   <ConsultationComplaintFields history={illnessHistory} symptoms={symptoms} onHistoryChange={setIllnessHistory} onSymptomsChange={setSymptoms} />
                 </fieldset>
+                <ConsultationConsentFields key={patientProfileId} onChange={setConsent}/>
               </div>
               <DialogFooter className="shrink-0 border-t border-slate-100 px-5 py-3 sm:px-6">
                 <Button type="button" variant="ghost" onClick={closeDialog}>Renunță</Button>
-                <Button type="submit" disabled={isSubmitting || !patientProfileId}>{isSubmitting ? 'Se trimite…' : `Confirmă și achită ${selectedOperator.exam_price} MDL`}</Button>
+                <Button type="submit" disabled={!consent.valid || isSubmitting || !patientProfileId}>{isSubmitting ? 'Se trimite…' : `Confirmă și achită ${selectedOperator.exam_price} MDL`}</Button>
               </DialogFooter>
             </form>
           )}

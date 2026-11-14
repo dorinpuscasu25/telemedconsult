@@ -117,7 +117,7 @@ export function OperatorReferralsPage() {
           <span className="text-[13px] text-slate-500">Pacientul deschide linkul, își creează contul și apare imediat în lista de mai jos.</span>
         </div>
         {data ? <ReferralLinkBox data={data} /> : !error && <Skeleton className="h-11 w-full" />}
-        {data && <span className="text-xs text-slate-500">Cod: <span className="font-mono font-semibold text-slate-700">{data.code}</span>{data.bonus_enabled && data.commission_rate > 0 ? ` · primești ${data.commission_rate}% din fiecare alimentare, ca bonus` : ''}</span>}
+        {data && <span className="text-xs text-slate-500">Cod: <span className="font-mono font-semibold text-slate-700">{data.code}</span>{data.bonus_enabled && data.commission_rate > 0 ? ` · primești ${data.commission_rate}% din prima alimentare efectivă, în bani (fără prețul pachetului)` : ''}</span>}
       </section>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

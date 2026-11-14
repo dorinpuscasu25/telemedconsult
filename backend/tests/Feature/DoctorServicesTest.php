@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Consultation;
 use App\Models\ConsultationRequest;
 use App\Models\DoctorProfile;
 use App\Models\DoctorService;
@@ -106,6 +107,22 @@ class DoctorServicesTest extends TestCase
             ->assertJsonPath('data.0.services.1.name', 'Al doilea');
     }
 
+    public function test_catalog_counts_completed_consultations_per_doctor_separately_from_reviews(): void
+    {
+        $doctor = $this->doctor();
+        $other = $this->doctor();
+        $patient = User::factory()->create();
+        $doctor->doctorProfile->update(['reviews_count' => 90]);
+        foreach ([[$doctor, 'completed'], [$doctor, 'completed'], [$doctor, 'pending'], [$other, 'completed']] as [$provider, $status]) {
+            Consultation::create(['patient_id' => $patient->id, 'doctor_id' => $provider->id, 'status' => $status, 'diagnosis' => 'Privat']);
+        }
+        $data = collect($this->getJson('/api/v1/catalog/doctors')->assertOk()->json('data'))->keyBy('id');
+        $this->assertSame(2, $data[$doctor->id]['consultations_count']);
+        $this->assertSame(1, $data[$other->id]['consultations_count']);
+        $this->assertSame(90, $data[$doctor->id]['reviews_count']);
+        $this->assertArrayNotHasKey('diagnosis', $data[$doctor->id]);
+    }
+
     public function test_home_services_disappear_when_home_visits_are_off(): void
     {
         $doctor = $this->doctor();
@@ -161,7 +178,7 @@ class DoctorServicesTest extends TestCase
     private function userWithRole(string $roleName): User
     {
         $role = Role::firstOrCreate(['name' => $roleName], ['label' => ucfirst($roleName)]);
-        $user = User::factory()->create(['active_role_id' => $role->id, 'status' => 'active', 'phone' => '069484967']);
+        $user = User::factory()->create(['active_role_id' => $role->id, 'status' => 'active', 'phone' => fake()->unique()->numerify('069######')]);
         $user->roles()->sync([$role->id]);
 
         return $user;

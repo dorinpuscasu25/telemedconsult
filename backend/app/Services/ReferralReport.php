@@ -89,7 +89,7 @@ final class ReferralReport
         $requests = ConsultationRequest::query()
             ->whereIn('patient_id', $ids)
             ->whereIn('payment_status', ['held', 'captured', 'refunded'])
-            ->get(['id', 'patient_id', 'payment_status', 'platform_fee_minor', 'updated_at']);
+            ->get(['id', 'patient_id', 'payment_status', 'platform_fee_minor', 'closed_at', 'refunded_at', 'updated_at']);
         $netByRequest = WalletTransaction::query()
             ->whereIn('consultation_request_id', $requests->pluck('id'))
             ->whereIn('type', ['service_hold', 'service_refund'])
@@ -102,15 +102,16 @@ final class ReferralReport
             $row = &$rows[(int) $request->patient_id];
             $paid = max(0, -(int) ($netByRequest[$request->id] ?? 0));
 
+            $settledAt = $request->payment_status === 'captured' ? ($request->closed_at ?? $request->updated_at) : ($request->refunded_at ?? $request->updated_at);
             if ($request->payment_status === 'held') {
                 $row['reserved_minor'] += $paid;
-            } elseif ((! $from || $request->updated_at >= $from) && (! $to || $request->updated_at <= $to)) {
+            } elseif ((! $from || $settledAt >= $from) && (! $to || $settledAt <= $to)) {
                 $row['spent_minor'] += $paid;
                 if ($request->payment_status === 'captured') {
                     $row['revenue_minor'] += (int) $request->platform_fee_minor;
                     $row['consultations_count']++;
                 }
-                $at = $request->updated_at?->toIso8601String();
+                $at = $settledAt?->toIso8601String();
                 $row['last_activity_at'] = max($row['last_activity_at'] ?? '', (string) $at) ?: null;
             }
             unset($row);

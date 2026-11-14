@@ -25,6 +25,8 @@ import { patientAge } from '../../lib/medical-record';
 import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 import { PageHeader } from '../../components/app/PageHeader';
 import { ReferralPanel, type ReferralResponse } from '../../components/ReferralPanel';
+import type { PatientProfileEntitlements } from '../../lib/patient-profiles';
+import { FreeProfileChoice } from '../../components/patient/FreeProfileChoice';
 
 type PatientProfile = {
   id: number;
@@ -43,6 +45,7 @@ type PatientProfile = {
   life_history?: Array<{ category: string; note: string; added_at: string }>;
   status?: string | null;
   active_until?: string | null;
+  is_free?: boolean;
   can_request_consultation?: boolean;
   request_unavailable_reason?: string | null;
   has_complete_address?: boolean;
@@ -62,6 +65,7 @@ type CardPackage = {
   price: number;
   validity_days: number;
   bonus_points?: number;
+  bonus_available?: boolean;
 };
 
 type CardPurchase = {
@@ -73,7 +77,7 @@ type CardPurchase = {
   amount: number;
 };
 
-type ProfileResponse = {
+type ProfileResponse = PatientProfileEntitlements & {
   user: { id: string; name: string; email: string; phone?: string | null; telegram_chat_id?: string | null };
   patient_profiles: PatientProfile[];
   card_packages: CardPackage[];
@@ -117,6 +121,10 @@ function ProfilePageContent() {
   const [patientForm, setPatientForm] = useState(emptyPatient);
   const [regionsCatalog, setRegionsCatalog] = useState<CatalogRegion[]>([]);
   const [isPatientOpen, setIsPatientOpen] = useState(false);
+  const [freeSelected, setFreeSelected] = useState(true);
+  const [savingPatient, setSavingPatient] = useState(false);
+  const [patientError, setPatientError] = useState('');
+  const openPatientForm = () => { setPatientError(''); setFreeSelected(true); setIsPatientOpen(true); };
   const [activeTab, setActiveTab] = useState(() => profileTab(searchParams.get('tab')));
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -214,7 +222,7 @@ function ProfilePageContent() {
       notify('Pachet activ. Acum adaugă pacientul.');
       loadProfile();
       changeTab('patients');
-      setIsPatientOpen(true);
+      openPatientForm();
     } catch (err) {
       const data = apiErrorData(err);
       if (data?.code === 'insufficient_wallet_balance') {
@@ -230,11 +238,15 @@ function ProfilePageContent() {
 
   const savePatient = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (savingPatient) return;
+    setSavingPatient(true);
+    setPatientError('');
     try {
       const created = await apiRequest<{ patient_profile: PatientProfile }>('/patient/profiles', {
         method: 'POST',
         body: JSON.stringify({
           ...patientForm,
+          use_free_profile: usingFree,
           address: patientForm.address || null,
           gender: patientForm.gender || null,
           residential_environment: patientForm.residential_environment || null,
@@ -256,6 +268,10 @@ function ProfilePageContent() {
         changeTab('cards');
       }
       fail(err, 'Nu am putut crea profilul.');
+      setPatientError(err instanceof Error ? err.message : 'Nu am putut crea profilul.');
+      loadProfile();
+    } finally {
+      setSavingPatient(false);
     }
   };
 
@@ -270,9 +286,11 @@ function ProfilePageContent() {
   const totalSlots = activeCardPurchases.reduce((sum, item) => sum + item.profile_slots, 0);
   const activePurchase = [...activeCardPurchases].sort((a, b) => new Date(b.expires_at).getTime() - new Date(a.expires_at).getTime())[0];
   const hasRequestablePatient = profiles.some((profile) => profile.can_request_consultation);
-  // Pachetul e obligatoriu cât timp cartelele și plățile sunt pornite; altfel pacienții se adaugă liber.
+  // După profilul gratuit se folosesc pachete; cu modulul oprit pacienții se adaugă liber.
   const canBuyPatientPackages = isEnabled('patient_cards') && isEnabled('payments');
-  const canAddPatient = !canBuyPatientPackages || availableSlots > 0;
+  const freeAvailable = Boolean(data?.free_profile?.available);
+  const usingFree = canBuyPatientPackages && freeAvailable && freeSelected;
+  const canAddPatient = data?.can_add_patient ?? (!canBuyPatientPackages || availableSlots > 0 || freeAvailable);
   const patientNextStep = !canAddPatient && profiles.length === 0
     ? {
         step: 'Primul pas',
@@ -287,7 +305,7 @@ function ProfilePageContent() {
           title: 'Adaugă primul pacient',
           description: 'Completează datele persoanei care va beneficia de consultații sau examinări.',
           action: 'Adaugă pacient',
-          onClick: () => setIsPatientOpen(true)
+          onClick: openPatientForm
         }
       : {
           step: 'Verificare necesară',
@@ -380,7 +398,7 @@ function ProfilePageContent() {
         <TabsContent id="patient-profiles" value="patients" className="scroll-mt-24 space-y-4">
           {profiles.length > 0 && !canAddPatient && canBuyPatientPackages && (
             <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              <span className="min-w-0 flex-1"><span className="font-semibold">Ai folosit toate locurile din pachet.</span> Pentru încă un pacient ai nevoie de un pachet nou.</span>
+              <span className="min-w-0 flex-1"><span className="font-semibold">Pentru încă un pacient, alege un pachet.</span> Nu ai locuri disponibile în pachetele actuale.</span>
               <button type="button" onClick={() => changeTab('cards')} className="h-9 rounded-[10px] border border-amber-300 bg-white px-3 font-medium">Cumpără pachet</button>
             </div>
           )}
@@ -388,11 +406,11 @@ function ProfilePageContent() {
             {profiles.map((profile) => <PatientCard key={profile.id} profile={profile} />)}
             {canAddPatient && (
               <li>
-                <button type="button" onClick={() => setIsPatientOpen(true)} className="flex h-full w-full items-center gap-3 rounded-2xl border-[1.5px] border-dashed border-slate-300 p-4 text-left transition hover:border-slate-400 sm:min-h-[220px] sm:flex-col sm:justify-center sm:p-[18px] sm:text-center">
+                <button type="button" onClick={openPatientForm} className="flex h-full w-full items-center gap-3 rounded-2xl border-[1.5px] border-dashed border-slate-300 p-4 text-left transition hover:border-slate-400 sm:min-h-[220px] sm:flex-col sm:justify-center sm:p-[18px] sm:text-center">
                   <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600 sm:h-12 sm:w-12"><Plus className="h-5 w-5" /></span>
                   <span className="flex flex-col gap-0.5">
                     <span className="text-[15px] font-semibold text-slate-950">Adaugă pacient</span>
-                    {canBuyPatientPackages && <span className="text-[13px] text-slate-500">{availableSlots} {availableSlots === 1 ? 'loc liber' : 'locuri libere'}{totalSlots ? ` din ${totalSlots}` : ''}</span>}
+                    {canBuyPatientPackages && <span className="text-[13px] text-slate-500">{freeAvailable ? '1 profil gratuit disponibil' : `${availableSlots} ${availableSlots === 1 ? 'loc liber' : 'locuri libere'}${totalSlots ? ` din ${totalSlots}` : ''}`}</span>}
                   </span>
                 </button>
               </li>
@@ -416,7 +434,7 @@ function ProfilePageContent() {
                     <div>
                       <p className="text-lg font-semibold text-slate-950">{pack.name}</p>
                       <p className="mt-1 text-sm text-slate-500">{pack.profile_slots} profiluri • {pack.validity_days} zile</p>
-                      {(pack.bonus_points ?? 0) > 0 && <p className="mt-2 inline-block rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">+{money(pack.bonus_points)} puncte bonus cadou</p>}
+                      {(pack.bonus_points ?? 0) > 0 && <p className="mt-2 rounded-xl bg-emerald-50 px-2.5 py-2 text-xs text-emerald-700">{pack.bonus_available === false ? 'Bonusul pentru acest tip de pachet a fost deja acordat.' : `+${money(pack.bonus_points)} puncte bonus · o singură dată pentru acest tip de pachet`}</p>}
                     </div>
                     {pack.description && <p className="text-sm leading-6 text-slate-600">{pack.description}</p>}
                     <p className="text-xs font-medium text-slate-500">
@@ -490,13 +508,15 @@ function ProfilePageContent() {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={isPatientOpen} onOpenChange={setIsPatientOpen}>
+      <Dialog open={isPatientOpen} onOpenChange={(open) => { setIsPatientOpen(open); if (!open) setPatientError(''); }}>
         <DialogContent className="sm:max-w-[620px] rounded-2xl border-0 bg-white shadow-xl">
           <form onSubmit={savePatient}>
             <DialogHeader>
               <DialogTitle>Profil pacient nou</DialogTitle>
             </DialogHeader>
             <div className="grid gap-4 py-5 md:grid-cols-2">
+              {patientError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700 md:col-span-2">{patientError}</p>}
+              {freeAvailable && canBuyPatientPackages && <div role="radiogroup" aria-label="Activarea profilului" className="space-y-2 md:col-span-2"><FreeProfileChoice selected={usingFree} onSelect={() => setFreeSelected(true)} disabled={savingPatient} />{availableSlots > 0 && <button type="button" role="radio" aria-checked={!usingFree} disabled={savingPatient} onClick={() => setFreeSelected(false)} className={cn('w-full rounded-xl border p-3 text-left text-sm', !usingFree ? 'border-blue-600 bg-blue-50' : 'border-slate-200')}>Folosește un loc din pachet · {availableSlots} disponibile</button>}</div>}
               <div className="md:col-span-2">
                 <PatientBasicsFields value={patientForm} onChange={(next) => setPatientForm({ ...patientForm, ...next })} regions={regionsCatalog} />
               </div>
@@ -512,7 +532,7 @@ function ProfilePageContent() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" className="rounded-xl" onClick={() => setIsPatientOpen(false)}>Anulare</Button>
-              <Button className="rounded-xl" disabled={!isPatientBasicsComplete(patientForm)}>Creează profil</Button>
+              <Button className="rounded-xl" disabled={savingPatient || !canAddPatient || !isPatientBasicsComplete(patientForm)}>{savingPatient ? 'Se creează…' : 'Creează profil'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -593,6 +613,7 @@ function PatientCard({ profile }: { profile: PatientProfile }) {
           {ring}
         </Link>
         <div className="flex items-center justify-between gap-2.5"><span className="text-[13px] text-slate-500">Fișa: {progress.done} din {progress.total}</span><span className="[&>button]:h-[38px]">{button}</span></div>
+        {profile.is_free && <span className="text-xs text-blue-600">Profil gratuit{profile.active_until ? ` · valabil până la ${new Date(profile.active_until).toLocaleDateString('ro-RO', { timeZone: 'Europe/Chisinau' })}` : ''}</span>}
       </div>
       {/* Desktop (D1b) */}
       <div className="hidden h-full flex-col gap-4 p-[18px] sm:flex">
@@ -600,6 +621,7 @@ function PatientCard({ profile }: { profile: PatientProfile }) {
         <Link to={`/patient/patients/${profile.id}`} className="flex flex-col gap-[3px]">
           <span className="text-base font-semibold text-slate-950">{name}</span>
           {age && <span className="text-[13px] text-slate-500">{age}</span>}
+          {profile.is_free && <span className="text-xs text-blue-600">Profil gratuit{profile.active_until ? ` · valabil până la ${new Date(profile.active_until).toLocaleDateString('ro-RO', { timeZone: 'Europe/Chisinau' })}` : ''}</span>}
           {code && <span className="font-mono text-xs text-slate-400">{code}</span>}
           {!profile.can_request_consultation && profile.request_unavailable_reason && <span className="mt-1 text-xs font-medium text-amber-700">{profile.request_unavailable_reason}</span>}
         </Link>

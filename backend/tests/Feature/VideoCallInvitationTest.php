@@ -25,7 +25,7 @@ class VideoCallInvitationTest extends TestCase
         Sanctum::actingAs($patient);
         $this->getJson('/api/v1/video-calls/incoming')->assertOk()->assertJsonPath('calls.0.id', $first)->assertJsonPath('calls.0.caller_name', $doctor->name);
         $this->assertDatabaseCount('video_call_invitations', 1);
-        $this->postJson($this->inviteUrl($request))->assertOk()->assertJsonPath('call.id', $first);
+        $this->postJson($this->inviteUrl($request))->assertForbidden();
     }
 
     public function test_recipient_can_accept_or_decline_and_caller_can_only_cancel(): void
@@ -85,6 +85,7 @@ class VideoCallInvitationTest extends TestCase
         $doctor = $this->user('doctor');
         $request = ConsultationRequest::create(['patient_id' => $patient->id, 'doctor_id' => $doctor->id, 'type' => 'video', 'consultation_kind' => 'video', 'status' => 'accepted', 'doctor_started_at' => now()]);
         Notification::fake();
+        config(['services.livekit.url' => 'wss://test.livekit.cloud', 'services.livekit.api_key' => 'test-key', 'services.livekit.api_secret' => str_repeat('s', 32)]);
 
         return [$patient, $doctor, $request];
     }

@@ -1,3 +1,5 @@
+import { AdministrativeMessagesPage } from './pages/AdministrativeMessagesPage';
+import { AdminDoctorActivityPage } from './pages/admin/DoctorActivityPage';
 import { IncomingVideoCall } from './components/IncomingVideoCall';
 import { ValidationFeedback } from './components/ValidationFeedback';
 import { DialogProvider } from './components/app/DialogProvider';
@@ -56,6 +58,7 @@ import { OperatorChatPage } from './pages/operator/OperatorChatPage';
 import { OperatorProfilePage } from './pages/operator/OperatorProfilePage';
 import { OperatorReferralsPage } from './pages/operator/OperatorReferralsPage';
 import { OperatorMorePage } from './pages/operator/OperatorMorePage';
+import { InstitutionReportsPage } from './pages/institution/InstitutionReportsPage';
 import { InstitutionHome } from './pages/institution/InstitutionHome';
 import { InstitutionDoctorsPage } from './pages/institution/InstitutionDoctorsPage';
 import { InstitutionPayoutsPage } from './pages/institution/InstitutionPayoutsPage';
@@ -201,10 +204,12 @@ function AppRoutes() {
         }>
         
         <Route index element={<AdminDashboard />} />
+        <Route path="admin-messages" element={<AdministrativeMessagesPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="registrations" element={<RegistrationsPage />} />
         <Route path="specialties" element={<SpecialtiesPage />} />
         <Route path="doctors" element={<DoctorsPage />} />
+        <Route path="doctors/:doctorId/activity" element={<AdminDoctorActivityPage />} />
         <Route path="operators" element={<UsersPage />} />
         <Route path="transactions" element={<TransactionsPage />} />
         <Route path="referrals" element={<ReferralStatsPage />} />
@@ -270,6 +275,7 @@ function AppRoutes() {
         <Route path="consultations" element={<ConsultationsPage />} />
         <Route path="chat" element={<DoctorChatPage />} />
         <Route path="stats" element={<StatsPage />} />
+        <Route path="admin-messages" element={<AdministrativeMessagesPage />} />
         <Route path="profile" element={<DoctorProfilePage />} />
         <Route path="more" element={<DoctorMorePage />} />
         <Route path="noutati" element={<DoctorNewsPage />} />
@@ -291,6 +297,7 @@ function AppRoutes() {
         <Route path="chat" element={<HomeVisitsRoute fallback="/operator/referrals"><OperatorChatPage /></HomeVisitsRoute>} />
         <Route path="profile" element={<OperatorProfilePage />} />
         <Route path="referrals" element={<OperatorReferralsPage />} />
+        <Route path="admin-messages" element={<AdministrativeMessagesPage />} />
         <Route path="more" element={<OperatorMorePage />} />
         <Route path="noutati" element={<AppNewsListPage />} />
         <Route path="noutati/:slug" element={<AppNewsPostPage />} />
@@ -307,6 +314,8 @@ function AppRoutes() {
         }>
         <Route index element={<InstitutionHome />} />
         <Route path="doctors" element={<InstitutionDoctorsPage />} />
+        <Route path="reports" element={<InstitutionReportsPage />} />
+        <Route path="admin-messages" element={<AdministrativeMessagesPage />} />
         <Route path="payouts" element={<InstitutionPayoutsPage />} />
         <Route path="settings" element={<InstitutionSettingsPage />} />
         <Route path="noutati" element={<AppNewsListPage />} />
@@ -325,6 +334,7 @@ function AppRoutes() {
         <Route index element={<CoordinatorDashboard />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="doctors" element={<DoctorsPage />} />
+        <Route path="doctors/:doctorId/activity" element={<AdminDoctorActivityPage />} />
         <Route path="noutati" element={<AppNewsListPage />} />
         <Route path="noutati/:slug" element={<AppNewsPostPage />} />
         <Route path="telegram" element={<TelegramPage />} />

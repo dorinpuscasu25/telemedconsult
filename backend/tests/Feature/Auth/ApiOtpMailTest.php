@@ -55,6 +55,7 @@ class ApiOtpMailTest extends TestCase
         Mail::fake();
         config(['otp.expires_minutes' => 7, 'otp.demo_code_enabled' => true, 'services.frontend_url' => 'https://portal.example.test/']);
         $response = $this->postJson('/api/v1/auth/register', [
+            'phone' => fake()->unique()->numerify('069######'),
             'name' => 'Ana Test', 'email' => 'ana+new@example.test', 'password' => 'Password123!', 'password_confirmation' => 'Password123!',
         ])->assertCreated();
         $code = $response->json('dev_otp');

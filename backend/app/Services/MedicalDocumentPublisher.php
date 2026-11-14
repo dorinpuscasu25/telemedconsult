@@ -9,7 +9,7 @@ use Illuminate\Support\Str;
 
 class MedicalDocumentPublisher
 {
-    public const ADDENDUM_DAYS = 14;
+    public const ADDENDUM_DAYS = PatientRecordAccess::MONITORING_DAYS;
 
     public const PRESCRIPTION_INSTRUCTIONS = 'Spuneți-ne din ce rețea de farmacii ați luat medicamentul pe rețetă, pentru a transmite rețeta originală în rețeaua respectivă.';
 
@@ -20,18 +20,22 @@ class MedicalDocumentPublisher
         $profile = $consultation->doctor?->doctorProfile;
         $signature = $profile?->signature_path;
         $sections = $parent ? ['Completare / recomandări' => $content['recommendations'] ?? ''] : [
-            'Istoricul bolii actuale' => $consultation->current_illness_history,
-            'Acuzele pacientului (plângerile / simptomele)' => $consultation->patient_complaints,
+            'Istoricul bolii și acuzele pacientului' => implode("\n\n", array_filter([filled($consultation->current_illness_history) ? 'Istoricul declarat: '.$consultation->current_illness_history : null, $consultation->patient_complaints])),
+            'Completările medicului la istoricul bolii' => $consultation->doctor_history_notes,
             'Examen obiectiv' => $this->objectiveExam($consultation),
             'Date obiective înregistrate' => $this->objectiveText($consultation),
-            'Diagnostic clinic' => $consultation->diagnosis,
-            'Tratament' => $consultation->treatment_plan,
-            'Recomandări' => $consultation->recommendations,
+            'Diagnostic clinic prezumtiv' => $consultation->diagnosis,
+            'Tratament medicamentos' => $consultation->treatment_plan,
+            'Recomandări de stil de viață, alimentație și hidratare' => $consultation->recommendations,
             'Investigații recomandate' => $consultation->investigation_recommendations,
             'Rețetă' => $consultation->prescription_notes,
         ];
 
         return [
+            'consents' => $parent?->content_snapshot['consents'] ?? app(ConsultationConsents::class)->evidence($consultation->consultation_request_id),
+            'protocol_number' => $parent?->content_snapshot['protocol_number'] ?? 'PV-'.now('Europe/Chisinau')->format('Y').'-'.$consultation->consultation_request_id,
+            'decision_number' => $parent?->content_snapshot['decision_number'] ?? 'DEC-'.now('Europe/Chisinau')->format('Y').'-'.$consultation->id,
+            'higo_evidence' => ['status' => $consultation->higo_status, 'exam_id' => $consultation->higo_exam_id, 'performed_at' => $consultation->higo_exam_performed_at, 'reviewed_at' => $consultation->higo_reviewed_at, 'doctor_id' => $consultation->doctor_id],
             'addendum_days' => self::ADDENDUM_DAYS,
             'clinic' => $profile?->clinic_name ?: app(PlatformConfig::class)->get('platform_name'),
             'clinic_details' => $profile?->clinic_details,
@@ -87,8 +91,11 @@ class MedicalDocumentPublisher
     private function objectiveExam(Consultation $consultation): string
     {
         $sections = [$consultation->objective_exam];
+        if ($consultation->higo_status === 'not_performed') {
+            $sections[] = 'Examinarea cu dispozitivul HIGO nu a fost efectuată.';
+        }
         if ($consultation->higo_reviewed) {
-            $sections[] = 'Medicul confirmă că a luat cunoștință de datele examinării efectuate cu dispozitivul HIGO. Fotografiile, înregistrările video și celelalte fișiere ale examinării se păstrează în format digital în fișa pacientului și nu sunt incluse în acest PDF.';
+            $sections[] = ($consultation->higo_exam_performed_at ? 'Examinare HIGO din '.$consultation->higo_exam_performed_at->format('d.m.Y H:i').'. ' : '').'Medicul confirmă că a luat cunoștință de datele examinării efectuate cu dispozitivul HIGO. Fotografiile, înregistrările video și celelalte fișiere ale examinării se păstrează în format digital în fișa pacientului și nu sunt incluse în acest PDF.';
         }
 
         return implode("\n\n", array_filter($sections, fn ($section) => filled($section)));

@@ -178,7 +178,7 @@ function PackageForm({ pack, onChange }: { pack: CardPackage; onChange: (pack: C
       <TextField id="pack-name" label="Nume" value={pack.name} onChange={(value) => onChange({ ...pack, name: value })} />
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <NumberField id="pack-price" label="Preț (MDL)" value={pack.price} onChange={(value) => onChange({ ...pack, price: value })} />
-        <NumberField id="pack-bonus" label="Bonus (puncte)" value={pack.bonus_points ?? 0} onChange={(value) => onChange({ ...pack, bonus_points: Math.max(0, value) })} />
+        <div className="space-y-2"><Label>Bonus (puncte)</Label><p className="text-sm font-semibold">{pack.price} puncte</p><p className="text-xs text-slate-500">Egal cu prețul; o dată per cont pentru acest tip de pachet.</p></div>
         <NumberField id="pack-slots" label="Profiluri" value={pack.profile_slots} onChange={(value) => onChange({ ...pack, profile_slots: value })} />
         <NumberField id="pack-days" label="Valabilitate (zile)" value={pack.validity_days} onChange={(value) => onChange({ ...pack, validity_days: value })} />
       </div>

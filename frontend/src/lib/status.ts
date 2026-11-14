@@ -86,5 +86,6 @@ export function paymentStatusLabel(status?: string | null): string {
 
 export const CONSULTATION_KIND_LABELS: Record<string, string> = {
   with_exam: 'Cu examinare la domiciliu',
-  video: 'Consultație video'
+  video: 'Consultație video + chat',
+  preliminary: 'Consultație în chat'
 };

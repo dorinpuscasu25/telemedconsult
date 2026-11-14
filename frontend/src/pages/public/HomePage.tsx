@@ -11,7 +11,7 @@ import { mdl, type DoctorServiceItem, type ServiceType } from '../../lib/doctor'
 import type { SiteContentKey } from '../../lib/site-content-defaults';
 
 type CatalogDoctor = { id: string; services?: DoctorServiceItem[] };
-type Partner = { id: number; name: string; logo_url: string | null };
+type Partner = { id: number; name: string; logo_url: string | null; description?: string | null; category?: string | null };
 type Post = { id: number; slug: string; title: string; excerpt: string | null; category?: string | null; cover_image_url: string | null; published_at: string | null };
 
 const SERVICE_TYPES: ServiceType[] = ['video', 'chat', 'home'];
@@ -141,8 +141,10 @@ export function HomePage() {
             <div className="flex items-baseline justify-between px-1 md:px-0"><h2 className="text-xl font-bold md:text-2xl md:tracking-[-.02em]">{t('home.partners.title')}</h2><Link to="/parteneri" className="text-sm font-semibold text-blue-600"><span className="md:hidden">{t('home.partners.all_short')}</span><span className="hidden md:inline">{t('home.partners.all')}</span></Link></div>
             <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-4">
               {partners.slice(0, 4).map((partner) => (
-                <Link key={partner.id} to={`/parteneri?p=${partner.id}`} className="flex h-[76px] items-center justify-center rounded-xl border border-slate-200 bg-white px-2 text-center text-[15px] font-bold text-slate-700 md:h-[104px] md:rounded-[14px] md:text-xl md:tracking-[-.01em]">
-                  {partner.logo_url ? <img src={partner.logo_url} alt={partner.name} className="max-h-12 max-w-[70%] object-contain md:max-h-16" /> : partner.name}
+                <Link key={partner.id} to={`/parteneri?p=${partner.id}`} className="flex min-h-[150px] flex-col items-center justify-start gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-4 text-center text-slate-700 md:min-h-[190px] md:rounded-[14px] md:p-5">
+                  {partner.logo_url && <img src={partner.logo_url} alt="" className="h-12 max-w-[85%] object-contain md:h-14" />}
+                  <span className="text-sm font-semibold text-slate-900 md:text-base">{partner.name}</span>
+                  {(partner.description || partner.category) && <span className="line-clamp-3 text-xs leading-5 text-slate-500 md:text-[13px]">{partner.description || partner.category}</span>}
                 </Link>
               ))}
             </div>

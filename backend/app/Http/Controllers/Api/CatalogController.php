@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\BlogPost;
+use App\Models\Consultation;
 use App\Models\DoctorInvestigationRequirement;
 use App\Models\DoctorProfile;
 use App\Models\InvestigationType;
@@ -15,6 +16,8 @@ use App\Models\PlatformSetting;
 use App\Models\Region;
 use App\Models\Specialty;
 use App\Models\User;
+use App\Services\ConsultationConsents;
+use App\Services\DoctorPromotions;
 use App\Services\DoctorSchedule;
 use App\Services\DoctorServiceCatalog;
 use App\Services\FeatureFlags;
@@ -33,12 +36,19 @@ class CatalogController extends Controller
         return response()->json(['data' => ObjectiveDataSchema::catalog()]);
     }
 
+    public function consentTemplates(): JsonResponse
+    {
+        $templates = app(ConsultationConsents::class)->templates();
+
+        return response()->json(['ready' => $templates->count() === 2, 'data' => $templates]);
+    }
+
     public function specialties(): JsonResponse
     {
         return response()->json(['data' => Specialty::orderBy('name')->get()]);
     }
 
-    public function doctors(): JsonResponse
+    public function doctors(Request $request): JsonResponse
     {
         if (! app(FeatureFlags::class)->enabled('doctors')) {
             return response()->json(['data' => []]);
@@ -48,6 +58,8 @@ class CatalogController extends Controller
         // Fără vizite la domiciliu, serviciile „la domiciliu” nu se mai arată.
         $homeVisits = app(FeatureFlags::class)->homeVisits();
         $doctors = DoctorProfile::with(['user.doctorServices', 'specialty', 'investigationRequirements.investigationType', 'medicalInstitution'])
+            ->addSelect(['completed_consultations_count' => Consultation::selectRaw('COUNT(*)')
+                ->whereColumn('doctor_id', 'doctor_profiles.user_id')->where('status', 'completed')])
             ->where('is_approved', true)
             ->latest()
             ->get()
@@ -84,11 +96,17 @@ class CatalogController extends Controller
                     'avatar' => $profile->user->avatar_url,
                     'rating' => $profile->rating,
                     'reviews_count' => $profile->reviews_count,
+                    'consultations_count' => (int) $profile->completed_consultations_count,
                     'is_available' => $profile->is_available && ! $isOnVacation,
                     'is_on_vacation' => $isOnVacation,
-                    'accepts_points' => (bool) $profile->accepts_points,
+                    'accepts_points' => $profile->effectivePointsPercent() > 0,
+                    'points_payment_percent' => $profile->effectivePointsPercent(),
                 ];
             });
+
+        if ($request->user()?->hasRole('patient')) {
+            $doctors = app(DoctorPromotions::class)->arrange($doctors, $request->user());
+        }
 
         return response()->json(['data' => $doctors]);
     }

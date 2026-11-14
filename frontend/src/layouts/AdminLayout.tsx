@@ -85,6 +85,7 @@ export function AdminLayout() {
     label: 'Utilizatori',
     path: '/admin/users'
   },
+  { icon: Send, label: 'Mesaje administrative', path: '/admin/admin-messages' },
   {
     icon: UserCheck,
     label: 'Cereri înregistrare',

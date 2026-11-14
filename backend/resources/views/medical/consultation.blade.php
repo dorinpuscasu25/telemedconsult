@@ -11,6 +11,9 @@ h1 { text-align:center; font-size: 17px; margin: 12px 0 4px; } h2 { font-size: 1
 </style></head><body>
 
 <div class="header">@if(!empty($record['clinic_logo_image']))<img class="clinic-logo" src="{{ $record['clinic_logo_image'] }}" alt="Sigla clinicii"><br>@endif<div class="brand">{{ $record['clinic'] ?? 'telemedconsult.md' }}</div><div class="text">{{ $record['clinic_details'] ?? '' }}</div></div>
+@if(!empty($record['consents']))
+<p><strong>Proces-verbal nr. {{ $record['protocol_number'] }}</strong> · Decizie medicală nr. {{ $record['decision_number'] }}</p>
+@endif
 <h1>{{ $record['title'] }}</h1>
 <div class="document-date"><span class="label">Data consultației:</span> {{ $record['published_at'] }} · Nr. {{ $record['consultation_id'] }}</div>
 <div class="doctor-header"><strong>Medic {{ $record['specialty'] ?? '' }}<br>{{ $record['doctor_name'] }}</strong>@if(!empty($record['doctor_phone']))<br>Telefon: {{ $record['doctor_phone'] }}@endif @if(!empty($record['doctor_contacts']))<br>{{ $record['doctor_contacts'] }}@endif</div>
@@ -26,4 +29,11 @@ h1 { text-align:center; font-size: 17px; margin: 12px 0 4px; } h2 { font-size: 1
 @if(!empty($record['signature_image']))<table style="width:100%;border-collapse:collapse"><tr><td style="width:230px"><img src="{{ $record['signature_image'] }}" alt="Parafă și semnătură"></td><td><span class="label">Parafă și semnătură aplicate la</span><br>{{ $record['published_at'] }}</td></tr></table>@endif
 </div>
 
+@if(!empty($record['consents']))
+<h2>Acceptarea consimțămintelor</h2>
+@foreach($record['consents'] as $consent)
+<p><strong>{{ $consent['title'] }}</strong><br>Acceptat de {{ $consent['acceptor_name'] }} la {{ \Carbon\CarbonImmutable::parse($consent['accepted_at'])->timezone('Europe/Chisinau')->format('d.m.Y H:i') }} · Versiune {{ $consent['version'] }}
+@if($consent['capacity'] === 'representative')<br>Reprezentant: {{ $consent['representative_name'] }} · {{ $consent['representative_relationship'] }}@endif</p>
+@endforeach
+@endif
 </body></html>

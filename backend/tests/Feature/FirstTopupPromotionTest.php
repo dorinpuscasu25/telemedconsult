@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\AdminWalletConfirmationMail;
 use App\Models\ConsultationRequest;
 use App\Models\DoctorProfile;
 use App\Models\FirstTopupPromotionGrant;
@@ -18,6 +19,7 @@ use App\Services\OperatorAssignmentService;
 use App\Services\PaymentVerification;
 use App\Services\PlatformConfig;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
@@ -102,7 +104,10 @@ class FirstTopupPromotionTest extends TestCase
         [$patient, $doctor] = $this->scenario();
         $this->confirm($this->payment($patient, 30000));
         Sanctum::actingAs($this->user('admin'));
-        $this->postJson("/api/v1/admin/users/{$patient->id}/wallet/promotion")->assertOk()->assertJsonPath('data.promo_balance', 500);
+        Mail::fake();
+        $id = $this->postJson("/api/v1/admin/users/{$patient->id}/wallet/confirmation", ['operation' => 'promotion'])->assertCreated()->json('confirmation_id');
+        $credentials = ['confirmation_id' => $id, 'code' => Mail::sent(AdminWalletConfirmationMail::class)->last()->code];
+        $this->postJson("/api/v1/admin/users/{$patient->id}/wallet/promotion", $credentials)->assertOk()->assertJsonPath('data.promo_balance', 500);
         $this->postJson("/api/v1/admin/users/{$patient->id}/wallet/promotion")->assertUnprocessable();
         $this->assertSame(50000, $this->balance($patient, 'promo'));
         $this->assertSame(30000, $this->balance($patient, 'real'));
@@ -250,14 +255,14 @@ class FirstTopupPromotionTest extends TestCase
         $id = $this->postJson('/api/v1/requests', $this->requestPayload($profile, $doctor))->assertCreated()->json('request.id');
         $request = ConsultationRequest::findOrFail($id);
         Sanctum::actingAs($doctor);
-        $this->postJson('/api/v1/requests/'.$id.'/complete', ['diagnosis' => 'Test'])->assertOk();
+        $this->postJson('/api/v1/requests/'.$id.'/complete', ['higo_status' => 'not_performed', 'diagnosis' => 'Test'])->assertOk();
         // Concluzia nu ia banii: rămân rezervați până când pacientul închide consultația.
         $this->assertSame('held', $request->fresh()->payment_status);
         $this->assertSame(0, $this->balance($doctor, 'real'));
         Sanctum::actingAs($patient);
         $this->postJson('/api/v1/requests/'.$id.'/review', ['rating' => 5, 'comment' => 'Mulțumesc'])->assertCreated();
         $this->assertSame($request->provider_amount_minor, $this->balance($doctor, 'real'));
-        $this->assertSame(25000, WalletTransaction::where('user_id', $doctor->id)->where('type', 'consultation_income')->firstOrFail()->metadata['promo_subsidy_minor']);
+        $this->assertSame(25000, WalletTransaction::where('user_id', $doctor->id)->where('type', 'consultation_income')->firstOrFail()->metadata['promo_discount_minor']);
         $this->assertSame('captured', $request->fresh()->payment_status);
         Sanctum::actingAs($patient);
         $this->postJson('/api/v1/requests/'.$id.'/cancel')->assertUnprocessable();
@@ -271,18 +276,18 @@ class FirstTopupPromotionTest extends TestCase
         Sanctum::actingAs($patient);
         $id = $this->postJson('/api/v1/requests', $this->requestPayload($profile, $doctor))->assertCreated()->json('request.id');
         Sanctum::actingAs($doctor);
-        $this->postJson('/api/v1/requests/'.$id.'/complete', ['diagnosis' => 'Test'])->assertOk();
+        $this->postJson('/api/v1/requests/'.$id.'/complete', ['higo_status' => 'not_performed', 'diagnosis' => 'Test'])->assertOk();
         Sanctum::actingAs($patient);
         $this->postJson('/api/v1/requests/'.$id.'/review', ['rating' => 5, 'comment' => 'Mulțumesc'])->assertCreated();
-        $this->assertSame(33500, $this->balance($doctor, 'real'));
+        $this->assertSame(16750, $this->balance($doctor, 'real'));
 
         Sanctum::actingAs($this->user('admin'));
         $report = $this->getJson('/api/v1/admin/financial')->assertOk()->json('bonus_report');
         $this->assertEquals(1, $report['consultations']['count']);
         $this->assertEquals(250, $report['consultations']['paid_real']);
         $this->assertEquals(250, $report['consultations']['paid_promo']);
-        $this->assertEquals(335, $report['consultations']['provider_payouts']);
-        $this->assertEquals(-85, $report['consultations']['platform_net_real']);
+        $this->assertEquals(167.5, $report['consultations']['provider_payouts']);
+        $this->assertEquals(82.5, $report['consultations']['platform_net_real']);
         $this->assertEquals(500, collect($report['issued'])->firstWhere('type', 'first_topup_promotion')['amount']);
         $this->assertEquals(250, $report['in_circulation']['promo']);
         $this->assertEquals(1, $report['promotion']['automatic_grants']);

@@ -50,7 +50,7 @@ function BonusReportView({ report }: { report?: BonusReport }) {
     ['Achitat în lei reali', c.paid_real, 'text-slate-900'],
     ['Achitat din puncte bonus', c.paid_points, 'text-emerald-700'],
     ['Achitat din promoție', c.paid_promo, 'text-blue-700'],
-    ['Plătit medicilor / operatorilor', c.provider_payouts, 'text-slate-900'],
+    ['Cuvenit instituțiilor / prestatorilor', c.provider_payouts, 'text-slate-900'],
     ['Rămas platformei (lei reali)', c.platform_net_real, c.platform_net_real < 0 ? 'text-red-600' : 'text-emerald-700']
   ];
   return (

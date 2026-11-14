@@ -87,7 +87,7 @@ class FirstTopupPromotion
                 'minimum_deposit_minor' => self::MINIMUM_DEPOSIT_MINOR, 'max_payment_percent' => self::MAX_PAYMENT_PERCENT, 'doctor_ids' => $doctorIds,
             ]);
             $this->ledger->move($wallet, self::AMOUNT_MINOR, 'first_topup_promotion', 'Bonus promoțional acordat de administrator', ['promo_grant_id' => $grant->id, 'doctor_ids' => $doctorIds, 'max_payment_percent' => self::MAX_PAYMENT_PERCENT, 'source' => 'admin_manual', 'admin_id' => $admin->id, 'admin_name' => $admin->name]);
-            $user->notify(new AppEventNotification('Ai primit '.(self::AMOUNT_MINOR / 100).' puncte bonus', 'Punctele se folosesc automat pentru până la '.self::MAX_PAYMENT_PERCENT.'% din costul consultației medicului.', '/wallet'));
+            DB::afterCommit(fn () => $user->notify(new AppEventNotification('Ai primit '.(self::AMOUNT_MINOR / 100).' puncte bonus', 'Punctele se folosesc automat pentru până la '.self::MAX_PAYMENT_PERCENT.'% din costul consultației medicului.', '/wallet')));
 
             return $grant;
         });
@@ -127,7 +127,7 @@ class FirstTopupPromotion
         $grant = $this->grantForDoctor($userId, $doctor?->id, $lock);
         $cap = $grant ? (int) floor($doctorBaseMinor * $grant->max_payment_percent / 100) : 0;
         $promoMinor = $grant ? min($this->availableBalance($userId), $cap, $totalMinor) : 0;
-        $maxPointsPercent = (int) min(100, max(0, $this->config->number('wallet.max_points_payment_percent', 40)));
+        $maxPointsPercent = $doctor?->doctorProfile?->effectivePointsPercent() ?? 0;
         $pointsPercent = $doctor?->doctorProfile?->accepts_points ? min($requestedPointsPercent, $maxPointsPercent) : 0;
         $pointsMinor = (int) floor($totalMinor * $pointsPercent / 100);
         if ($grant) {

@@ -20,11 +20,11 @@ export function num(value: unknown, fallback = 0): number {
 }
 
 /** Data și ora locale; valorile invalide devin "-". */
-export function dateTime(value: unknown, fallback = '-'): string {
+export function dateTime(value: unknown, fallback = '-', timeZone?: string): string {
   if (value === null || value === undefined || value === '') return fallback;
 
   const date = new Date(value as string | number | Date);
-  return Number.isNaN(date.getTime()) ? fallback : date.toLocaleString('ro-RO', { dateStyle: 'short', timeStyle: 'short' });
+  return Number.isNaN(date.getTime()) ? fallback : date.toLocaleString('ro-RO', { dateStyle: 'short', timeStyle: 'short', ...(timeZone ? { timeZone } : {}) });
 }
 
 /** Doar data locală; valorile invalide devin "-". */

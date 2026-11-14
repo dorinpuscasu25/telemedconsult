@@ -60,34 +60,39 @@ class InstitutionMembership
      */
     public function attachDoctor(MedicalInstitution $institution, User $user, array $data = []): DoctorProfile
     {
-        $existing = DoctorProfile::where('user_id', $user->id)->first();
-        abort_if(
-            $existing?->medical_institution_id && (int) $existing->medical_institution_id !== (int) $institution->id,
-            422,
-            'Medicul face deja parte din altă instituție medicală.'
-        );
+        return DB::transaction(function () use ($institution, $user, $data) {
+            $user = User::whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $institution = MedicalInstitution::whereKey($institution->id)->lockForUpdate()->firstOrFail();
+            abort_unless($institution->isActive(), 422, 'Instituția nu este activă.');
+            $existing = DoctorProfile::where('user_id', $user->id)->lockForUpdate()->first();
+            abort_if(
+                $existing?->medical_institution_id && (int) $existing->medical_institution_id !== (int) $institution->id,
+                422,
+                'Medicul face deja parte din altă instituție medicală.'
+            );
 
-        $role = Role::firstOrCreate(['name' => 'doctor'], ['label' => 'Medic']);
-        $user->roles()->syncWithoutDetaching([$role->id]);
-        if (! $user->active_role_id) {
-            $user->forceFill(['active_role_id' => $role->id])->save();
-        }
+            $role = Role::firstOrCreate(['name' => 'doctor'], ['label' => 'Medic']);
+            $user->roles()->syncWithoutDetaching([$role->id]);
+            if (! $user->active_role_id) {
+                $user->forceFill(['active_role_id' => $role->id])->save();
+            }
 
-        return DoctorProfile::updateOrCreate(['user_id' => $user->id], [
-            'specialty_id' => $data['specialty_id'] ?? $existing?->specialty_id ?? Specialty::first()?->id,
-            'license_number' => $data['license_number'] ?? $existing?->license_number,
-            'experience_years' => $existing?->experience_years ?? 0,
-            'consultation_price' => $existing?->consultation_price ?? 400,
-            'platforms' => $existing?->platforms ?? ['Video', 'Chat'],
-            'service_catalog' => $existing?->service_catalog ?? [],
-            'required_investigations' => $existing?->required_investigations ?? [],
-            'affiliate_code' => $existing?->affiliate_code ?? Str::lower(Str::random(10)),
-            'is_approved' => true,
-            'is_available' => $existing?->is_available ?? true,
-            'medical_institution_id' => $institution->id,
-            'institution_share_percent' => array_key_exists('doctor_share_percent', $data) ? $data['doctor_share_percent'] : $existing?->institution_share_percent,
-            'institution_joined_at' => $existing?->medical_institution_id ? $existing->institution_joined_at : now(),
-        ]);
+            return DoctorProfile::updateOrCreate(['user_id' => $user->id], [
+                'specialty_id' => $data['specialty_id'] ?? $existing?->specialty_id ?? Specialty::first()?->id,
+                'license_number' => $data['license_number'] ?? $existing?->license_number,
+                'experience_years' => $existing?->experience_years ?? 0,
+                'consultation_price' => $existing?->consultation_price ?? 400,
+                'platforms' => $existing?->platforms ?? ['Video', 'Chat'],
+                'service_catalog' => $existing?->service_catalog ?? [],
+                'required_investigations' => $existing?->required_investigations ?? [],
+                'affiliate_code' => $existing?->affiliate_code ?? Str::lower(Str::random(10)),
+                'is_approved' => true,
+                'is_available' => $existing?->is_available ?? true,
+                'medical_institution_id' => $institution->id,
+                'institution_share_percent' => array_key_exists('doctor_share_percent', $data) ? $data['doctor_share_percent'] : $existing?->institution_share_percent,
+                'institution_joined_at' => $existing?->medical_institution_id ? $existing->institution_joined_at : now(),
+            ]);
+        }, attempts: 3);
     }
 
     /**
@@ -96,11 +101,18 @@ class InstitutionMembership
      */
     public function detachDoctor(DoctorProfile $profile): void
     {
-        $profile->forceFill([
-            'medical_institution_id' => null,
-            'institution_share_percent' => null,
-            'institution_joined_at' => null,
-        ])->save();
+        $expectedInstitutionId = (int) $profile->medical_institution_id;
+        DB::transaction(function () use ($profile, $expectedInstitutionId): void {
+            User::whereKey($profile->user_id)->lockForUpdate()->firstOrFail();
+            $profile = DoctorProfile::whereKey($profile->id)->lockForUpdate()->firstOrFail();
+            abort_unless((int) $profile->medical_institution_id === $expectedInstitutionId, 409, 'Afilierea medicului s-a schimbat. Reîncarcă lista.');
+            app(InstitutionTransferService::class)->freezeLegacyAppointments($profile);
+            $profile->forceFill([
+                'medical_institution_id' => null,
+                'institution_share_percent' => null,
+                'institution_joined_at' => null,
+            ])->save();
+        }, attempts: 3);
     }
 
     /**

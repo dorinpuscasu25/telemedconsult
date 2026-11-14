@@ -15,8 +15,11 @@ use App\Models\PatientInvestigation;
 use App\Models\PatientProfile;
 use App\Models\Payment;
 use App\Models\Region;
+use App\Models\User;
 use App\Models\Wallet;
+use App\Models\WalletTransaction;
 use App\Rules\ValidPhoneNumber;
+use App\Services\ConsultationResultAccess;
 use App\Services\FeatureFlags;
 use App\Services\InsufficientWalletBalance;
 use App\Services\MaibCheckout;
@@ -34,10 +37,16 @@ class PatientProfileController extends Controller
 {
     public function show(Request $request): JsonResponse
     {
-        $user = $request->user()->loadMissing(['roles', 'patientProfile', 'patientProfiles.investigations', 'patientFamilyMembers']);
+        $user = $request->user()->refresh()->loadMissing(['roles', 'patientProfile', 'patientProfiles.investigations', 'patientFamilyMembers']);
         abort_unless($user->hasRole('patient') || $user->hasRole('admin'), 403, 'Ai nevoie de rol pacient.');
+        $purchases = PatientCardPurchase::where('user_id', $user->id)->latest()->get();
+        $freeAvailable = $user->free_patient_profile_claimed_at === null;
+        $bonusPackages = WalletTransaction::where('user_id', $user->id)->where('type', 'patient_card_bonus')->where('amount_minor', '>', 0)->get(['metadata'])
+            ->map(fn ($transaction) => (int) ($transaction->metadata['patient_card_package_id'] ?? 0))->all();
 
         return response()->json([
+            'free_profile' => ['available' => $freeAvailable, 'claimed_at' => $user->free_patient_profile_claimed_at, 'validity_years' => 1],
+            'can_add_patient' => $freeAvailable || ! $this->packageRequired() || $purchases->contains(fn ($purchase) => $purchase->availableSlots() > 0),
             'user' => [
                 'id' => (string) $user->id,
                 'name' => $user->name,
@@ -58,13 +67,14 @@ class PatientProfileController extends Controller
                 'description' => $package->description,
                 'profile_slots' => $package->profile_slots,
                 'price' => $package->price_minor / 100,
-                'bonus_points' => $package->bonus_points_minor / 100,
+                'bonus_points' => $package->price_minor / 100,
+                'bonus_available' => ! in_array((int) $package->id, $bonusPackages, true),
                 'validity_days' => $package->validity_days,
             ]),
             'onboarding' => [
                 'first_consultation_topup' => $this->firstConsultationTopupMinor() / 100,
             ],
-            'card_purchases' => PatientCardPurchase::where('user_id', $user->id)->latest()->get()->map(fn (PatientCardPurchase $purchase) => [
+            'card_purchases' => $purchases->map(fn (PatientCardPurchase $purchase) => [
                 'id' => $purchase->id,
                 'profile_slots' => $purchase->profile_slots,
                 'used_slots' => $purchase->used_slots,
@@ -82,7 +92,7 @@ class PatientProfileController extends Controller
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber],
+            'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber(unique: true, ignoreUserId: $user->id)],
             'birth_date' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today'],
             'gender' => ['nullable', Rule::in(['M', 'F', 'Altul'])],
             'address' => ['nullable', 'string', 'max:255'],
@@ -115,9 +125,27 @@ class PatientProfileController extends Controller
         abort_unless($user->hasRole('patient') || $user->hasRole('admin'), 403, 'Ai nevoie de rol pacient.');
 
         $validated = $this->validatePatientProfile($request);
+        $useFreeProfile = (bool) Arr::pull($validated, 'use_free_profile', false);
         $packageRequired = $this->packageRequired();
 
-        $profile = DB::transaction(function () use ($user, $validated, $packageRequired) {
+        $profile = DB::transaction(function () use ($user, $validated, $packageRequired, $useFreeProfile) {
+            $account = User::whereKey($user->id)->lockForUpdate()->firstOrFail();
+            if ($useFreeProfile) {
+                if ($account->free_patient_profile_claimed_at !== null) {
+                    throw new HttpResponseException(response()->json([
+                        'message' => 'Profilul gratuit al acestui cont a fost deja folosit. Pentru un alt pacient alege un pachet.',
+                        'code' => 'free_profile_already_claimed',
+                    ], 422));
+                }
+                $profile = new PatientProfile([
+                    ...$validated, 'user_id' => $account->id, 'status' => 'active',
+                    'active_until' => now()->addYearNoOverflow(), 'life_history' => [],
+                ]);
+                $profile->forceFill(['is_free' => true])->save();
+                $account->forceFill(['free_patient_profile_claimed_at' => now()])->save();
+
+                return $profile;
+            }
             $purchase = PatientCardPurchase::where('user_id', $user->id)
                 ->where('expires_at', '>', now())
                 ->whereColumn('used_slots', '<', 'profile_slots')
@@ -145,7 +173,7 @@ class PatientProfileController extends Controller
                 'active_until' => $activeUntil,
                 'life_history' => [],
             ]);
-        });
+        }, attempts: 3);
 
         dispatch(SyncHigoEntity::forEntity($profile));
 
@@ -336,16 +364,16 @@ class PatientProfileController extends Controller
     public function exportPatientData(Request $request, PatientProfile $patientProfile): JsonResponse
     {
         abort_unless($patientProfile->user_id === $request->user()->id || $request->user()->hasRole('admin'), 403);
+        $requests = ConsultationRequest::with(['doctor', 'operator', 'objectiveData'])
+            ->where('patient_profile_id', $patientProfile->id)->latest()->get();
+        $readableIds = $requests->filter(fn ($item) => app(ConsultationResultAccess::class)->canRead($item, $request->user()))->modelKeys();
 
         return response()->json([
             'patient_profile' => $patientProfile->load('investigations'),
-            'consultation_requests' => ConsultationRequest::with(['doctor', 'operator', 'objectiveData'])
-                ->where('patient_profile_id', $patientProfile->id)
-                ->latest()
-                ->get(),
-            'consultations' => Consultation::where('patient_profile_id', $patientProfile->id)->latest()->get(),
-            'documents' => MedicalDocument::where('patient_profile_id', $patientProfile->id)->latest()->get(),
-        ]);
+            'consultation_requests' => $requests->makeHidden(['conclusion_draft']),
+            'consultations' => Consultation::where('patient_profile_id', $patientProfile->id)->whereIn('consultation_request_id', $readableIds)->latest()->get(),
+            'documents' => MedicalDocument::where('patient_profile_id', $patientProfile->id)->whereIn('consultation_request_id', $readableIds)->latest()->get(),
+        ])->header('Cache-Control', 'no-store');
     }
 
     public function destroyPatientProfile(Request $request, PatientProfile $patientProfile): JsonResponse
@@ -431,6 +459,10 @@ class PatientProfileController extends Controller
             'medical_summary' => ['nullable', 'string', 'max:4000'],
             'pseudonymized' => ['sometimes', 'boolean'],
             'identity_number' => ['prohibited'],
+            'use_free_profile' => $creating ? ['sometimes', 'boolean'] : ['prohibited'],
+            'is_free' => ['prohibited'],
+            'active_until' => ['prohibited'],
+            'user_id' => ['prohibited'],
             'residential_environment' => ['nullable', Rule::in(['rural', 'urban'])],
             'address_details' => ['nullable', 'array:building,entrance,apartment,floor'],
             'address_details.building' => ['nullable', 'string', 'max:50'],
@@ -475,9 +507,7 @@ class PatientProfileController extends Controller
         ];
     }
 
-    /**
-     * Pachetul e obligatoriu pentru orice profil nou, cât timp cartelele și plățile sunt pornite.
-     */
+    /** Profilurile suplimentare necesită un loc din pachet când cartelele și plățile sunt pornite. */
     private function packageRequired(): bool
     {
         $flags = app(FeatureFlags::class);
@@ -499,7 +529,7 @@ class PatientProfileController extends Controller
             return 'Profilul nu are cartelă activă.';
         }
 
-        if ($profile->active_until && $profile->active_until->isPast()) {
+        if ($profile->active_until && ! $profile->active_until->isFuture()) {
             return 'Cartela profilului a expirat.';
         }
 

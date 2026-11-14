@@ -106,7 +106,7 @@ class DoctorExtrasTest extends TestCase
     private function user(string $roleName): User
     {
         $role = Role::firstOrCreate(['name' => $roleName], ['label' => ucfirst($roleName)]);
-        $user = User::factory()->create(['active_role_id' => $role->id, 'status' => 'active', 'phone' => '069484967']);
+        $user = User::factory()->create(['active_role_id' => $role->id, 'status' => 'active', 'phone' => fake()->unique()->numerify('069######')]);
         $user->roles()->sync([$role->id]);
 
         return $user;

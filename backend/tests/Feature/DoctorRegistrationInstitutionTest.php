@@ -33,7 +33,7 @@ class DoctorRegistrationInstitutionTest extends TestCase
         $this->postJson('/api/v1/auth/registration/institution', ['institution_id' => $institution->id])->assertOk()
             ->assertJsonPath('user.doctor_registration.institution_chosen', true)
             ->assertJsonPath('user.doctor_registration.requested_institution.name', 'CMF nr. 1');
-        $this->assertSame(1, $admin->notifications()->count());
+        $this->assertSame(0, $admin->notifications()->count());
 
         Sanctum::actingAs($admin);
         $this->getJson('/api/v1/admin/registrations')->assertOk()->assertJsonPath('data.0.profiles.doctor.requested_institution.name', 'CMF nr. 1');
@@ -49,8 +49,7 @@ class DoctorRegistrationInstitutionTest extends TestCase
         $institution = MedicalInstitution::create(['name' => 'CMF nr. 2', 'status' => 'active', 'doctor_share_percent' => 70]);
         $doctor = $this->pendingDoctor();
         Sanctum::actingAs($doctor);
-        $this->postJson('/api/v1/auth/registration/institution', ['institution_id' => null])->assertOk()
-            ->assertJsonPath('user.doctor_registration.requested_institution', null);
+        $this->postJson('/api/v1/auth/registration/institution', ['institution_id' => null])->assertUnprocessable();
 
         Sanctum::actingAs($this->user('admin', 'active'));
         $this->postJson("/api/v1/admin/users/{$doctor->id}/approve", ['institution_id' => $institution->id])->assertOk();
@@ -83,7 +82,7 @@ class DoctorRegistrationInstitutionTest extends TestCase
     private function user(string $roleName, string $status): User
     {
         $role = Role::firstOrCreate(['name' => $roleName], ['label' => ucfirst($roleName)]);
-        $user = User::factory()->create(['active_role_id' => $role->id, 'status' => $status, 'phone' => '069484967']);
+        $user = User::factory()->create(['active_role_id' => $role->id, 'status' => $status, 'phone' => fake()->unique()->numerify('069######')]);
         $user->roles()->sync([$role->id]);
 
         return $user;

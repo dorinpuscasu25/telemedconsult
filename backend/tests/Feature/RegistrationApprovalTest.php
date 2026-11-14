@@ -36,6 +36,7 @@ class RegistrationApprovalTest extends TestCase
     public function test_patient_registration_activates_immediately_with_only_patient_role(): void
     {
         $this->postJson('/api/v1/auth/register', [
+            'phone' => fake()->unique()->numerify('069######'),
             'name' => 'Ion Pacient',
             'email' => 'pacient@example.test',
             'password' => 'password123',

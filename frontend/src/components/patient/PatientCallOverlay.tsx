@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LiveKitRoom, RoomAudioRenderer, StartAudio, VideoTrack, isTrackReference, useConnectionQualityIndicator, useConnectionState, useLocalParticipant, useRemoteParticipants, useRoomContext, useTrackToggle, useTracks } from '@livekit/components-react';
-import { ConnectionQuality, ConnectionState, Track } from 'livekit-client';
+import { ConnectionQuality, ConnectionState, MediaDeviceFailure, Track } from 'livekit-client';
 import { Camera, CameraOff, Maximize2, MessageSquare, Mic, MicOff, Minimize2, PhoneOff, Send, WifiOff, X } from 'lucide-react';
 import { apiRequest } from '../../lib/api';
 import { cn } from '../ui/utils';
@@ -22,41 +22,51 @@ export default function PatientCallOverlay({ session, summary, expanded, onExpan
   onCloseSummary: () => void;
 }) {
   const startedAt = useRef<number | null>(null);
+  const finished = useRef(false);
+  const activeToken = useRef<string | null>(null);
+  activeToken.current = session?.connection.participant_token ?? null;
   const [corner, setCorner] = useState<Corner>('bottom-right');
+  const [deviceError, setDeviceError] = useState('');
+  useEffect(() => { if (session) { startedAt.current = null; finished.current = false; setDeviceError(''); } }, [session?.connection.participant_token]);
 
   if (!session) return summary ? <CallSummary summary={summary} onClose={onCloseSummary} /> : null;
 
-  const finish = () => {
+  const finish = (reason: PatientCallSummary['reason'] = 'ended') => {
+    if (finished.current || activeToken.current !== session.connection.participant_token) return;
+    finished.current = true;
     const minutes = startedAt.current ? Math.max(1, Math.round((Date.now() - startedAt.current) / 60000)) : 0;
     startedAt.current = null;
-    onFinish({ requestId: session.requestId, minutes, doctorName: session.doctorName });
+    onFinish({ requestId: session.requestId, minutes, doctorName: session.doctorName, reason });
   };
 
   return (
     <LiveKitRoom
-      key={session.requestId}
+      key={session.connection.participant_token}
       serverUrl={session.connection.server_url}
       token={session.connection.participant_token}
       connect
       audio={session.connection.choices.audioEnabled ? { deviceId: session.connection.choices.audioDeviceId } : false}
       video={session.connection.choices.videoEnabled ? { deviceId: session.connection.choices.videoDeviceId } : false}
-      onDisconnected={finish}
-      className={cn('fixed z-[70] overflow-hidden bg-slate-900 text-white', expanded ? 'inset-0' : cn('rounded-xl shadow-2xl ring-1 ring-white/10 max-sm:inset-x-2 max-sm:bottom-[calc(72px+env(safe-area-inset-bottom))] max-sm:h-16 sm:h-[180px] sm:w-[320px]', cornerClass(corner)))}
+      onDisconnected={() => finish()}
+      onError={(error) => { if (MediaDeviceFailure.getFailure(error)) setDeviceError('Camera sau microfonul nu pot fi pornite. Poți continua apelul cu ele oprite.'); else finish('connection_error'); }}
+      onMediaDeviceFailure={() => setDeviceError('Camera sau microfonul nu pot fi pornite. Poți continua apelul cu ele oprite.')}
+      className={cn('fixed z-[70] overflow-hidden bg-slate-900 text-white', expanded ? 'inset-0' : cn('rounded-[14px] shadow-2xl ring-1 ring-white/10 max-sm:inset-x-3 max-sm:bottom-[calc(84px+env(safe-area-inset-bottom))] max-sm:h-[76px] sm:h-[180px] sm:w-[320px]', cornerClass(corner)))}
       aria-label="Apel video"
     >
-      <CallSurface session={session} expanded={expanded} onExpandedChange={onExpandedChange} onConnected={() => { startedAt.current ??= Date.now(); }} startedAt={startedAt} onCornerChange={setCorner} />
+      <CallSurface session={session} expanded={expanded} onExpandedChange={onExpandedChange} onConnected={() => { startedAt.current ??= session.startedAt ?? Date.now(); }} startedAt={startedAt} onCornerChange={setCorner} deviceError={deviceError} />
       <RoomAudioRenderer />
     </LiveKitRoom>
   );
 }
 
-function CallSurface({ session, expanded, onExpandedChange, onConnected, startedAt, onCornerChange }: {
+function CallSurface({ session, expanded, onExpandedChange, onConnected, startedAt, onCornerChange, deviceError }: {
   session: PatientCallSession;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
   onConnected: () => void;
   startedAt: React.MutableRefObject<number | null>;
   onCornerChange: (corner: Corner) => void;
+  deviceError: string;
 }) {
   const navigate = useNavigate();
   const room = useRoomContext();
@@ -75,13 +85,14 @@ function CallSurface({ session, expanded, onExpandedChange, onConnected, started
 
   useEffect(() => { if (state === ConnectionState.Connected) onConnected(); }, [state, onConnected]);
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []);
-  if (remotes.length > 0) hadRemote.current = true;
+  const doctor = remotes.find((participant) => participant.attributes.role === 'doctor');
+  if (doctor) hadRemote.current = true;
 
-  const remoteTrack = tracks.find((track) => !track.participant.isLocal);
+  const remoteTrack = tracks.find((track) => track.participant.sid === doctor?.sid);
   const localTrack = tracks.find((track) => track.participant.isLocal);
   const remoteVideoOn = remoteTrack && isTrackReference(remoteTrack) && !remoteTrack.publication.isMuted;
   const localVideoOn = localTrack && isTrackReference(localTrack) && !localTrack.publication.isMuted;
-  const doctorLeft = hadRemote.current && remotes.length === 0;
+  const doctorLeft = hadRemote.current && !doctor && state === ConnectionState.Connected;
   const remaining = session.durationMinutes * 60 - (startedAt.current ? Math.floor((now - startedAt.current) / 1000) : 0);
   const overtime = remaining < 0;
   const timer = `${overtime ? '−' : ''}${formatSeconds(Math.abs(remaining))}`;
@@ -118,10 +129,10 @@ function CallSurface({ session, expanded, onExpandedChange, onConnected, started
 
   const remoteView = remoteVideoOn && remoteTrack && isTrackReference(remoteTrack)
     ? <VideoTrack trackRef={remoteTrack} className="h-full w-full object-cover" />
-    : <div className="grid h-full w-full place-items-center bg-slate-800 text-sm font-semibold text-white/70">{initialsOf(session.doctorName)}</div>;
+    : !expanded ? <div className="grid h-full w-full place-items-center bg-slate-800 text-sm font-semibold text-white/70">{initialsOf(session.doctorName)}</div> : <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-slate-800 text-sm text-white/70"><span className="grid h-[120px] w-[120px] place-items-center rounded-full bg-slate-700 text-4xl font-semibold">{initialsOf(session.doctorName)}</span><strong className="text-lg text-white">{session.doctorName}</strong><p className="px-4 text-center text-[13px]">{doctor ? doctor.isMicrophoneEnabled ? 'Camera e oprită · vă aude și vă vorbește' : 'Camera și microfonul medicului sunt oprite' : 'Așteptăm medicul să intre în apel…'}</p></div>;
 
   const timerPill = (small = false) => (
-    <span className={cn('flex items-center gap-1.5 rounded-full font-mono font-bold tabular-nums', overtime ? 'bg-orange-600' : 'bg-black/40', small ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1.5 text-[15px]')}>
+    <span className={cn('flex items-center gap-1.5 rounded-full font-mono font-bold tabular-nums', overtime ? 'bg-orange-600' : 'bg-black/40', small ? 'px-2 py-0.5 text-[11px]' : 'h-9 px-3.5 text-[15px] sm:h-10 sm:gap-2.5 sm:px-4 sm:text-[17px]')}>
       <span className={cn('rounded-full', overtime ? 'bg-white' : 'bg-green-400', small ? 'h-1.5 w-1.5' : 'h-2 w-2')} />{timer}
       {!small && <span className="font-sans text-[11px] font-normal text-white/70">{overtime ? 'peste durată' : 'rămase'}</span>}
     </span>
@@ -131,7 +142,7 @@ function CallSurface({ session, expanded, onExpandedChange, onConnected, started
   if (!expanded && phone) {
     return (
       <div className="flex h-full items-center gap-2.5 p-2" onClick={(event) => { if (!(event.target as HTMLElement).closest('button')) onExpandedChange(true); }}>
-        <div className="h-12 w-[72px] shrink-0 overflow-hidden rounded-lg bg-slate-800">{remoteView}</div>
+        <div className="h-[60px] w-24 shrink-0 overflow-hidden rounded-[10px] bg-slate-800">{remoteView}</div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-semibold">{session.doctorName}</p>
           <p className={cn('font-mono text-xs font-bold tabular-nums', overtime ? 'text-orange-400' : 'text-green-400')}>{timer}</p>
@@ -193,6 +204,7 @@ function CallSurface({ session, expanded, onExpandedChange, onConnected, started
         </div>
 
         {/* V6a: mesajele apar sub timer și nu acoperă controalele. */}
+        {([ConnectionState.Connecting, ConnectionState.Reconnecting, ConnectionState.SignalReconnecting].includes(state) || deviceError) && <p role="status" className="absolute inset-x-4 top-[120px] rounded-xl bg-slate-950/80 px-4 py-3 text-center text-sm text-white sm:inset-x-auto sm:left-1/2 sm:top-16 sm:max-w-md sm:-translate-x-1/2">{deviceError || (state === ConnectionState.Connecting ? 'Se conectează…' : 'Se restabilește conexiunea. Apelul continuă automat când revine internetul.')}</p>}
         {quality === ConnectionQuality.Poor && (
           <div className="absolute inset-x-0 top-[120px] flex justify-center px-4 sm:top-16">
             <div className="flex items-center gap-3 rounded-xl bg-amber-50 py-2 pl-3.5 pr-2 text-[13px] text-amber-900 shadow-lg">
@@ -219,17 +231,17 @@ function CallSurface({ session, expanded, onExpandedChange, onConnected, started
         )}
 
         {/* Imaginea proprie */}
-        <div className="absolute bottom-28 right-4 h-[136px] w-[100px] overflow-hidden rounded-xl border border-white/20 bg-slate-700 sm:bottom-24 sm:right-5 sm:h-[112px] sm:w-[180px]">
+        <div className="absolute bottom-[140px] right-4 h-[150px] w-[110px] overflow-hidden rounded-[14px] border-2 border-white/20 bg-slate-700 sm:bottom-[108px] sm:right-6 sm:h-[150px] sm:w-[240px]">
           {localVideoOn && localTrack && isTrackReference(localTrack) ? <VideoTrack trackRef={localTrack} className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center text-xs text-white/60">tu</div>}
         </div>
 
         {/* Controale */}
-        <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-3 bg-gradient-to-t from-black/50 to-transparent px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-8 sm:gap-2.5 sm:pb-5">
+        <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-3 bg-gradient-to-t from-black/50 to-transparent px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-8 sm:gap-3 sm:pb-6">
           <MediaToggle source={Track.Source.Microphone} size="lg" />
           <MediaToggle source={Track.Source.Camera} size="lg" />
           <RoundButton label={chatOpen ? 'Închide chatul' : 'Deschide chatul'} onClick={openChat} size="lg" active={chatOpen}><MessageSquare className="h-[18px] w-[18px]" /></RoundButton>
           <span className="hidden sm:contents"><RoundButton label="Minimizează apelul" onClick={() => onExpandedChange(false)} size="lg"><Minimize2 className="h-[18px] w-[18px]" /></RoundButton></span>
-          <button type="button" onClick={() => setConfirmExit(true)} aria-label="Ieși din apel" className="grid h-12 w-12 place-items-center rounded-full bg-red-600 font-semibold hover:bg-red-700 sm:ml-1.5 sm:flex sm:h-10 sm:w-auto sm:gap-2 sm:px-4 sm:text-sm">
+          <button type="button" onClick={() => setConfirmExit(true)} aria-label="Ieși din apel" className="grid h-14 w-14 place-items-center rounded-full bg-red-600 font-semibold hover:bg-red-700 sm:ml-1.5 sm:flex sm:h-[52px] sm:w-auto sm:gap-2 sm:px-5 sm:text-sm">
             <PhoneOff className="h-[18px] w-[18px]" /><span className="hidden sm:inline">Ieși</span>
           </button>
         </div>
@@ -237,12 +249,12 @@ function CallSurface({ session, expanded, onExpandedChange, onConnected, started
         {/* V5a / V5c: confirmarea ieșirii. */}
         {confirmExit && (
           <div className="absolute inset-0 flex items-end bg-slate-950/70 sm:items-center sm:justify-center sm:p-6">
-            <div role="alertdialog" aria-label="Ieși din apel?" className="w-full rounded-t-2xl bg-white p-5 text-slate-900 sm:max-w-[360px] sm:rounded-2xl">
+            <div role="alertdialog" aria-label="Ieși din apel?" className="w-full rounded-t-2xl bg-white p-5 text-slate-900 sm:max-w-[400px] sm:rounded-2xl">
               <p className="text-[17px] font-bold">Ieși din apel?</p>
               <p className="mt-1 text-sm text-slate-500">Poți continua discuția în chat.</p>
               <div className="mt-5 flex flex-col gap-2 sm:flex-row-reverse sm:justify-start">
-                <button type="button" onClick={leave} className="h-11 rounded-[10px] bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 sm:h-9">Ieși din apel</button>
-                <button type="button" autoFocus onClick={() => setConfirmExit(false)} className="h-11 rounded-[10px] border border-slate-200 bg-white px-4 text-sm font-medium hover:bg-slate-50 sm:h-9">Rămân în apel</button>
+                <button type="button" onClick={leave} className="h-12 rounded-[10px] bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 sm:h-[42px]">Ieși din apel</button>
+                <button type="button" autoFocus onClick={() => setConfirmExit(false)} className="h-12 rounded-[10px] border border-slate-200 bg-white px-4 text-sm font-medium hover:bg-slate-50 sm:h-[42px]">Rămân în apel</button>
               </div>
             </div>
           </div>
@@ -284,7 +296,7 @@ function CallChatPanel({ requestId, patientName, onClose }: { requestId: string;
   };
 
   return (
-    <aside className="flex w-[320px] shrink-0 flex-col bg-white text-slate-900">
+    <aside className="flex w-[360px] shrink-0 flex-col bg-white text-slate-900">
       <div className="flex items-start justify-between gap-2 border-b border-slate-200 px-4 py-3">
         <div><p className="text-sm font-semibold">Chat{patientName ? ` · ${patientName}` : ''}</p><p className="text-xs text-slate-500">Mesajele rămân în conversația consultației</p></div>
         <button type="button" onClick={onClose} aria-label="Închide chatul" className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
@@ -312,7 +324,7 @@ function CallChatPanel({ requestId, patientName, onClose }: { requestId: string;
   );
 }
 
-const ROUND_SIZE = { xs: 'h-7 w-7', sm: 'h-9 w-9', lg: 'h-12 w-12 sm:h-10 sm:w-10' };
+const ROUND_SIZE = { xs: 'h-7 w-7', sm: 'h-9 w-9', lg: 'h-14 w-14 sm:h-[52px] sm:w-[52px]' };
 
 function RoundButton({ label, onClick, size, active = false, danger = false, children }: { label: string; onClick: () => void; size: keyof typeof ROUND_SIZE; active?: boolean; danger?: boolean; children: React.ReactNode }) {
   return (
@@ -339,12 +351,14 @@ function MediaToggle({ source, size }: { source: Track.Source.Microphone | Track
 function CallSummary({ summary, onClose }: { summary: PatientCallSummary; onClose: () => void }) {
   const navigate = useNavigate();
   const go = (path: string) => { onClose(); navigate(path); };
+  const failed = summary.reason === 'connection_error';
   return (
     <div role="dialog" aria-label="Apel încheiat" className="fixed inset-0 z-[70] flex flex-col bg-white px-6 pb-[max(2rem,env(safe-area-inset-bottom))] pt-40 sm:items-center sm:justify-center sm:bg-slate-50 sm:p-6 sm:text-center">
       <span className="grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-slate-700"><PhoneOff className="h-5 w-5" /></span>
-      <h2 className="mt-4 text-[22px] font-bold tracking-tight text-slate-950">Apel încheiat{summary.minutes ? ` · ${summary.minutes} min` : ''}</h2>
-      <p className="mt-2 text-sm text-slate-500">Concluzia medicului va apărea în chat.</p>
+      <h2 className="mt-4 text-[22px] font-bold tracking-tight text-slate-950">{failed ? 'Conexiunea video a eșuat' : 'Apel încheiat'}{summary.minutes ? ` · ${summary.minutes} min` : ''}</h2>
+      <p className="mt-2 text-sm text-slate-500">{failed ? 'Verifică internetul și încearcă din nou. Poți continua discuția în chat.' : summary.reason === 'completed' ? 'Rezultatul este pregătit. Lasă o recenzie în chat pentru a-l vedea.' : summary.reason === 'unavailable' ? 'Consultația nu mai este disponibilă pentru apel. Detaliile rămân în chat.' : 'Când rezultatul este pregătit, îl poți debloca prin recenzie în chat.'}</p>
       <div className="mt-auto flex flex-col items-center gap-3 sm:mt-6">
+        {failed && <button type="button" onClick={() => go(`/consultations/${summary.requestId}/video`)} className="h-12 rounded-[10px] bg-blue-600 px-5 text-sm font-semibold text-white">Încearcă din nou</button>}
         <button type="button" autoFocus onClick={() => go(`/patient/chat?request=${summary.requestId}`)} className="h-12 w-full rounded-[10px] bg-blue-600 px-5 text-[15px] font-semibold text-white hover:bg-blue-700 sm:h-10 sm:w-auto sm:text-sm">Mergi la chat</button>
         <button type="button" onClick={() => go('/patient')} className="hidden text-sm text-slate-600 hover:text-slate-900 sm:block">Acasă</button>
       </div>

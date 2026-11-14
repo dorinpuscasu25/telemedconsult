@@ -219,7 +219,7 @@ class PatientCardsAndConsultationFlowTest extends TestCase
             ->assertJsonPath('patient_profiles.0.has_complete_address', false);
     }
 
-    public function test_package_with_bonus_points_credits_the_bonus_wallet_and_others_do_not(): void
+    public function test_each_package_awards_points_equal_to_its_price(): void
     {
         $patient = $this->userWithRole('patient');
         $withBonus = PatientCardPackage::create(['name' => '6 profiluri / an', 'profile_slots' => 6, 'price_minor' => 60000, 'bonus_points_minor' => 60000, 'validity_days' => 365, 'is_active' => true]);
@@ -228,12 +228,33 @@ class PatientCardsAndConsultationFlowTest extends TestCase
         Sanctum::actingAs($patient);
 
         $this->postJson('/api/v1/patient/card-purchases', ['package_id' => $withoutBonus->id])->assertCreated();
-        $this->assertSame(0, (int) Wallet::where('user_id', $patient->id)->where('type', 'points')->value('balance_minor'));
+        $this->assertSame(24000, (int) Wallet::where('user_id', $patient->id)->where('type', 'points')->value('balance_minor'));
 
         $this->postJson('/api/v1/patient/card-purchases', ['package_id' => $withBonus->id])->assertCreated();
         $this->assertSame(16000, (int) Wallet::where('user_id', $patient->id)->where('type', 'real')->value('balance_minor'));
-        $this->assertSame(60000, (int) Wallet::where('user_id', $patient->id)->where('type', 'points')->value('balance_minor'));
+        $this->assertSame(84000, (int) Wallet::where('user_id', $patient->id)->where('type', 'points')->value('balance_minor'));
         $this->assertDatabaseHas('wallet_transactions', ['user_id' => $patient->id, 'type' => 'patient_card_bonus', 'amount_minor' => 60000, 'wallet_type' => 'points']);
+    }
+
+    public function test_package_bonus_is_not_repeated_after_renewal_price_change_or_purchase_deletion(): void
+    {
+        $patient = $this->userWithRole('patient');
+        $package = PatientCardPackage::create(['name' => 'Familie', 'profile_slots' => 2, 'price_minor' => 45000, 'bonus_points_minor' => 0, 'validity_days' => 365, 'is_active' => true]);
+        Wallet::create(['user_id' => $patient->id, 'type' => 'real', 'balance_minor' => 500000, 'currency' => 'MDL']);
+        Sanctum::actingAs($patient);
+        $this->postJson('/api/v1/patient/card-purchases', ['package_id' => $package->id])->assertCreated();
+        $packages = $this->getJson('/api/v1/patient/profile')->assertOk()->json('card_packages');
+        $this->assertFalse(collect($packages)->firstWhere('id', $package->id)['bonus_available']);
+        PatientCardPurchase::where('user_id', $patient->id)->delete();
+        $package->update(['price_minor' => 60000]);
+        $this->travel(366)->days();
+        $this->postJson('/api/v1/patient/card-purchases', ['package_id' => $package->id])->assertCreated();
+        $this->postJson('/api/v1/patient/card-purchases', ['package_id' => $package->id])->assertCreated();
+        $this->assertSame(45000, (int) Wallet::where('user_id', $patient->id)->where('type', 'points')->value('balance_minor'));
+        $this->assertSame(1, WalletTransaction::where('type', 'patient_card_bonus')->count());
+        $other = PatientCardPackage::create(['name' => 'Individual', 'profile_slots' => 1, 'price_minor' => 24000, 'validity_days' => 365, 'is_active' => true]);
+        $this->postJson('/api/v1/patient/card-purchases', ['package_id' => $other->id])->assertCreated();
+        $this->assertSame(69000, (int) Wallet::where('user_id', $patient->id)->where('type', 'points')->value('balance_minor'));
     }
 
     public function test_card_purchase_returns_structured_wallet_error_when_balance_is_insufficient(): void
@@ -301,7 +322,7 @@ class PatientCardsAndConsultationFlowTest extends TestCase
         ])
             ->assertCreated()
             ->assertJsonPath('package.description', 'Pachet pentru familie.')
-            ->assertJsonPath('package.bonus_points', 600)
+            ->assertJsonPath('package.bonus_points', 550)
             ->json('package');
 
         $this->putJson('/api/v1/admin/patient-card-packages/'.$created['id'], [

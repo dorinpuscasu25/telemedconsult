@@ -33,18 +33,20 @@ class InstitutionLedger
     public function recordEarning(ConsultationRequest $consultationRequest, User $doctor): ?InstitutionEarning
     {
         $profile = $doctor->doctorProfile()->with('medicalInstitution')->first();
-        if (! $profile?->medical_institution_id || $consultationRequest->provider_amount_minor <= 0) {
+        $snapshot = $consultationRequest->pricing_snapshot ?? [];
+        $institutionId = array_key_exists('institution_id', $snapshot) ? $snapshot['institution_id'] : $profile?->medical_institution_id;
+        if (! $institutionId || $consultationRequest->provider_amount_minor <= 0) {
             return null;
         }
 
         $providerMinor = (int) $consultationRequest->provider_amount_minor;
-        $sharePercent = min(100, max(0, (float) $profile->effectiveInstitutionSharePercent()));
+        $sharePercent = min(100, max(0, (float) ($consultationRequest->pricing_snapshot['doctor_share_percent'] ?? $profile?->effectiveInstitutionSharePercent() ?? 0)));
         $doctorMinor = (int) round($providerMinor * $sharePercent / 100);
 
         return InstitutionEarning::firstOrCreate(
             ['consultation_request_id' => $consultationRequest->id],
             [
-                'medical_institution_id' => $profile->medical_institution_id,
+                'medical_institution_id' => $institutionId,
                 'doctor_id' => $doctor->id,
                 'gross_amount_minor' => (int) $consultationRequest->amount_minor,
                 'provider_amount_minor' => $providerMinor,

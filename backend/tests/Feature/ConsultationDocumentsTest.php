@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\Consultation;
+use App\Models\ConsultationObjectiveData;
 use App\Models\ConsultationRequest;
 use App\Models\DoctorProfile;
+use App\Models\HigoExamPayload;
 use App\Models\MedicalDocument;
 use App\Models\PatientProfile;
 use App\Models\Role;
@@ -33,19 +35,48 @@ class ConsultationDocumentsTest extends TestCase
     {
         $request = $this->scenario();
         Sanctum::actingAs($request->doctor);
-        $payload = ['diagnosis' => 'Diagnostic de test', 'current_illness_history' => 'Debut în urmă cu două zile', 'objective_exam' => 'Observații confirmate de medic'];
+        $payload = ['higo_status' => 'not_performed', 'diagnosis' => 'Diagnostic de test', 'doctor_history_notes' => 'Debut în urmă cu două zile', 'objective_exam' => 'Observații confirmate de medic'];
         $this->postJson('/api/v1/requests/'.$request->id.'/complete', $payload)->assertOk();
         $document = MedicalDocument::firstOrFail();
         $this->assertSame($request->patient_profile_id, $document->patient_profile_id);
         $this->assertSame($request->id, $document->consultation_request_id);
         $this->assertSame('published', $document->status);
-        $this->assertSame('Debut în urmă cu două zile', $document->content_snapshot['sections']['Istoricul bolii actuale']);
-        $this->assertSame('Simptome declarate', $document->content_snapshot['sections']['Acuzele pacientului (plângerile / simptomele)']);
+        $this->assertSame('Debut în urmă cu două zile', $document->content_snapshot['sections']['Completările medicului la istoricul bolii']);
+        $this->assertStringContainsString('Simptome declarate', $document->content_snapshot['sections']['Istoricul bolii și acuzele pacientului']);
         $this->assertStringStartsWith('%PDF', Storage::disk('local')->get($document->pdf_path));
         $this->assertArrayNotHasKey('medical_record', $document->content_snapshot);
         $this->postJson('/api/v1/requests/'.$request->id.'/complete', $payload)->assertUnprocessable();
         $this->assertSame(1, Consultation::count());
         $this->assertSame(1, MedicalDocument::count());
+    }
+
+    public function test_higo_choice_is_explicit_and_exam_must_belong_to_this_consultation(): void
+    {
+        $request = $this->scenario();
+        Sanctum::actingAs($request->doctor);
+        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['diagnosis' => 'Test'])->assertUnprocessable()->assertJsonValidationErrors('higo_status');
+        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['diagnosis' => 'Test', 'higo_status' => 'reviewed', 'higo_exam_id' => 999999])->assertUnprocessable()->assertJsonValidationErrors('higo_exam_id');
+        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['diagnosis' => 'Test', 'higo_status' => 'not_performed', 'higo_reviewed' => true])->assertUnprocessable()->assertJsonValidationErrors('higo_reviewed');
+        $this->assertSame('accepted', $request->fresh()->status);
+        $this->assertSame(0, MedicalDocument::count());
+    }
+
+    public function test_doctor_cannot_overwrite_patient_declaration_and_notes_are_separate(): void
+    {
+        $request = $this->scenario();
+        $request->update(['current_illness_history' => 'Declarația originală a pacientului']);
+        Sanctum::actingAs($request->doctor);
+        $this->postJson('/api/v1/requests/'.$request->id.'/anamnesis', ['symptoms' => 'Suprascriere'])->assertForbidden();
+        foreach (['/complete', '/documents/preview'] as $path) {
+            $this->postJson('/api/v1/requests/'.$request->id.$path, ['diagnosis' => 'Test', 'current_illness_history' => 'Suprascriere'])->assertUnprocessable()->assertJsonValidationErrors('current_illness_history');
+        }
+        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['higo_status' => 'not_performed', 'diagnosis' => 'Test', 'doctor_history_notes' => 'Precizările medicului'])->assertOk();
+        $conclusion = Consultation::firstOrFail();
+        $this->assertSame('Declarația originală a pacientului', $conclusion->current_illness_history);
+        $this->assertSame('Simptome declarate', $conclusion->patient_complaints);
+        $this->assertSame('Precizările medicului', $conclusion->doctor_history_notes);
+        $this->assertSame('Declarația originală a pacientului', $request->fresh()->current_illness_history);
+        $this->assertSame('Precizările medicului', MedicalDocument::firstOrFail()->content_snapshot['sections']['Completările medicului la istoricul bolii']);
     }
 
     public function test_patient_can_update_both_sections_before_publication_but_not_after(): void
@@ -55,7 +86,7 @@ class ConsultationDocumentsTest extends TestCase
         $this->postJson('/api/v1/requests/'.$request->id.'/anamnesis', ['symptoms' => 'Acuze actualizate', 'current_illness_history' => 'Istoric actualizat'])->assertOk();
         $this->assertSame('Istoric actualizat', $request->fresh()->current_illness_history);
         Sanctum::actingAs($request->doctor);
-        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['diagnosis' => 'Test'])->assertOk();
+        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['higo_status' => 'not_performed', 'diagnosis' => 'Test'])->assertOk();
         Sanctum::actingAs($request->patient);
         $this->postJson('/api/v1/requests/'.$request->id.'/anamnesis', ['symptoms' => 'Schimbare după publicare'])->assertUnprocessable();
         $this->assertSame('Acuze actualizate', $request->fresh()->symptoms);
@@ -65,7 +96,7 @@ class ConsultationDocumentsTest extends TestCase
     {
         $request = $this->scenario();
         Sanctum::actingAs($request->doctor);
-        $response = $this->postJson('/api/v1/requests/'.$request->id.'/documents/preview', ['diagnosis' => 'Test']);
+        $response = $this->postJson('/api/v1/requests/'.$request->id.'/documents/preview', ['higo_status' => 'not_performed', 'diagnosis' => 'Test']);
         $response->assertOk()->assertHeader('Content-Type', 'application/pdf');
         $this->assertStringStartsWith('%PDF', $response->getContent());
         $this->assertSame('accepted', $request->fresh()->status);
@@ -78,13 +109,13 @@ class ConsultationDocumentsTest extends TestCase
         $request->update(['current_illness_history' => 'Istoric completat de pacient, debut de trei zile']);
         Sanctum::actingAs($request->doctor);
         $this->mock(ConsultationPdf::class)->shouldReceive('render')->once()->withArgs(function (array $snapshot): bool {
-            $this->assertSame('Istoric completat de pacient, debut de trei zile', $snapshot['sections']['Istoricul bolii actuale']);
-            $this->assertSame('Simptome declarate', $snapshot['sections']['Acuzele pacientului (plângerile / simptomele)']);
+            $this->assertStringContainsString('Istoric completat de pacient, debut de trei zile', $snapshot['sections']['Istoricul bolii și acuzele pacientului']);
+            $this->assertStringContainsString('Simptome declarate', $snapshot['sections']['Istoricul bolii și acuzele pacientului']);
 
             return true;
         })->andReturn('%PDF-preview');
 
-        $this->postJson('/api/v1/requests/'.$request->id.'/documents/preview', ['diagnosis' => 'Test'])->assertOk();
+        $this->postJson('/api/v1/requests/'.$request->id.'/documents/preview', ['higo_status' => 'not_performed', 'diagnosis' => 'Test'])->assertOk();
         $this->assertSame(0, MedicalDocument::count());
     }
 
@@ -92,11 +123,13 @@ class ConsultationDocumentsTest extends TestCase
     {
         $request = $this->scenario();
         $request->update(['current_illness_history' => 'Debut declarat de pacient']);
+        $data = ConsultationObjectiveData::create(['consultation_request_id' => $request->id, 'patient_profile_id' => $request->patient_profile_id, 'source' => 'higo', 'payload' => ['temperature' => 37], 'completed_at' => now()->subHours(2)]);
+        $exam = HigoExamPayload::create(['external_id' => 'demo-higo', 'received_at' => now(), 'consultation_request_id' => $request->id, 'patient_profile_id' => $request->patient_profile_id, 'consultation_objective_data_id' => $data->id, 'status' => 'mapped', 'raw' => []]);
         Sanctum::actingAs($request->doctor);
-        $this->postJson('/api/v1/requests/'.$request->id.'/complete', [
+        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['higo_status' => 'not_performed', 'diagnosis' => 'Test'])->assertUnprocessable()->assertJsonValidationErrors('higo_status');
+        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['higo_status' => 'reviewed', 'higo_exam_id' => $exam->id,
             'diagnosis' => 'Diagnostic de test',
             'objective_exam' => 'Observațiile medicului',
-            'higo_reviewed' => true,
             'treatment_plan' => 'Tratament de test',
             'recommendations' => 'Recomandări pentru pacient',
             'investigation_recommendations' => 'Analize recomandate separat',
@@ -105,19 +138,22 @@ class ConsultationDocumentsTest extends TestCase
 
         $document = MedicalDocument::firstOrFail();
         $sections = $document->content_snapshot['sections'];
-        $this->assertSame('Debut declarat de pacient', $sections['Istoricul bolii actuale']);
-        $this->assertSame('Simptome declarate', $sections['Acuzele pacientului (plângerile / simptomele)']);
+        $this->assertStringContainsString('Debut declarat de pacient', $sections['Istoricul bolii și acuzele pacientului']);
+        $this->assertStringContainsString('Simptome declarate', $sections['Istoricul bolii și acuzele pacientului']);
         $this->assertStringStartsWith('Observațiile medicului', $sections['Examen obiectiv']);
+        $this->assertSame($exam->id, $document->content_snapshot['higo_evidence']['exam_id']);
+        $this->assertStringContainsString($data->completed_at->format('d.m.Y H:i'), $sections['Examen obiectiv']);
         $this->assertStringContainsString('dispozitivul HIGO', $sections['Examen obiectiv']);
         $this->assertStringContainsString('nu sunt incluse în acest PDF', $sections['Examen obiectiv']);
-        $this->assertSame('Diagnostic de test', $sections['Diagnostic clinic']);
-        $this->assertSame('Tratament de test', $sections['Tratament']);
-        $this->assertSame('Recomandări pentru pacient', $sections['Recomandări']);
+        $this->assertSame('Diagnostic de test', $sections['Diagnostic clinic prezumtiv']);
+        $this->assertSame('Tratament de test', $sections['Tratament medicamentos']);
+        $this->assertSame('Recomandări pentru pacient', $sections['Recomandări de stil de viață, alimentație și hidratare']);
         $this->assertSame('Analize recomandate separat', $sections['Investigații recomandate']);
         $this->assertSame('Analize recomandate separat', Consultation::firstOrFail()->investigation_recommendations);
         $this->assertSame('Indicații pentru rețetă', $sections['Rețetă']);
 
         Sanctum::actingAs($request->patient);
+        $this->postJson('/api/v1/requests/'.$request->id.'/review', ['rating' => 4, 'comment' => 'Consultație efectuată'])->assertCreated();
         $this->getJson('/api/v1/patient/profiles/'.$request->patient_profile_id.'/medical-record')->assertOk()
             ->assertJsonPath('consultations.0.investigation_recommendations', 'Analize recomandate separat')
             ->assertJsonPath('consultations.0.recommendations', 'Recomandări pentru pacient');
@@ -129,9 +165,10 @@ class ConsultationDocumentsTest extends TestCase
     {
         $request = $this->scenario();
         Sanctum::actingAs($request->doctor);
-        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['diagnosis' => 'Test', 'objective_exam' => 'Observații'])->assertOk();
+        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['higo_status' => 'not_performed', 'diagnosis' => 'Test', 'objective_exam' => 'Observații'])->assertOk();
         $sections = MedicalDocument::firstOrFail()->content_snapshot['sections'];
-        $this->assertSame('Observații', $sections['Examen obiectiv']);
+        $this->assertStringStartsWith('Observații', $sections['Examen obiectiv']);
+        $this->assertStringContainsString('nu a fost efectuată', $sections['Examen obiectiv']);
         $this->assertArrayNotHasKey('Date HIGO', $sections);
     }
 
@@ -140,10 +177,10 @@ class ConsultationDocumentsTest extends TestCase
         $this->freezeTime();
         $request = $this->scenario();
         Sanctum::actingAs($request->doctor);
-        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['diagnosis' => 'Test'])->assertOk();
+        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['higo_status' => 'not_performed', 'diagnosis' => 'Test'])->assertOk();
         $base = MedicalDocument::firstOrFail();
         $original = Storage::disk('local')->get($base->pdf_path);
-        $this->travel(13)->days();
+        $this->travel(9)->days();
         $this->postJson('/api/v1/requests/'.$request->id.'/documents/addendum', ['recommendations' => 'Recomandări suplimentare'])->assertCreated()->assertJsonPath('document.parent_document_id', $base->id);
         $this->assertSame($original, Storage::disk('local')->get($base->pdf_path));
         $this->travel(1)->days();
@@ -155,12 +192,13 @@ class ConsultationDocumentsTest extends TestCase
     {
         $request = $this->scenario();
         Sanctum::actingAs($request->doctor);
-        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['diagnosis' => 'Test'])->assertOk();
+        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['higo_status' => 'not_performed', 'diagnosis' => 'Test'])->assertOk();
         $id = MedicalDocument::first()->id;
         $this->get('/api/v1/medical-documents/'.$id.'/file')->assertForbidden();
         Sanctum::actingAs(User::factory()->create());
         $this->getJson('/api/v1/requests/'.$request->id.'/documents')->assertForbidden();
         Sanctum::actingAs($request->patient);
+        $this->postJson('/api/v1/requests/'.$request->id.'/review', ['rating' => 4, 'comment' => 'Consultație efectuată'])->assertCreated();
         $url = $this->getJson('/api/v1/requests/'.$request->id.'/documents')->assertOk()->json('documents.0.url');
         $this->get($url)->assertOk()->assertHeader('Content-Type', 'application/pdf');
     }
@@ -171,7 +209,7 @@ class ConsultationDocumentsTest extends TestCase
         $request->patientProfile->update(['pseudonymized' => true]);
         Sanctum::actingAs($request->doctor);
         $this->post('/api/v1/doctor/signature', ['signature' => UploadedFile::fake()->image('parafa.png', 400, 100)])->assertOk();
-        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['diagnosis' => 'Test'])->assertOk();
+        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['higo_status' => 'not_performed', 'diagnosis' => 'Test'])->assertOk();
         $document = MedicalDocument::firstOrFail();
         $snapshot = $document->content_snapshot;
         $this->assertSame('Eva P.', $snapshot['patient_name']);
@@ -203,11 +241,11 @@ class ConsultationDocumentsTest extends TestCase
     {
         $request = $this->scenario();
         Sanctum::actingAs($request->doctor);
-        $this->postJson('/api/v1/requests/'.$request->id.'/documents/preview', ['diagnosis' => ''])->assertUnprocessable();
+        $this->postJson('/api/v1/requests/'.$request->id.'/documents/preview', ['higo_status' => 'not_performed', 'diagnosis' => ''])->assertUnprocessable();
         $this->assertSame(0, MedicalDocument::count());
         $this->assertSame('accepted', $request->fresh()->status);
 
-        $this->postJson('/api/v1/requests/'.$request->id.'/documents/preview', ['diagnosis' => 'Diagnostic completat'])->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $this->postJson('/api/v1/requests/'.$request->id.'/documents/preview', ['higo_status' => 'not_performed', 'diagnosis' => 'Diagnostic completat'])->assertOk()->assertHeader('Content-Type', 'application/pdf');
         $this->assertSame(0, MedicalDocument::count());
     }
 
@@ -215,11 +253,11 @@ class ConsultationDocumentsTest extends TestCase
     {
         $request = $this->scenario();
         Sanctum::actingAs($request->doctor);
-        $this->post('/api/v1/requests/'.$request->id.'/complete', ['diagnosis' => 'Test', 'prescription' => UploadedFile::fake()->image('reteta.png')], ['Accept' => 'application/json'])->assertOk();
+        $this->post('/api/v1/requests/'.$request->id.'/complete', ['higo_status' => 'not_performed', 'diagnosis' => 'Test', 'prescription' => UploadedFile::fake()->image('reteta.png')], ['Accept' => 'application/json'])->assertOk();
         $document = MedicalDocument::firstOrFail();
         Storage::disk('local')->assertExists($document->prescription_path);
         $this->get('/api/v1/medical-documents/'.$document->id.'/prescription')->assertForbidden();
-        $this->getJson('/api/v1/requests/'.$request->id.'/documents')->assertOk()->assertJsonPath('documents.0.prescription_url', URL::temporarySignedRoute('medical-document.prescription', now()->addMinutes(15), ['document' => $document->id]));
+        $this->getJson('/api/v1/requests/'.$request->id.'/documents')->assertOk()->assertJsonPath('documents.0.prescription_url', URL::temporarySignedRoute('medical-document.prescription', now()->addMinutes(15), ['document' => $document->id, 'viewer' => $request->doctor_id]));
     }
 
     public function test_pharmacy_message_is_permanent_in_pdf_and_document_response(): void
@@ -227,7 +265,7 @@ class ConsultationDocumentsTest extends TestCase
         $request = $this->scenario();
         app(PlatformConfig::class)->upsert('prescription.instructions', '');
         Sanctum::actingAs($request->doctor);
-        $this->post('/api/v1/requests/'.$request->id.'/complete', ['diagnosis' => 'Test', 'prescription' => UploadedFile::fake()->create('reteta.pdf', 10, 'application/pdf')], ['Accept' => 'application/json'])->assertOk();
+        $this->post('/api/v1/requests/'.$request->id.'/complete', ['higo_status' => 'not_performed', 'diagnosis' => 'Test', 'prescription' => UploadedFile::fake()->create('reteta.pdf', 10, 'application/pdf')], ['Accept' => 'application/json'])->assertOk();
         $document = MedicalDocument::firstOrFail();
         $this->assertTrue($document->content_snapshot['has_prescription']);
         $message = MedicalDocumentPublisher::PRESCRIPTION_INSTRUCTIONS;
@@ -238,18 +276,18 @@ class ConsultationDocumentsTest extends TestCase
         $this->getJson('/api/v1/requests/'.$request->id.'/documents')->assertOk()->assertJsonPath('documents.0.prescription_instructions', $message);
     }
 
-    public function test_addendum_cannot_extend_beyond_fourteen_days_even_with_older_settings(): void
+    public function test_addendum_cannot_extend_beyond_ten_days_even_with_older_settings(): void
     {
         $this->freezeTime();
         $request = $this->scenario();
         app(PlatformConfig::class)->upsert('consultations.addendum_days', 90);
         Sanctum::actingAs($request->doctor);
-        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['diagnosis' => 'Test'])->assertOk();
+        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['higo_status' => 'not_performed', 'diagnosis' => 'Test'])->assertOk();
         $document = MedicalDocument::firstOrFail();
         $snapshot = $document->content_snapshot;
         $snapshot['addendum_days'] = 90;
         $document->update(['content_snapshot' => $snapshot]);
-        $this->travel(14)->days();
+        $this->travel(10)->days();
         $this->getJson('/api/v1/requests/'.$request->id.'/documents')->assertOk()->assertJsonPath('can_addendum', false);
         $this->postJson('/api/v1/requests/'.$request->id.'/documents/addendum', ['recommendations' => 'Prea târziu'])->assertUnprocessable();
     }
@@ -258,15 +296,15 @@ class ConsultationDocumentsTest extends TestCase
     {
         $request = $this->scenario();
         Sanctum::actingAs($request->doctor);
-        $this->postJson('/api/v1/requests/'.$request->id.'/documents/preview', ['diagnosis' => 'Test', 'investigation_recommendations' => str_repeat('a', 4001)])
+        $this->postJson('/api/v1/requests/'.$request->id.'/documents/preview', ['higo_status' => 'not_performed', 'diagnosis' => 'Test', 'investigation_recommendations' => str_repeat('a', 4001)])
             ->assertUnprocessable()->assertJsonValidationErrors('investigation_recommendations');
         $this->mock(ConsultationPdf::class)->shouldReceive('render')->once()->withArgs(function (array $snapshot): bool {
             $this->assertSame('Analize separate', $snapshot['sections']['Investigații recomandate']);
-            $this->assertSame('Recomandări generale', $snapshot['sections']['Recomandări']);
+            $this->assertSame('Recomandări generale', $snapshot['sections']['Recomandări de stil de viață, alimentație și hidratare']);
 
             return true;
         })->andReturn('%PDF-preview');
-        $this->postJson('/api/v1/requests/'.$request->id.'/documents/preview', ['diagnosis' => 'Test', 'recommendations' => 'Recomandări generale', 'investigation_recommendations' => 'Analize separate'])->assertOk();
+        $this->postJson('/api/v1/requests/'.$request->id.'/documents/preview', ['higo_status' => 'not_performed', 'diagnosis' => 'Test', 'recommendations' => 'Recomandări generale', 'investigation_recommendations' => 'Analize separate'])->assertOk();
         $this->assertSame(0, MedicalDocument::count());
     }
 
@@ -278,7 +316,7 @@ class ConsultationDocumentsTest extends TestCase
         Sanctum::actingAs($request->doctor);
         $this->post('/api/v1/doctor/clinic-logo', ['logo' => UploadedFile::fake()->image('clinica.png', 800, 150)])->assertOk();
         $this->get('/api/v1/doctor/clinic-logo')->assertOk()->assertHeader('Content-Type', 'image/png')->assertHeader('X-Content-Type-Options', 'nosniff');
-        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['diagnosis' => 'Test'])->assertOk();
+        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['higo_status' => 'not_performed', 'diagnosis' => 'Test'])->assertOk();
         $document = MedicalDocument::firstOrFail();
         $snapshot = $document->content_snapshot;
         $this->assertStringStartsWith('data:image/png;base64,', $snapshot['clinic_logo_image']);

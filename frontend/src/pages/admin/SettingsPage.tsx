@@ -1,3 +1,5 @@
+import { PerformanceAwards } from '../../components/PerformanceAwards';
+import { AdminPromotionReport } from '../../components/DoctorGrowthPanels';
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Banknote, BarChart3, Bell, Gift, MessagesSquare, Percent, Settings, Sparkles, Wallet, type LucideIcon } from 'lucide-react';
@@ -34,13 +36,13 @@ const defaultSettings: SettingsMap = {
   'rate.affiliate_operator': 3,
   'rate.affiliate_patient_topup': 3,
   'affiliate.patient_topup_min_amount': 0,
-  'affiliate.patient_topup_first_only': false,
-  'affiliate.patient_registration_rules': 'Invită o persoană folosind linkul tău personal. Când persoana invitată alimentează portofelul, primești automat procentul afișat mai sus din suma alimentată, direct în portofelul tău. Comisionul se acordă doar pentru plăți confirmate, nu la simpla înregistrare. Conturile proprii, duplicate sau frauduloase nu sunt eligibile. Comisionul este credit de platformă și poate fi folosit pentru serviciile disponibile pe telemedconsult.md.',
+  'affiliate.patient_topup_first_only': true,
+  'affiliate.patient_registration_rules': 'Invită o persoană folosind linkul tău personal. La prima alimentare efectivă confirmată a persoanei invitate, primești procentul afișat din suma rămasă după cumpărarea pachetului. Pacientul invitator primește puncte, operatorul bani. Comisionul se acordă doar pentru plăți confirmate, nu la simpla înregistrare. Conturile proprii, duplicate sau frauduloase nu sunt eligibile. Comisionul este credit de platformă și poate fi folosit pentru serviciile disponibile pe telemedconsult.md.',
   'wallet.topup_bonus_percent': 0,
   'wallet.first_topup_promo_enabled': false,
   'wallet.first_topup_promo_doctor_ids': [],
   'wallet.first_topup_promo_max_grants': 0,
-  'consultations.addendum_days': 14,
+  'consultations.addendum_days': 10,
   'wallet.registration_bonus_enabled': false,
   'wallet.registration_bonus': 0,
   'wallet.max_points_payment_percent': 40,
@@ -50,7 +52,7 @@ const defaultSettings: SettingsMap = {
   'chat.free_days': 3,
   'chat.reactivation_price': 50,
   'chat.reactivation_hours': 24,
-  'chat.total_days': 14,
+  'chat.total_days': 10,
   'video.default_price': 500,
   'video.default_duration_minutes': 10,
   'payout.request_day_start': 1,
@@ -70,7 +72,7 @@ const settingLabels: Record<string, string> = {
   'rate.bank_transaction': 'Comision tranzacție bancară (%)',
   'rate.affiliate_doctor_topup': 'Afiliere medic la alimentare (%)',
   'rate.affiliate_operator': 'Afiliere operator (%)',
-  'rate.affiliate_patient_topup': 'Comision afiliere (%) — la toate încărcările invitaților, în bonusuri',
+  'rate.affiliate_patient_topup': 'Comision afiliere (%) — la prima alimentare efectivă',
   'wallet.registration_bonus': 'Bonus de bun-venit (MDL)',
   'wallet.registration_bonus_enabled': 'Acordă bonus la înregistrare',
   'wallet.max_points_payment_percent': 'Procent maxim achitabil din bonusuri (%)',
@@ -97,10 +99,7 @@ const commissionSettingKeys = [
   'rate.platform_commission',
   'rate.admin_accounting',
   'rate.bank_guarantee',
-  'rate.bank_transaction',
-  'rate.affiliate_doctor_topup',
-  'rate.affiliate_operator',
-  'rate.affiliate_patient_topup'
+  'rate.bank_transaction'
 ];
 
 const workflowSettingKeys = [
@@ -176,7 +175,7 @@ export function SettingsPage() {
       await apiRequest('/admin/settings', {
         method: 'PUT',
         body: JSON.stringify({
-          settings: Object.entries({ ...settings, 'consultations.addendum_days': 14 }).map(([key, value]) => ({
+          settings: Object.entries({ ...settings, 'consultations.addendum_days': 10 }).map(([key, value]) => ({
             key,
             value,
             // Setările structurate (de ex. regulile de mapare HIGO, editate din
@@ -261,7 +260,6 @@ export function SettingsPage() {
             >
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <NumberField label="Închidere automată fără recenzie (zile)" value={Number(settings['consultations.auto_close_days'])} onChange={(value) => update('consultations.auto_close_days', Math.max(1, Math.floor(value)))} />
                   <p className="text-xs leading-5 text-slate-500">Numărate de la publicarea concluziei. La termen, consultația se închide singură și plata ajunge la medic.</p>
                 </div>
                 <div className="space-y-2">
@@ -327,18 +325,18 @@ export function SettingsPage() {
           </TabsContent>
 
           <TabsContent value="affiliate">
-            <Section title="Program de afiliere pacienți" description="Cel care invită primește procentul de mai jos din fiecare sumă alimentată în portofel de persoana invitată. Comisionul se acordă doar la plăți confirmate, iar cota folosită se salvează ca snapshot pe fiecare comision.">
+            <Section title="Program de afiliere pacienți" description="Cel care invită primește procentul de mai jos din prima alimentare efectivă a fiecărui invitat, cu prețul pachetului exclus. Operatorii primesc bani, pacienții puncte. Comisionul se acordă doar la plăți confirmate, iar cota folosită se salvează ca snapshot pe fiecare comision.">
               <div className="grid gap-6 xl:grid-cols-[minmax(280px,380px)_1fr]">
                 <div className="space-y-4">
                   <p className="text-sm font-medium">Regulă rapidă de afiliere</p>
                   <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="outline" onClick={() => setSettings((current) => ({ ...current, 'rate.affiliate_patient_topup': 3, 'affiliate.patient_topup_first_only': false }))}>3% la fiecare alimentare</Button>
+                    <Button type="button" variant="outline" onClick={() => setSettings((current) => ({ ...current, 'rate.affiliate_patient_topup': 3, 'affiliate.patient_topup_first_only': true }))}>3% la prima alimentare</Button>
                     <Button type="button" variant="outline" onClick={() => setSettings((current) => ({ ...current, 'rate.affiliate_patient_topup': 10, 'affiliate.patient_topup_first_only': true }))}>10% o singură dată</Button>
                   </div>
                   <p className="text-xs text-slate-500">Exemplu la 3%: 1.000 MDL → 30 MDL bonus pentru invitator; 500 MDL → 15 MDL. Alegerea se aplică după salvare.</p>
                   <NumberField label={settingLabel('rate.affiliate_patient_topup')} value={Number(settings['rate.affiliate_patient_topup'])} onChange={(value) => update('rate.affiliate_patient_topup', value)} />
                   <NumberField label={settingLabel('affiliate.patient_topup_min_amount')} value={Number(settings['affiliate.patient_topup_min_amount'])} onChange={(value) => update('affiliate.patient_topup_min_amount', value)} />
-                  <ToggleRow label={settingLabel('affiliate.patient_topup_first_only')} hint="Dezactivat = comision la fiecare alimentare." checked={Boolean(settings['affiliate.patient_topup_first_only'])} onChange={(value) => update('affiliate.patient_topup_first_only', value)} />
+<p className="text-sm text-slate-600">Se acordă numai la prima alimentare efectivă. O alimentare sub prag consumă eligibilitatea; plățile eșuate și cumpărarea exclusivă a pachetului nu o consumă.</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="affiliate-rules">Regulament afișat pacientului</Label>
@@ -359,7 +357,7 @@ export function SettingsPage() {
             <Section title="Chat, video și payout">
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {workflowSettingKeys.map((key) => (
-                  <NumberField key={key} disabled={key === 'consultations.addendum_days'} label={settingLabel(key)} value={key === 'consultations.addendum_days' ? 14 : Number(settings[key])} onChange={(value) => update(key, value)} />
+                  <NumberField key={key} disabled={key === 'consultations.addendum_days'} label={settingLabel(key)} value={key === 'consultations.addendum_days' ? 10 : Number(settings[key])} onChange={(value) => update(key, value)} />
                 ))}
               </div>
             </Section>
@@ -376,7 +374,10 @@ export function SettingsPage() {
           </TabsContent>
 
           <TabsContent value="top-doctors">
-            <Section title="Top medici" description="Scorul calculat din rating, consultațiile lunii și timpul de răspuns. Doar pentru vizualizare.">
+            <Section title="Ponderi performanță" description="Scor comun pentru cabinet și clasament. Prima reacție este măsurată în intervale de 10 minute; lipsa datelor aduce 0 puncte."><div className="grid gap-4 sm:grid-cols-2">{Object.entries({current_consultation:['Consultație luna curentă',4],previous_consultation:['Consultație anterioară',1.5],current_rating:['Sumă note luna curentă',10],previous_rating:['Sumă note anterioare',5],response_max:['Puncte răspuns până la 10 minute',100],response_decrement:['Scădere la fiecare 10 minute',5]}).map(([key,[label,fallback]])=><NumberField key={key} label={String(label)} value={Number(settings[`performance.${key}`]??fallback)} onChange={value=>update(`performance.${key}`,value)}/>)}</div></Section>
+            <AdminPromotionReport/>
+            <PerformanceAwards admin/>
+            <Section title="Top medici" description="Scorul însumează consultațiile, notele recenziilor și prima reacție. Promovarea nu schimbă acest clasament.">
               <div className="grid gap-3">
                 {topDoctors.map((doctor, index) => (
                   <div key={doctor.doctor_id} className="grid gap-2 rounded-xl border border-slate-200 bg-white/70 p-4 md:grid-cols-[40px_1fr_repeat(4,auto)] md:items-center md:gap-6">

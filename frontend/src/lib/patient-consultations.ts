@@ -21,8 +21,9 @@ export interface PatientConsultation {
   patient_profile?: { name?: string | null } | null;
   payment_status?: string | null;
   closed_at?: string | null;
-  /** Fără recenzie, consultația se închide și se plătește singură la această dată. */
+  /** Câmp compatibil cu API-ul; închiderea necesită recenzie și data rămâne null. */
   auto_close_at?: string | null;
+  result_locked?: boolean;
   /** Confirmată fără concluzie: după această oră banii revin automat. */
   refund_due_at?: string | null;
 }
@@ -71,13 +72,13 @@ export function patientNextStep(request: PatientConsultation): string | null {
 
 /**
  * Banii stau rezervați până închizi consultația cu o recenzie; atunci ajung la
- * medic. Fără recenzie, consultația se închide singură la `auto_close_at`.
+ * medic. Fără recenzie, rezultatul și plata rămân în așteptare.
  */
 export function paymentNote(request: Pick<PatientConsultation, 'status' | 'payment_status' | 'closed_at' | 'auto_close_at' | 'amount'>): string | null {
   if (request.status !== 'completed') return null;
   const amount = request.amount ? `${Math.round(Number(request.amount))} MDL` : 'plata';
   if (request.payment_status === 'held' && !request.closed_at) {
-    return `Concluzia e în documentul PDF. Lasă o recenzie ca să închizi consultația: abia atunci ${request.amount ? `cei ${amount}` : 'banii'} ajung la medic.${request.auto_close_at ? ` Fără recenzie, se închide automat pe ${dateTime(request.auto_close_at)}.` : ''}`;
+    return `Lasă o recenzie pentru a vedea rezultatul și a închide consultația: abia atunci ${request.amount ? `cei ${amount}` : 'banii'} ajung la medic.`;
   }
   if (request.payment_status === 'captured') return `Consultația e închisă și ${amount} au ajuns la medic. Concluzia rămâne în documentul PDF.`;
   return null;

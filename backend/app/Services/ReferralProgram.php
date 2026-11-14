@@ -2,11 +2,11 @@
 
 namespace App\Services;
 
+use App\Models\OperatorProfile;
 use App\Models\Payment;
 use App\Models\Referral;
 use App\Models\ReferralCommission;
 use App\Models\User;
-use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Log;
@@ -17,7 +17,7 @@ use RuntimeException;
  * Programul de afiliere.
  *
  * Regula de business: invitatorul primește un PROCENT (configurabil de admin)
- * din fiecare sumă alimentată în portofel de utilizatorul invitat. Comisionul se
+ * din prima sumă efectiv alimentată în portofel de utilizatorul invitat. Comisionul se
  * acordă doar la plată confirmată — nu la înregistrare și nu la confirmarea
  * emailului.
  */
@@ -58,7 +58,7 @@ class ReferralProgram
 
     public function firstDepositOnly(): bool
     {
-        return $this->config->bool(self::FIRST_ONLY_SETTING, false);
+        return true;
     }
 
     public function rules(): ?string
@@ -155,10 +155,15 @@ class ReferralProgram
      */
     public function creditTopUpCommission(Payment $payment): ?ReferralCommission
     {
-        if (! $this->enabled()) {
+        if (! $this->enabled() || $payment->status !== 'paid' || $payment->purpose !== 'wallet_top_up' || $payment->currency !== 'MDL') {
             return null;
         }
-
+        if (! Referral::where('referred_user_id', $payment->user_id)->exists() && filled($payment->metadata['affiliate_code'] ?? null)) {
+            $operator = OperatorProfile::where('affiliate_code', $payment->metadata['affiliate_code'])->first()?->user;
+            if ($operator && $operator->hasRole('operator') && $operator->id !== $payment->user_id) {
+                Referral::firstOrCreate(['referred_user_id' => $payment->user_id], ['referrer_id' => $operator->id, 'reward_amount_minor' => 0, 'currency' => 'MDL', 'status' => Referral::STATUS_PENDING]);
+            }
+        }
         $referral = Referral::where('referred_user_id', $payment->user_id)
             ->lockForUpdate()
             ->first();
@@ -173,12 +178,13 @@ class ReferralProgram
             return null;
         }
 
-        if ($this->firstDepositOnly()
-            && ReferralCommission::where('referred_user_id', $payment->user_id)->exists()) {
+        if (ReferralCommission::where('referred_user_id', $payment->user_id)->exists()
+            || Payment::where('user_id', $payment->user_id)->where('purpose', 'wallet_top_up')->where('status', 'paid')->whereKeyNot($payment->id)
+                ->get()->contains(fn (Payment $other) => $this->depositMinor($other) > 0)) {
             return null;
         }
 
-        $depositMinor = (int) $payment->amount_minor;
+        $depositMinor = $this->depositMinor($payment);
         $minimumMinor = (int) round($this->minimumAmount() * 100);
 
         if ($depositMinor < $minimumMinor || $depositMinor <= 0) {
@@ -192,13 +198,18 @@ class ReferralProgram
             return null;
         }
 
+        $referrer = User::with('roles')->find($referral->referrer_id);
+        $walletType = $referrer ? $this->rewardWalletType($referrer) : null;
+        if (! $walletType) {
+            return null;
+        }
         $currency = $payment->currency ?: 'MDL';
-        $wallet = $this->lockedWallet((int) $referral->referrer_id, $currency);
+        $wallet = app(WalletLedger::class)->locked((int) $referral->referrer_id, $walletType, $currency);
         $wallet->increment('balance_minor', $commissionMinor);
 
         $transaction = WalletTransaction::create([
             'wallet_id' => $wallet->id,
-            'wallet_type' => WalletLedger::POINTS,
+            'wallet_type' => $walletType,
             'user_id' => $referral->referrer_id,
             'amount_minor' => $commissionMinor,
             'currency' => $currency,
@@ -210,7 +221,9 @@ class ReferralProgram
                 'referred_user_id' => $payment->user_id,
                 'payment_id' => $payment->id,
                 'deposit_amount' => $depositMinor / 100,
-                'source' => 'patient_topup_referral',
+                'source' => 'first_actual_topup_referral',
+                'reward_wallet_type' => $walletType,
+                'first_deposit_only' => true,
             ],
             'rate_snapshot' => [self::RATE_SETTING => $rate],
         ]);
@@ -245,28 +258,20 @@ class ReferralProgram
         return $commission;
     }
 
-    private function lockedWallet(int $userId, string $currency): Wallet
+    public function depositMinor(Payment $payment): int
     {
-        $wallet = Wallet::where('user_id', $userId)->where('type', WalletLedger::POINTS)->lockForUpdate()->first();
+        $metadata = $payment->metadata ?? [];
 
-        if ($wallet) {
-            return $wallet;
+        return max(0, (int) ($metadata['referral_deposit_minor'] ?? ($payment->amount_minor - (isset($metadata['buy_package_id']) ? ($metadata['package_price_minor'] ?? $payment->amount_minor) : 0))));
+    }
+
+    public function rewardWalletType(User $user): ?string
+    {
+        if ($user->hasRole('operator')) {
+            return WalletLedger::REAL;
         }
 
-        try {
-            Wallet::create([
-                'user_id' => $userId,
-                'type' => WalletLedger::POINTS,
-                'balance_minor' => 0,
-                'currency' => $currency,
-            ]);
-        } catch (QueryException $exception) {
-            if (! $this->isUniqueConstraintViolation($exception)) {
-                throw $exception;
-            }
-        }
-
-        return Wallet::where('user_id', $userId)->where('type', WalletLedger::POINTS)->lockForUpdate()->firstOrFail();
+        return ! $user->hasRole('doctor') && $user->hasRole('patient') ? WalletLedger::POINTS : null;
     }
 
     private function isUniqueConstraintViolation(QueryException $exception): bool

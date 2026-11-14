@@ -114,38 +114,6 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă', patientProf
   const typingTimeoutRef = useRef<number | null>(null);
   const subscribedChannels = useRef<Set<string>>(new Set());
 
-  const upsertConversation = useCallback((nextConversation: Conversation) => {
-    if ((role === 'patient' && nextConversation.patient_id !== currentUserId) || (role === 'doctor' && nextConversation.doctor_id !== currentUserId) || (role === 'operator' && nextConversation.operator_id !== currentUserId)) return;
-    setConversations((current) => {
-      const exists = current.some((conversation) => conversation.id === nextConversation.id);
-      const nextList = exists
-        ? current.map((conversation) => conversation.id === nextConversation.id ? { ...nextConversation, chat: nextConversation.chat || conversation.chat, unread_count: nextConversation.unread_count ?? ((conversation.unread_count || 0) + nextConversation.messages.filter((message) => Number(message.sender_id) !== Number(user?.id) && !conversation.messages.some((previous) => previous.id === message.id)).length) } : conversation)
-        : [nextConversation, ...current];
-
-      return [...nextList].sort((first, second) => {
-        const firstMessage = first.messages[first.messages.length - 1];
-        const secondMessage = second.messages[second.messages.length - 1];
-        return new Date(secondMessage?.created_at || second.created_at).getTime() - new Date(firstMessage?.created_at || first.created_at).getTime();
-      });
-    });
-    setActiveId((current) => current ?? nextConversation.id);
-  }, [user?.id, role, currentUserId]);
-
-  const appendMessage = useCallback((conversationId: number, message: Message) => {
-    setConversations((current) => current.map((conversation) => {
-      if (conversation.id !== conversationId) return conversation;
-
-      const messageExists = conversation.messages.some((item) => item.id === message.id);
-      if (messageExists) return conversation;
-
-      return {
-        ...conversation,
-        unread_count: (conversation.unread_count || 0) + (message.sender_id !== currentUserId ? 1 : 0),
-        messages: [...conversation.messages, message]
-      };
-    }));
-  }, [currentUserId]);
-
   const loadConversations = useCallback(() => {
     apiRequest<{data: Conversation[]}>(patientProfileId ? `/conversations?patient_profile=${patientProfileId}` : '/conversations').then((response) => {
       setConversations(response.data);
@@ -294,12 +262,8 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă', patientProf
     const userChannelName = `App.Models.User.${currentUserId}`;
     if (!channels.has(userChannelName)) {
       echo.private(userChannelName)
-        .listen('.conversation.updated', (event: { conversation: Conversation }) => {
-          upsertConversation(event.conversation);
-        })
-        .listen('.conversation.message.sent', (event: { conversation_id: number; message: Message }) => {
-          appendMessage(Number(event.conversation_id), event.message);
-        });
+        .listen('.conversation.updated', () => loadConversations())
+        .listen('.conversation.message.sent', () => loadConversations());
       channels.add(userChannelName);
     }
 
@@ -308,7 +272,7 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă', patientProf
       echo.private(userChannelName).stopListening('.conversation.updated').stopListening('.conversation.message.sent');
       channels.delete(userChannelName);
     };
-  }, [appendMessage, currentUserId, upsertConversation]);
+  }, [currentUserId, loadConversations]);
 
   useEffect(() => {
     const echo = getEcho();
@@ -320,12 +284,8 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă', patientProf
       if (channels.has(channelName)) return;
 
       echo.private(channelName)
-        .listen('.conversation.updated', (event: { conversation: Conversation }) => {
-          upsertConversation(event.conversation);
-        })
-        .listen('.conversation.message.sent', (event: { conversation_id: number; message: Message }) => {
-          appendMessage(Number(event.conversation_id), event.message);
-        })
+        .listen('.conversation.updated', () => loadConversations())
+        .listen('.conversation.message.sent', () => loadConversations())
         .listenForWhisper?.('typing', (event: { user_id: number; name: string }) => {
           if (event.user_id === currentUserId) return;
           setTypingName(event.name);
@@ -342,7 +302,7 @@ export function ChatView({ emptyTitle = 'Nu ai conversații încă', patientProf
         channels.delete(channelName);
       });
     };
-  }, [appendMessage, conversations, upsertConversation, currentUserId]);
+  }, [conversations, currentUserId, loadConversations]);
 
   const participantFor = (conversation: Conversation): Participant => {
     if (currentUserId && conversation.patient_id !== currentUserId && conversation.patient) {

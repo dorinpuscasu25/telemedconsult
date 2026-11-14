@@ -35,6 +35,7 @@ export interface ExamMediaItem {
 }
 
 export interface PatientProfileSummary {
+  record_access_expired?: boolean;
   id: string;
   name: string;
   patient_code?: string | null;
@@ -219,6 +220,10 @@ export function PatientChart({
   ].filter(Boolean);
 
   const location = [profile?.locality, profile?.region, profile?.country].filter(Boolean).join(', ');
+
+  if (profile?.record_access_expired) {
+    return <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Accesul la fișa pacientului s-a încheiat după cele 10 zile de monitorizare. Documentul consultației publicate rămâne disponibil.</p>;
+  }
 
   return (
     <div className="space-y-3">

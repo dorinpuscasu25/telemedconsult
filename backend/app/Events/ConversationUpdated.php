@@ -31,16 +31,7 @@ class ConversationUpdated implements ShouldBroadcast
 
     public function broadcastWith(): array
     {
-        $conversation = $this->conversation->loadMissing(['patientProfile', 'patient', 'doctor', 'operator', 'messages.sender']);
-
-        $conversation->patientProfile?->append('display_name');
-        if ($conversation->patientProfile?->pseudonymized) {
-            $conversation->patientProfile->makeHidden(['last_name', 'identity_number', 'address', 'address_details', 'emergency_contact']);
-        }
-
-        return [
-            'conversation' => $conversation,
-        ];
+        return ['conversation_id' => $this->conversation->id];
     }
 
     private function participantChannels(): array

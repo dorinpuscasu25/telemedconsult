@@ -7,7 +7,9 @@ export type VideoContext = {
   specialty: string | null;
   scheduled_at: string | null;
   doctor_started_at: string | null;
+  duration_minutes?: number;
+  session_id?: string | null;
   conversation_id: number | null;
 };
 export type VideoStatus = { available: boolean; configured: boolean; status: string; participant?: VideoParticipant; consultation?: VideoContext };
-export type VideoConnection = { server_url: string; participant_token: string; participant: VideoParticipant; choices: LocalUserChoices };
+export type VideoConnection = { server_url: string; participant_token: string; participant: VideoParticipant; choices: LocalUserChoices; session_id?: string | null };

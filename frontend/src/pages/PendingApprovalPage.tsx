@@ -9,7 +9,6 @@ import { apiRequest } from '../lib/api';
 interface Institution { id: number; name: string; address?: string | null }
 
 const ROLE_LABEL: Record<string, string> = { doctor: 'medic', operator: 'operator' };
-const INDEPENDENT = 0;
 
 /**
  * Ultimii pași ai înregistrării. Medicul alege instituția la care lucrează (sau
@@ -34,7 +33,7 @@ export function PendingApprovalPage() {
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-200/60">
           {isDoctor && <DoctorRegistrationSteps current={choosing ? 3 : 4} />}
           {choosing
-            ? <ChooseInstitution initial={registration?.institution_chosen ? (registration.requested_institution?.id ?? INDEPENDENT) : null} onSaved={() => { setEditing(false); void refreshUser(); }} onCancel={registration?.institution_chosen ? () => setEditing(false) : undefined} />
+            ? <ChooseInstitution initial={registration?.institution_chosen ? (registration.requested_institution?.id ?? null) : null} onSaved={() => { setEditing(false); void refreshUser(); }} onCancel={registration?.institution_chosen ? () => setEditing(false) : undefined} />
             : <Waiting label={role ? ROLE_LABEL[role] ?? 'furnizor' : 'furnizor'} name={user?.name} institution={isDoctor ? registration?.requested_institution ?? null : undefined}
                 onChange={isDoctor ? () => setEditing(true) : undefined}
                 onChecked={(next) => { if (next) navigate(next, { replace: true }); }} refreshUser={refreshUser} />}
@@ -63,13 +62,13 @@ function ChooseInstitution({ initial, onSaved, onCancel }: { initial: number | n
     const term = query.trim().toLocaleLowerCase('ro');
     return (institutions ?? []).filter((item) => !term || `${item.name} ${item.address ?? ''}`.toLocaleLowerCase('ro').includes(term));
   }, [institutions, query]);
-  const chosen = picked === INDEPENDENT ? null : institutions?.find((item) => item.id === picked) ?? null;
+  const chosen = institutions?.find((item) => item.id === picked) ?? null;
 
   const save = async () => {
     setBusy(true);
     setError('');
     try {
-      await apiRequest('/auth/registration/institution', { method: 'POST', body: JSON.stringify({ institution_id: picked === INDEPENDENT ? null : picked }) });
+      await apiRequest('/auth/registration/institution', { method: 'POST', body: JSON.stringify({ institution_id: picked }) });
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nu am putut salva alegerea.');
@@ -84,7 +83,7 @@ function ChooseInstitution({ initial, onSaved, onCancel }: { initial: number | n
       <div className="flex flex-col gap-5 p-6">
         <div className="flex flex-col gap-1.5">
           <h1 className="text-2xl font-bold tracking-tight text-slate-950">Confirmă alegerea</h1>
-          <p className="text-sm text-slate-500">Administratorul verifică datele tale și te adaugă în instituția aleasă. Poți schimba alegerea până la aprobare.</p>
+          <p className="text-sm text-slate-500">Managerul instituției verifică datele tale și îți aprobă cererea. Poți schimba alegerea până la aprobare.</p>
         </div>
         <div className="flex items-center gap-3.5 rounded-xl border border-slate-200 bg-slate-50 p-4">
           <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] border border-slate-200 bg-white text-slate-600">{chosen ? <Building2 className="h-5 w-5" /> : <UserRound className="h-5 w-5" />}</span>
@@ -106,7 +105,7 @@ function ChooseInstitution({ initial, onSaved, onCancel }: { initial: number | n
     <div className="flex flex-col gap-4 p-6">
       <div className="flex flex-col gap-1.5">
         <h1 className="text-2xl font-bold tracking-tight text-slate-950">Unde lucrezi?</h1>
-        <p className="text-sm text-slate-500">Alege instituția medicală prin care oferi consultații. Dacă lucrezi pe cont propriu, alege „Lucrez independent”.</p>
+        <p className="text-sm text-slate-500">Alege instituția medicală prin care vei oferi consultații. Managerul acesteia îți va aproba cererea.</p>
       </div>
       <label className="flex h-11 items-center gap-2 rounded-[10px] border border-slate-200 px-3 focus-within:border-blue-600">
         <Search className="h-4 w-4 shrink-0 text-slate-400" />
@@ -119,9 +118,8 @@ function ChooseInstitution({ initial, onSaved, onCancel }: { initial: number | n
             {!shown.length && <p className="py-3 text-center text-sm text-slate-500">{query ? 'Nicio instituție nu se potrivește căutării.' : 'Nu există încă instituții pe platformă.'}</p>}
           </>
         )}
-        <Choice on={picked === INDEPENDENT} onPick={() => setPicked(INDEPENDENT)} icon={<UserRound className="h-[18px] w-[18px]" />} title="Lucrez independent" sub="Fără instituție; plățile vin de la platformă." />
       </div>
-      <p className="text-xs text-slate-500">Nu-ți găsești instituția? Alege „Lucrez independent” și scrie-i administratorului după aprobare.</p>
+      <p className="text-xs text-slate-500">Nu-ți găsești instituția? Contactează administratorul platformei pentru adăugarea ei.</p>
       {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       <div className="flex flex-col gap-2 sm:flex-row-reverse">
         <button type="button" onClick={() => setConfirming(true)} disabled={picked === null} className="h-12 flex-1 rounded-[10px] bg-blue-600 text-[15px] font-semibold text-white hover:bg-blue-700 disabled:bg-blue-300">Continuă</button>
@@ -163,7 +161,7 @@ function Waiting({ label, name, institution, onChange, onChecked, refreshUser }:
       <div className="flex flex-col items-center gap-3 text-center">
         <span className="grid h-14 w-14 place-items-center rounded-2xl bg-amber-100 text-amber-600"><Clock className="h-7 w-7" /></span>
         <h1 className="text-2xl font-bold tracking-tight text-slate-950">Așteaptă aprobarea</h1>
-        <p className="text-sm text-slate-500">Bună{name ? `, ${name}` : ''}. Cererea ta de cont de {label} a ajuns la administrator. Te anunțăm prin email imediat ce contul e activat.</p>
+        <p className="text-sm text-slate-500">Bună{name ? `, ${name}` : ''}. Cererea ta de cont de {label} a ajuns la {institution ? `managerul instituției ${institution.name}` : 'administratorul platformei'}. Te anunțăm prin email imediat ce contul e activat.</p>
       </div>
       {institution !== undefined && (
         <div className="flex items-center gap-3.5 rounded-xl border border-slate-200 bg-slate-50 p-4">

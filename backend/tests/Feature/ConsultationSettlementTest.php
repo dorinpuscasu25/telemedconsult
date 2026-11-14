@@ -40,7 +40,7 @@ class ConsultationSettlementTest extends TestCase
         [$patient, $doctor, $request] = $this->acceptedConsultation();
 
         Sanctum::actingAs($doctor);
-        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['diagnosis' => 'Rinofaringită'])->assertOk();
+        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['higo_status' => 'not_performed', 'diagnosis' => 'Rinofaringită'])->assertOk();
 
         $request->refresh();
         $this->assertSame('completed', $request->status);
@@ -51,7 +51,7 @@ class ConsultationSettlementTest extends TestCase
 
         Sanctum::actingAs($patient);
         $listed = collect($this->getJson('/api/v1/requests')->assertOk()->json('data'))->firstWhere('id', (string) $request->id);
-        $this->assertNotNull($listed['auto_close_at']);
+        $this->assertNull($listed['auto_close_at']);
         $this->postJson('/api/v1/requests/'.$request->id.'/review', ['rating' => 5, 'comment' => 'Foarte bine'])->assertCreated();
 
         $request->refresh();
@@ -71,12 +71,12 @@ class ConsultationSettlementTest extends TestCase
         $this->assertSame((int) $request->provider_amount_minor, $this->balance($doctor));
     }
 
-    public function test_completed_consultation_without_review_closes_and_pays_after_the_admin_window(): void
+    public function test_completed_consultation_without_review_stays_held_after_the_former_auto_close_window(): void
     {
         app(PlatformConfig::class)->upsert(ConsultationSettlement::AUTO_CLOSE_DAYS, 2);
         [, $doctor, $request] = $this->acceptedConsultation();
         Sanctum::actingAs($doctor);
-        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['diagnosis' => 'Test'])->assertOk();
+        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['higo_status' => 'not_performed', 'diagnosis' => 'Test'])->assertOk();
 
         $this->travel(47)->hours();
         $this->artisan('consultations:settle')->assertSuccessful();
@@ -85,9 +85,9 @@ class ConsultationSettlementTest extends TestCase
         $this->travel(2)->hours();
         $this->artisan('consultations:settle')->assertSuccessful();
         $request->refresh();
-        $this->assertSame('captured', $request->payment_status);
-        $this->assertNotNull($request->closed_at);
-        $this->assertSame((int) $request->provider_amount_minor, $this->balance($doctor));
+        $this->assertSame('held', $request->payment_status);
+        $this->assertNull($request->closed_at);
+        $this->assertSame(0, $this->balance($doctor));
     }
 
     public function test_consultation_that_did_not_take_place_refunds_the_patient_after_the_admin_window(): void

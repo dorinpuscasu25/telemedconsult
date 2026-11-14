@@ -7,10 +7,12 @@ import { PatientBasicsFields, emptyPatientBasics, isPatientBasicsComplete, patie
 import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 import { apiRequest } from '../../lib/api';
 import { bookingAfterOnboarding, clearNext, peekNext } from '../../lib/onboarding-next';
+import type { PatientProfileEntitlements } from '../../lib/patient-profiles';
+import { FreeProfileChoice } from '../../components/patient/FreeProfileChoice';
 
 type CardPackage = { id: number; name: string; description?: string | null; profile_slots: number; price: number; validity_days: number; bonus_points?: number };
 type CardPurchase = { id: number; profile_slots: number; used_slots: number; available_slots: number; expires_at: string };
-type ProfileResponse = {
+type ProfileResponse = PatientProfileEntitlements & {
   user: { name: string };
   patient_profiles: Array<{ id: number; can_request_consultation?: boolean }>;
   card_packages: CardPackage[];
@@ -38,6 +40,8 @@ export function StartWizardPage() {
   const [wallet, setWallet] = useState<WalletResponse | null>(null);
   const [regions, setRegions] = useState<CatalogRegion[]>([]);
   const [packageId, setPackageId] = useState<number | null>(() => savedCheckout()?.packageId ?? null);
+  const [freeSelected, setFreeSelected] = useState(() => savedCheckout() === null);
+  const [freeConfirmed, setFreeConfirmed] = useState(false);
   const [includeTopup, setIncludeTopup] = useState(() => savedCheckout()?.includeTopup ?? true);
   const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(() => paymentParam(searchParams.get('payment')));
   const [pendingChecks, setPendingChecks] = useState(0);
@@ -66,9 +70,11 @@ export function StartWizardPage() {
   }, [load]);
 
   const packagesRequired = isEnabled('patient_cards') && isEnabled('payments');
+  const freeAvailable = Boolean(data?.free_profile?.available);
+  const usingFree = packagesRequired && freeAvailable && freeSelected;
   const availableSlots = (data?.card_purchases ?? []).reduce((sum, item) => sum + item.available_slots, 0);
   const hasRequestablePatient = (data?.patient_profiles ?? []).some((profile) => profile.can_request_consultation);
-  const step: Step = !packagesRequired || availableSlots > 0 ? 'patient' : 'package';
+  const step: Step = !packagesRequired || availableSlots > 0 || (freeConfirmed && usingFree) ? 'patient' : 'package';
 
   // Contul care are deja un pacient nu mai are ce face aici: trece la programare.
   useEffect(() => {
@@ -93,8 +99,8 @@ export function StartWizardPage() {
   const packages = data?.card_packages ?? [];
   const selectedPackage = packages.find((item) => item.id === packageId) ?? packages[0];
   const topupAmount = data?.onboarding?.first_consultation_topup ?? 0;
-  const willTopup = includeTopup && topupAmount > 0;
-  const total = (selectedPackage?.price ?? 0) + (willTopup ? topupAmount : 0);
+  const willTopup = !usingFree && includeTopup && topupAmount > 0;
+  const total = usingFree ? 0 : (selectedPackage?.price ?? 0) + (willTopup ? topupAmount : 0);
   const balance = wallet?.wallet.balance ?? 0;
   const paysFromBalance = !willTopup && selectedPackage ? balance >= selectedPackage.price : false;
   const bonusBalance = (wallet?.points_wallet?.balance ?? 0) + (wallet?.promo_wallet?.balance ?? 0);
@@ -108,6 +114,7 @@ export function StartWizardPage() {
   };
 
   const pay = async () => {
+    if (usingFree) { setFreeConfirmed(true); setError(''); return; }
     if (!selectedPackage) return;
     setError('');
     setBusy(true);
@@ -132,15 +139,17 @@ export function StartWizardPage() {
 
   const savePatient = async (event: FormEvent) => {
     event.preventDefault();
+    if (busy) return;
     if (!isPatientBasicsComplete(patient)) { setError('Completează toate câmpurile.'); return; }
     setError('');
     setBusy(true);
     try {
-      const response = await apiRequest<{ patient_profile: { id: number } }>('/patient/profiles', { method: 'POST', body: JSON.stringify(patientBasicsPayload(patient)) });
+      const response = await apiRequest<{ patient_profile: { id: number } }>('/patient/profiles', { method: 'POST', body: JSON.stringify({ ...patientBasicsPayload(patient), use_free_profile: usingFree }) });
       try { sessionStorage.removeItem(CHECKOUT_KEY); } catch { /* opțional */ }
       navigate(bookingAfterOnboarding(response.patient_profile.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nu am putut salva pacientul.');
+      void load();
     } finally {
       setBusy(false);
     }
@@ -153,7 +162,7 @@ export function StartWizardPage() {
 
   const perProfile = (item: CardPackage) => item.profile_slots === 1 ? 'Doar pentru tine' : `${mdl(item.price / item.profile_slots)} MDL / profil${item.profile_slots >= 4 ? ' · pentru familie' : ''}`;
   const totalNote = selectedPackage ? `${selectedPackage.name} ${mdl(selectedPackage.price)}${willTopup ? ` + portofel ${mdl(topupAmount)}` : ''} MDL` : '';
-  const payNote = paysFromBalance ? `Se plătește din portofel · sold ${mdl(balance)} MDL` : `${totalNote} · plată securizată MAIB`;
+  const payNote = usingFree ? 'Fără plată. Consultațiile se achită separat.' : paysFromBalance ? `Se plătește din portofel · sold ${mdl(balance)} MDL` : `${totalNote} · plată securizată MAIB`;
   const showPaymentOk = step === 'patient' && paymentResult === 'ok' && Boolean(activePurchase);
   const stepIndex = step === 'package' ? 0 : 1;
   const later = '/patient';
@@ -170,7 +179,7 @@ export function StartWizardPage() {
             <span className="hidden lg:block"><Logo large /></span>
             <Link to={later} className="text-sm text-slate-500 hover:text-slate-800 lg:hidden">Mai târziu</Link>
           </div>
-          <Steps index={stepIndex} />
+          <Steps index={stepIndex} free={usingFree} />
           <Link to={later} className="hidden text-sm text-slate-500 hover:text-slate-800 lg:block">Termin mai târziu</Link>
         </div>
       </header>
@@ -205,11 +214,12 @@ export function StartWizardPage() {
                 <p className="text-sm leading-[1.5] text-slate-500 lg:text-[15px]">Un profil este o persoană din familie, cu fișa ei medicală, activ un an.</p>
               </div>
               <div role="radiogroup" aria-label="Pachet" className="flex flex-col gap-2.5 lg:grid lg:grid-cols-3 lg:gap-3.5">
+                {freeAvailable && <FreeProfileChoice className="lg:col-span-3" selected={usingFree} onSelect={() => setFreeSelected(true)} disabled={busy} />}
                 {packages.map((item) => {
-                  const selected = item.id === selectedPackage?.id;
+                  const selected = !usingFree && item.id === selectedPackage?.id;
                   const radio = <span className={cn('grid h-5 w-5 shrink-0 place-items-center rounded-full border-[1.5px]', selected ? 'border-blue-600' : 'border-slate-300')}>{selected && <span className="h-2.5 w-2.5 rounded-full bg-blue-600" />}</span>;
                   return (
-                    <button key={item.id} type="button" role="radio" aria-checked={selected} onClick={() => setPackageId(item.id)}
+                    <button key={item.id} type="button" role="radio" aria-checked={selected} onClick={() => { setPackageId(item.id); setFreeSelected(false); }}
                       className={cn('flex items-center gap-3.5 rounded-2xl p-4 text-left lg:flex-col lg:items-stretch lg:gap-[18px] lg:p-5', selected ? 'border-[1.5px] border-blue-600 bg-blue-50' : 'border border-slate-200 bg-white hover:border-slate-300')}>
                       <span className="lg:hidden">{radio}</span>
                       <span className="flex flex-1 flex-col gap-0.5 lg:hidden"><span className="text-base font-semibold text-slate-950">{item.name}</span><span className="text-[13px] text-slate-500">{perProfile(item)}</span></span>
@@ -224,7 +234,7 @@ export function StartWizardPage() {
                 })}
               </div>
 
-              {topupAmount > 0 && (
+              {!usingFree && topupAmount > 0 && (
                 <button type="button" role="checkbox" aria-checked={includeTopup} onClick={() => setIncludeTopup((value) => !value)} className="flex items-start gap-3 rounded-2xl bg-slate-50 px-4 py-3.5 text-left lg:border lg:border-slate-200 lg:bg-white lg:px-[18px] lg:py-4">
                   <span className={cn('mt-px grid h-5 w-5 shrink-0 place-items-center rounded-md border-[1.5px] text-white', includeTopup ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-white')}>{includeTopup && <Check className="h-3.5 w-3.5" strokeWidth={3} />}</span>
                   <span className="flex flex-col gap-0.5">
@@ -235,8 +245,8 @@ export function StartWizardPage() {
               )}
 
               <div className="mt-auto flex flex-col gap-2.5 lg:mt-0 lg:flex-row-reverse lg:items-center lg:justify-between lg:pt-1">
-                <button type="button" disabled={busy || !selectedPackage} onClick={() => void pay()} className="flex h-12 items-center justify-center gap-2 rounded-[10px] bg-blue-600 px-6 text-[15px] font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
-                  <Lock className="h-4 w-4" />{busy ? 'Se deschide plata…' : `Plătește ${mdl(total)} MDL`}
+                <button type="button" disabled={busy || (!usingFree && !selectedPackage)} onClick={() => void pay()} className="flex h-12 items-center justify-center gap-2 rounded-[10px] bg-blue-600 px-6 text-[15px] font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
+                  {usingFree ? <Check className="h-4 w-4" /> : <Lock className="h-4 w-4" />}{usingFree ? 'Continuă cu profilul gratuit' : busy ? 'Se deschide plata…' : `Plătește ${mdl(total)} MDL`}
                 </button>
                 <span className="text-center text-xs text-slate-500 lg:text-sm">{payNote}</span>
               </div>
@@ -256,6 +266,8 @@ export function StartWizardPage() {
           /* 4a / 4b */
           <form onSubmit={savePatient} className="flex flex-col gap-[22px] lg:gap-6">
             <h1 className="text-2xl font-bold leading-[1.2] tracking-tight text-slate-950 lg:text-[30px]">Pentru cine e consultația?</h1>
+            {usingFree && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950"><p className="font-semibold">Profil gratuit · valabil un an</p><p className="mt-1 text-[13px] leading-5">Alege persoana pentru care folosești profilul gratuit. Consultațiile se achită separat.</p>{availableSlots > 0 ? <button type="button" onClick={() => setFreeSelected(false)} className="mt-2 text-[13px] font-semibold underline">Folosește în schimb un loc din pachet</button> : <button type="button" onClick={() => setFreeConfirmed(false)} className="mt-2 text-[13px] font-semibold underline">Schimbă opțiunea</button>}</div>}
+            {!usingFree && freeAvailable && packagesRequired && availableSlots > 0 && <button type="button" onClick={() => setFreeSelected(true)} className="self-start text-sm font-semibold text-blue-600 underline">Folosește profilul gratuit fără a consuma un loc din pachet</button>}
             <div className="flex flex-col gap-[22px] lg:gap-5 lg:rounded-2xl lg:border lg:border-slate-200 lg:bg-white lg:p-6">
               <div role="radiogroup" className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 lg:w-[360px]">
                 {[{ value: true, label: 'Pentru mine' }, { value: false, label: 'Pentru altcineva' }].map((option) => (
@@ -288,8 +300,8 @@ function Logo({ large = false }: { large?: boolean }) {
 }
 
 /** Pașii: Pachet → Pacient → Programare. Segmente de 4 px; făcut și curent albastru. */
-function Steps({ index }: { index: number }) {
-  const labels = ['Pachet', 'Pacient', 'Programare'];
+function Steps({ index, free = false }: { index: number; free?: boolean }) {
+  const labels = [free ? 'Profil gratuit' : 'Pachet', 'Pacient', 'Programare'];
   return (
     <ol className="grid grid-cols-3 gap-1.5 lg:flex lg:w-[420px] lg:gap-2.5" aria-label="Pașii de pornire">
       {labels.map((label, position) => {

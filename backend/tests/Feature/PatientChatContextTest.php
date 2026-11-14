@@ -68,6 +68,7 @@ class PatientChatContextTest extends TestCase
     public function test_pseudonymized_patient_hides_full_surname_and_identity_in_doctor_chat(): void
     {
         [$owner, $doctor, $conversation] = $this->scenario('Eva');
+        ConsultationRequest::create(['patient_id' => $owner->id, 'patient_profile_id' => $conversation->patient_profile_id, 'doctor_id' => $doctor->id, 'type' => 'video', 'status' => 'accepted']);
         $conversation->patientProfile->update(['pseudonymized' => true, 'identity_number' => '1234567890123']);
         Sanctum::actingAs($doctor);
         $this->getJson('/api/v1/conversations')->assertOk()->assertJsonPath('data.0.patient_profile.display_name', 'Eva P.')->assertJsonMissingPath('data.0.patient_profile.last_name')->assertJsonMissingPath('data.0.patient_profile.identity_number');

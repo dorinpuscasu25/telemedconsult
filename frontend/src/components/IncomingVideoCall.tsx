@@ -73,30 +73,29 @@ export function IncomingVideoCall() {
     finally { setBusy(false); }
   };
   if (role === 'patient') {
-    const name = visibleCall?.caller_name ?? '';
-    // V2: dialog centrat pe desktop, ecran întreg închis la culoare pe telefon.
-    return <Dialog open={!!visibleCall} onOpenChange={() => undefined}><DialogContent className="flex max-w-[340px] flex-col items-center gap-0 rounded-2xl p-5 text-center max-sm:h-dvh max-sm:max-h-dvh max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-0 max-sm:bg-slate-900 max-sm:px-6 max-sm:pb-12 max-sm:pt-24 [&>button:last-child]:hidden" onOpenAutoFocus={(event) => { event.preventDefault(); answerButton.current?.focus(); }} onEscapeKeyDown={(event) => event.preventDefault()} onPointerDownOutside={(event) => event.preventDefault()}>
-      <span className="grid place-items-center rounded-full bg-blue-50/70 p-2.5 max-sm:bg-blue-900/25 max-sm:p-4 motion-safe:animate-pulse">
-        <span className="grid place-items-center rounded-full bg-blue-50 p-2 max-sm:bg-blue-900/40 max-sm:p-3">
-          <span className="grid h-14 w-14 place-items-center rounded-full bg-slate-200 text-lg font-semibold text-slate-700 max-sm:h-24 max-sm:w-24 max-sm:bg-slate-700 max-sm:text-3xl max-sm:text-white">{initialsOf(name)}</span>
+    const rawName = visibleCall?.caller_name ?? '';
+    const name = /^dr\.?\s/i.test(rawName) ? rawName : `Dr. ${rawName}`;
+    return <Dialog open={!!visibleCall} onOpenChange={() => undefined}><DialogContent className="flex max-w-[400px] flex-col items-center gap-[18px] rounded-2xl px-6 pb-6 pt-7 text-center max-sm:h-dvh max-sm:max-h-dvh max-sm:w-full max-sm:max-w-none max-sm:gap-0 max-sm:rounded-none max-sm:border-0 max-sm:bg-slate-900 max-sm:p-0 [&>button:last-child]:hidden" onOpenAutoFocus={(event) => { event.preventDefault(); answerButton.current?.focus(); }} onEscapeKeyDown={(event) => event.preventDefault()} onPointerDownOutside={(event) => event.preventDefault()}>
+      <div className="flex w-full flex-col items-center gap-[18px] max-sm:min-h-0 max-sm:flex-1 max-sm:justify-center max-sm:gap-10 max-sm:px-6">
+        <span className="grid h-24 w-24 shrink-0 place-items-center rounded-full bg-blue-50 shadow-[0_0_0_10px_rgba(37,99,235,.08),0_0_0_22px_rgba(37,99,235,.05)] max-sm:h-[140px] max-sm:w-[140px] max-sm:bg-transparent max-sm:shadow-[0_0_0_16px_rgba(37,99,235,.14),0_0_0_36px_rgba(37,99,235,.07)] motion-safe:animate-pulse">
+          <span className="grid h-[72px] w-[72px] place-items-center overflow-hidden rounded-full bg-slate-200 text-[22px] font-semibold text-slate-700 max-sm:h-[120px] max-sm:w-[120px] max-sm:bg-slate-700 max-sm:text-4xl max-sm:text-white">{visibleCall?.caller_avatar ? <img src={visibleCall.caller_avatar} alt="" className="h-full w-full object-cover" /> : initialsOf(name)}</span>
         </span>
-      </span>
-      <DialogHeader className="mt-3 items-center gap-1 sm:text-center max-sm:mt-6">
-        <DialogTitle className="text-base font-bold text-slate-950 max-sm:text-[22px] max-sm:text-white">{name} te sună</DialogTitle>
-        <DialogDescription className="text-[13px] text-slate-500 max-sm:text-sm max-sm:text-slate-400">Consultație video{visibleCall?.patient_name ? ` pentru ${visibleCall.patient_name.split(' ')[0]}` : ''}</DialogDescription>
-      </DialogHeader>
-      {!enabled && <button type="button" onClick={() => void enable()} className="mt-3 flex items-center gap-1.5 text-xs font-medium text-blue-600 max-sm:text-blue-300"><Volume2 className="h-4 w-4" />Activează sunetul apelului</button>}
-      {error && <p role="alert" className="mt-3 text-sm text-red-600 max-sm:text-red-300">{error}</p>}
-      <div className="mt-4 flex w-full gap-2 max-sm:mt-auto max-sm:justify-between">
-        <button type="button" disabled={busy} onClick={() => void respond(false)} className="flex h-9 flex-1 items-center justify-center rounded-[10px] border border-slate-200 bg-white text-sm font-medium text-slate-900 hover:bg-slate-50 disabled:opacity-50 max-sm:h-auto max-sm:flex-none max-sm:flex-col max-sm:gap-2 max-sm:border-0 max-sm:bg-transparent max-sm:text-[13px] max-sm:text-slate-300 max-sm:hover:bg-transparent">
-          <span className="hidden h-16 w-16 place-items-center rounded-full bg-slate-700 text-white max-sm:grid"><X className="h-6 w-6" /></span>Respinge
+        <DialogHeader className="w-full items-center gap-1 pr-0 text-center">
+          <DialogTitle className="text-xl font-bold tracking-[-.01em] text-slate-950 max-sm:text-[26px] max-sm:text-white">{name} te sună</DialogTitle>
+          <DialogDescription className="text-sm text-slate-500 max-sm:text-[15px] max-sm:text-slate-400">Consultație video{visibleCall?.patient_name ? ` pentru ${visibleCall.patient_name.split(' ')[0]}` : ''}</DialogDescription>
+        </DialogHeader>
+        {!enabled && <button type="button" onClick={() => void enable()} className="flex items-center gap-1.5 text-xs font-medium text-blue-600 max-sm:text-blue-300"><Volume2 className="h-4 w-4" />Activează sunetul apelului</button>}
+        {error && <p role="alert" className="text-sm text-red-600 max-sm:text-red-300">{error}</p>}
+      </div>
+      <div className="grid w-full grid-cols-[1fr_1.4fr] gap-2.5 max-sm:flex max-sm:justify-between max-sm:px-8 max-sm:pb-[max(64px,env(safe-area-inset-bottom))]">
+        <button type="button" disabled={busy} onClick={() => void respond(false)} className="flex h-[46px] items-center justify-center rounded-[10px] border border-slate-200 bg-white text-[15px] font-medium text-slate-900 hover:bg-slate-50 disabled:opacity-50 max-sm:h-auto max-sm:flex-col max-sm:gap-2.5 max-sm:border-0 max-sm:bg-transparent max-sm:text-sm max-sm:text-slate-300 max-sm:hover:bg-transparent">
+          <span className="hidden h-[72px] w-[72px] place-items-center rounded-full bg-slate-700 text-white max-sm:grid"><X className="h-7 w-7" /></span>Respinge
         </button>
-        <button ref={answerButton} type="button" disabled={busy} onClick={() => void respond(true)} className="flex h-9 flex-[1.4] items-center justify-center gap-1.5 rounded-[10px] bg-green-600 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60 max-sm:h-auto max-sm:flex-none max-sm:flex-col max-sm:gap-2 max-sm:bg-transparent max-sm:text-[13px] max-sm:hover:bg-transparent">
-          <span className="hidden h-16 w-16 place-items-center rounded-full bg-green-600 max-sm:grid"><Video className="h-6 w-6" /></span>
-          <Video className="h-4 w-4 max-sm:hidden" />{busy ? 'Se preia…' : 'Răspunde'}
+        <button ref={answerButton} type="button" disabled={busy} onClick={() => void respond(true)} className="flex h-[46px] items-center justify-center gap-2 rounded-[10px] bg-green-600 text-[15px] font-semibold text-white hover:bg-green-700 disabled:opacity-60 max-sm:h-auto max-sm:flex-col max-sm:gap-2.5 max-sm:bg-transparent max-sm:text-sm max-sm:hover:bg-transparent">
+          <span className="hidden h-[72px] w-[72px] place-items-center rounded-full bg-green-600 max-sm:grid"><Video className="h-7 w-7" /></span><Video className="h-4 w-4 max-sm:hidden" />{busy ? 'Se preia…' : 'Răspunde'}
         </button>
       </div>
-      <p className="mt-3 text-[11px] leading-[1.4] text-slate-400 max-sm:hidden">Dacă respingi, medicul te poate suna din nou. Camera și microfonul pornesc oprite.</p>
+      <p className="text-xs leading-[1.4] text-slate-400 max-sm:hidden">Dacă respingi, medicul te poate suna din nou.</p>
     </DialogContent></Dialog>;
   }
 

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\InstitutionReportRequest;
+use App\Jobs\SyncHigoEntity;
 use App\Models\DoctorProfile;
 use App\Models\InstitutionEarning;
 use App\Models\MedicalInstitution;
@@ -13,7 +15,9 @@ use App\Notifications\AppEventNotification;
 use App\Rules\ValidPhoneNumber;
 use App\Services\InstitutionLedger;
 use App\Services\InstitutionMembership;
+use App\Services\InstitutionReports;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -58,6 +62,9 @@ class InstitutionController extends Controller
             'summary' => [
                 ...$this->ledger->summary($institution),
                 'doctors_count' => $institution->doctorProfiles()->count(),
+                'pending_registrations' => DoctorProfile::where('requested_institution_id', $institution->id)->whereHas('user', fn ($query) => $query->where('status', 'pending')->whereNotNull('email_verified_at'))->count(),
+                'appointments_total' => $this->appointmentsFor($institution)->count(),
+                'month_appointments' => $this->appointmentsFor($institution)->where('created_at', '>=', $monthStart)->count(),
                 'pending_invitations' => $institution->invitations()->where('status', 'pending')->where('expires_at', '>', now())->count(),
                 'month_consultations' => (clone $monthEarnings)->count(),
                 'month_gross' => (int) (clone $monthEarnings)->sum('gross_amount_minor') / 100,
@@ -90,10 +97,14 @@ class InstitutionController extends Controller
             ->groupBy('doctor_id')
             ->get()
             ->keyBy('doctor_id');
+        $appointments = $this->appointmentsFor($institution)->selectRaw('doctor_id, COUNT(*) as total')->groupBy('doctor_id')->pluck('total', 'doctor_id');
 
         return response()->json([
             'institution' => $this->serializeInstitution($institution),
-            'doctors' => $profiles->map(fn (DoctorProfile $profile) => $this->serializeDoctor($institution, $profile, $totals->get($profile->user_id)))->sortBy('name')->values(),
+            'doctors' => $profiles->map(fn (DoctorProfile $profile) => [...$this->serializeDoctor($institution, $profile, $totals->get($profile->user_id)), 'appointments' => (int) ($appointments[$profile->user_id] ?? 0)])->sortBy('name')->values(),
+            'pending_doctors' => DoctorProfile::with(['user', 'specialty'])->where('requested_institution_id', $institution->id)
+                ->whereHas('user', fn ($query) => $query->where('status', 'pending')->whereNotNull('email_verified_at')->whereHas('roles', fn ($roles) => $roles->where('name', 'doctor')))
+                ->get()->map(fn (DoctorProfile $profile) => ['id' => $profile->user_id, 'name' => $profile->user->name, 'email' => $profile->user->email, 'phone' => $profile->user->phone, 'specialty' => $profile->specialty?->name, 'license_number' => $profile->license_number, 'requested_at' => $profile->institution_chosen_at])->values(),
             'invitations' => $institution->invitations()
                 ->with('specialty')
                 ->whereIn('status', ['pending'])
@@ -119,7 +130,7 @@ class InstitutionController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
-            'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber],
+            'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber(unique: true)],
             'specialty_id' => ['required', Rule::exists('specialties', 'id')],
             'license_number' => ['nullable', 'string', 'max:255'],
             'doctor_share_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -138,6 +149,50 @@ class InstitutionController extends Controller
         ], 201);
     }
 
+    public function approveDoctor(Request $request, User $doctor): JsonResponse
+    {
+        $institution = $this->institutionFor($request);
+        $validated = $request->validate(['doctor_share_percent' => ['nullable', 'numeric', 'min:0', 'max:100']]);
+        DB::transaction(function () use ($doctor, $institution, $validated): void {
+            $user = User::with('roles')->lockForUpdate()->findOrFail($doctor->id);
+            $profile = $user->doctorProfile()->lockForUpdate()->first();
+            abort_unless($profile && (int) $profile->requested_institution_id === $institution->id && $user->hasRole('doctor'), 404);
+            abort_unless($user->status === 'pending' && $user->email_verified_at, 422, 'Medicul trebuie să confirme emailul și să fie în așteptare.');
+            $this->membership->attachDoctor($institution, $user, $validated);
+            $user->forceFill(['status' => 'active'])->save();
+        });
+        $doctor->notify(new AppEventNotification('Cont aprobat de instituție', $institution->name.' ți-a aprobat cererea. Poți oferi consultații.', '/doctor', 'success'));
+        dispatch(SyncHigoEntity::forUser($doctor->refresh()));
+
+        return response()->json(['message' => 'Medicul a fost aprobat.']);
+    }
+
+    public function rejectDoctor(Request $request, User $doctor): JsonResponse
+    {
+        $institution = $this->institutionFor($request);
+        DB::transaction(function () use ($doctor, $institution): void {
+            $user = User::with('roles')->lockForUpdate()->findOrFail($doctor->id);
+            $profile = $user->doctorProfile()->lockForUpdate()->first();
+            abort_unless($profile && (int) $profile->requested_institution_id === $institution->id && $user->hasRole('doctor'), 404);
+            abort_unless($user->status === 'pending', 422, 'Cererea nu mai este în așteptare.');
+            $profile->forceFill(['is_approved' => false])->save();
+            $user->forceFill(['status' => 'rejected'])->save();
+        });
+        $doctor->notify(new AppEventNotification('Cerere respinsă de instituție', $institution->name.' nu a aprobat cererea ta. Contactează instituția pentru detalii.', '/pending-approval', 'warning'));
+
+        return response()->json(['message' => 'Cererea medicului a fost respinsă.']);
+    }
+
+    public function reports(InstitutionReportRequest $request, InstitutionReports $reports): JsonResponse
+    {
+        return response()->json($reports->report($this->institutionFor($request), $request->validated()))->header('Cache-Control', 'no-store');
+    }
+
+    private function appointmentsFor(MedicalInstitution $institution): Builder
+    {
+        return app(InstitutionReports::class)->appointmentsFor($institution);
+    }
+
     public function updateDoctor(Request $request, User $doctor): JsonResponse
     {
         $institution = $this->institutionFor($request);
@@ -146,10 +201,16 @@ class InstitutionController extends Controller
             'doctor_share_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ]);
 
-        $profile->forceFill(['institution_share_percent' => $validated['doctor_share_percent'] ?? null])->save();
+        $profile = DB::transaction(function () use ($doctor, $institution, $validated): DoctorProfile {
+            User::whereKey($doctor->id)->lockForUpdate()->firstOrFail();
+            $profile = $this->ownedDoctorProfile($institution, $doctor);
+            $profile->forceFill(['institution_share_percent' => $validated['doctor_share_percent'] ?? null])->save();
+
+            return $profile;
+        }, attempts: 3);
 
         return response()->json([
-            'message' => 'Procentul medicului a fost actualizat. Se aplică consultațiilor finalizate de acum înainte.',
+            'message' => 'Procentul medicului a fost actualizat. Se aplică programărilor noi. Programările existente păstrează procentul inițial.',
             'doctor' => $this->serializeDoctor($institution, $profile->load(['user', 'specialty']), null),
         ]);
     }
@@ -249,6 +310,7 @@ class InstitutionController extends Controller
         ]);
 
         DB::transaction(function () use ($request, $institution, $withdrawalRequest, $validated) {
+            User::whereKey($withdrawalRequest->user_id)->lockForUpdate()->firstOrFail();
             $withdrawal = WithdrawalRequest::lockForUpdate()->findOrFail($withdrawalRequest->id);
             abort_unless($withdrawal->status === 'pending', 422, 'Cererea a fost deja procesată.');
             $approvedMinor = isset($validated['approved_amount'])

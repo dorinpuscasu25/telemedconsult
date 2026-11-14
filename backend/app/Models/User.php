@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\StoresDatesInAppTimezone;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Services\Higo\HigoResourceBuilder;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -20,6 +21,12 @@ use Laravel\Sanctum\HasApiTokens;
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable
 {
+    public function setPhoneAttribute(?string $phone): void
+    {
+        $this->attributes['phone'] = filled($phone) ? trim($phone) : null;
+        $this->attributes['normalized_phone'] = app(HigoResourceBuilder::class)->normalizePhone($phone);
+    }
+
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
 
@@ -125,6 +132,7 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
+            'free_patient_profile_claimed_at' => 'datetime',
             'password' => 'hashed',
             'two_factor_confirmed_at' => 'datetime',
             'last_seen_at' => 'datetime',

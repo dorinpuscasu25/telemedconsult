@@ -35,6 +35,7 @@ export function OperatorMorePage() {
 
         <Group>
           <Row to="/operator/referrals" title="Pacienți aduși" sub="Linkul tău și lista pacienților" />
+          <Row to="/operator/admin-messages" title="Mesaje administrator" sub="Corespondență administrativă" />
           <Row to="/operator/noutati" title="Noutăți" sub="Anunțuri de la platformă" />
           <Row to="/operator/telegram" title="Notificări Telegram" sub={telegramLinked ? 'Conectat' : 'Neconectat'} dot={telegramLinked === false} />
         </Group>

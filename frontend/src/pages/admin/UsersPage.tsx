@@ -470,7 +470,7 @@ export function UsersPage() {
                   return (
                   <TableRow key={adminUser.id}>
                     <TableCell>
-                      {adminUser.roles.includes('operator')
+                      {adminUser.roles.includes('doctor') ? <Link to={`/admin/doctors/${adminUser.id}/activity`} className="font-medium text-blue-700 hover:underline">{adminUser.name}</Link> : adminUser.roles.includes('operator')
                         ? <Link to={`/admin/operators/${adminUser.id}`} className="font-medium text-blue-700 hover:underline">{adminUser.name}</Link>
                         : <div className="font-medium text-slate-900">{adminUser.name}</div>}
                       <div className="text-sm text-slate-500">{adminUser.email}</div>
@@ -501,6 +501,7 @@ export function UsersPage() {
                             <Pencil className="h-4 w-4" />
                             Editează
                           </DropdownMenuItem>
+                          {adminUser.roles.some(role => ['doctor','operator','institution'].includes(role)) && <DropdownMenuItem className="cursor-pointer" onClick={() => navigate(`/admin/admin-messages?target=${adminUser.id}`)}>Trimite mesaj</DropdownMenuItem>}
                           <DropdownMenuItem className="cursor-pointer" onClick={() => setWalletUser(adminUser)}>
                             <Wallet className="h-4 w-4" />
                             Portofel
@@ -843,42 +844,47 @@ function WalletDialog({ user, onClose }: { user: AdminUser; onClose: () => void 
 
   useEffect(load, [user.id]);
 
-  const grantPromotion = async () => {
+  const [confirmation, setConfirmation] = useState<{ confirmation_id: string; operation: 'adjustment' | 'promotion'; amount: number; reason: string; expires_at: string } | null>(null);
+  const [code, setCode] = useState('');
+
+  const prepare = async (operation: 'adjustment' | 'promotion') => {
+    if (isSaving) return;
     setMessage('');
     setError('');
     setIsSaving(true);
     try {
-      const result = await apiRequest<{ message: string }>(`/admin/users/${user.id}/wallet/promotion`, { method: 'POST' });
-      setMessage(result.message);
-      load();
+      const result = await apiRequest<NonNullable<typeof confirmation>>(`/admin/users/${user.id}/wallet/confirmation`, {
+        method: 'POST', body: JSON.stringify(operation === 'promotion' ? { operation } : { operation, amount: Number(amount), direction, reason: reason.trim() })
+      });
+      setConfirmation(result);
+      setCode('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nu am putut acorda promoția.');
-    } finally {
-      setIsSaving(false);
-    }
+      setError(err instanceof Error ? err.message : 'Nu am putut trimite codul.');
+    } finally { setIsSaving(false); }
   };
 
-  const submit = async (event: React.FormEvent) => {
+  const confirm = async (event: React.FormEvent) => {
     event.preventDefault();
-    setMessage('');
+    if (!confirmation || isSaving) return;
     setError('');
     setIsSaving(true);
-
     try {
-      const result = await apiRequest<{ message: string }>(`/admin/users/${user.id}/wallet`, {
-        method: 'POST',
-        body: JSON.stringify({ amount: Number(amount), direction, reason })
+      const suffix = confirmation.operation === 'promotion' ? '/promotion' : '';
+      const result = await apiRequest<{ message: string }>(`/admin/users/${user.id}/wallet${suffix}`, {
+        method: 'POST', body: JSON.stringify({ confirmation_id: confirmation.confirmation_id, code })
       });
       setMessage(result.message);
+      setConfirmation(null);
+      setCode('');
       setAmount('');
       setReason('');
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Operația a eșuat.');
-    } finally {
-      setIsSaving(false);
-    }
+    } finally { setIsSaving(false); }
   };
+
+  const submit = (event: React.FormEvent) => { event.preventDefault(); void prepare('adjustment'); };
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -915,7 +921,7 @@ function WalletDialog({ user, onClose }: { user: AdminUser; onClose: () => void 
               </p>
             </div>
             {!wallet.promotion.granted && (
-              <Button type="button" size="sm" disabled={isSaving} onClick={() => void grantPromotion()}>
+              <Button type="button" size="sm" disabled={isSaving || Boolean(confirmation)} onClick={() => void prepare('promotion')}>
                 Acordă promoția
               </Button>
             )}
@@ -927,7 +933,21 @@ function WalletDialog({ user, onClose }: { user: AdminUser; onClose: () => void 
           <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</p>
         )}
 
-        <form onSubmit={submit} className="space-y-3">
+        {confirmation ? (
+          <form onSubmit={confirm} className="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <p className="font-medium text-slate-900">Confirmă operația prin email</p>
+            <p className="text-sm text-slate-700">{confirmation.operation === 'promotion' ? 'Promoție' : confirmation.amount > 0 ? 'Adaugă puncte bonus' : 'Scade puncte bonus'} · <strong>{money(Math.abs(confirmation.amount))} puncte</strong> pentru {user.name} ({user.email}).</p>
+            <p className="text-sm text-slate-600">Motiv: {confirmation.reason}</p>
+            <p className="text-xs text-slate-500">Codul a fost trimis pe emailul administratorului și expiră la {new Date(confirmation.expires_at).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })}. Soldul se modifică după confirmare.</p>
+            <Label htmlFor="wallet-confirmation-code">Cod din email</Label>
+            <Input id="wallet-confirmation-code" value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required disabled={isSaving} />
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" disabled={isSaving || code.length !== 6}>{isSaving ? 'Se confirmă…' : 'Confirmă operația'}</Button>
+              <Button type="button" variant="outline" disabled={isSaving} onClick={() => { setConfirmation(null); setCode(''); setError(''); }}>Modifică / anulează</Button>
+              <Button type="button" variant="ghost" disabled={isSaving} onClick={() => void prepare(confirmation.operation)}>Trimite un cod nou</Button>
+            </div>
+          </form>
+        ) : <form onSubmit={submit} className="space-y-3">
           <p className="text-sm font-medium text-slate-900">Ajustare puncte bonus</p>
           <div className="flex rounded-lg border border-slate-200 p-0.5">
             {(
@@ -979,10 +999,10 @@ function WalletDialog({ user, onClose }: { user: AdminUser; onClose: () => void 
               Închide
             </Button>
             <Button type="submit" disabled={isSaving || !amount || reason.trim().length < 3}>
-              {isSaving ? 'Se procesează…' : direction === 'credit' ? 'Adaugă puncte' : 'Scade puncte'}
+              {isSaving ? 'Se trimite codul…' : 'Trimite codul de confirmare'}
             </Button>
           </DialogFooter>
-        </form>
+        </form>}
 
         {wallet && wallet.transactions.length > 0 && (
           <div>

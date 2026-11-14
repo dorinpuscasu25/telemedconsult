@@ -3,10 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ConfirmAdminWalletRequest;
+use App\Http\Requests\IssueAdminWalletConfirmationRequest;
 use App\Models\Complaint;
 use App\Models\ConsultationRequest;
 use App\Models\ContractTemplate;
-use App\Models\DoctorProfile;
 use App\Models\DoctorProfileView;
 use App\Models\FirstTopupPromotionGrant;
 use App\Models\Payment;
@@ -16,6 +17,7 @@ use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Models\WithdrawalRequest;
 use App\Notifications\AppEventNotification;
+use App\Services\AdminWalletConfirmationService;
 use App\Services\DoctorPerformance;
 use App\Services\FirstTopupPromotion;
 use App\Services\InstitutionLedger;
@@ -211,31 +213,23 @@ class AdminOperationsController extends Controller
      * Adaugă (sau scade) manual PUNCTE BONUS. Soldul în lei nu se ajustează din
      * admin — compensațiile se fac numai în bonusuri.
      */
-    public function adjustUserWallet(Request $request, User $user): JsonResponse
+    public function issueWalletConfirmation(IssueAdminWalletConfirmationRequest $request, User $user, AdminWalletConfirmationService $confirmations): JsonResponse
     {
-        $this->authorizeAdmin($request);
+        $confirmation = $confirmations->issue($request->user(), $user, $request->validated());
 
-        $validated = $request->validate([
-            'amount' => ['required', 'numeric', 'min:0.01', 'max:1000000'],
-            'direction' => ['required', Rule::in(['credit', 'debit'])],
-            'reason' => ['required', 'string', 'min:3', 'max:255'],
-        ], [
-            'reason.required' => 'Scrie motivul ajustării — rămâne în istoricul tranzacției.',
-            'amount.min' => 'Suma trebuie să fie cel puțin 0,01 puncte.',
-        ]);
+        return response()->json([
+            'confirmation_id' => $confirmation->id, 'expires_at' => $confirmation->expires_at,
+            'operation' => $confirmation->operation, 'amount' => $confirmation->payload['amount_minor'] / 100,
+            'reason' => $confirmation->payload['reason'],
+            'message' => 'Codul a fost trimis pe emailul administratorului. Soldul nu a fost modificat.',
+        ], 201);
+    }
 
-        $amountMinor = (int) round(((float) $validated['amount']) * 100);
-
-        if ($validated['direction'] === 'debit') {
-            $amountMinor = -$amountMinor;
-        }
-
-        $transaction = app(WalletAdjustment::class)->apply(
-            $user,
-            $amountMinor,
-            trim($validated['reason']),
-            $request->user(),
-        );
+    public function adjustUserWallet(ConfirmAdminWalletRequest $request, User $user, AdminWalletConfirmationService $confirmations): JsonResponse
+    {
+        $validated = $request->validated();
+        $result = $confirmations->confirm($request->user(), $user, 'adjustment', $validated['confirmation_id'], $validated['code']);
+        $amountMinor = $result['amount_minor'];
 
         $balance = (int) Wallet::where('user_id', $user->id)->where('type', WalletLedger::POINTS)->value('balance_minor');
 
@@ -245,18 +239,19 @@ class AdminOperationsController extends Controller
                 .number_format($balance / 100, 2, ',', '.').' puncte.',
             'data' => [
                 'points_balance' => $balance / 100,
-                'transaction_id' => (string) $transaction->id,
+                'transaction_id' => $result['transaction_id'],
             ],
         ]);
     }
 
     /** Acordă manual promoția de 500 de puncte unui utilizator deja înregistrat. */
-    public function grantUserPromotion(Request $request, User $user): JsonResponse
+    public function grantUserPromotion(ConfirmAdminWalletRequest $request, User $user, AdminWalletConfirmationService $confirmations): JsonResponse
     {
         $this->authorizeAdmin($request);
         abort_unless($user->hasRole('patient'), 422, 'Promoția se acordă doar conturilor de pacient.');
 
-        app(FirstTopupPromotion::class)->grantManually($user, $request->user());
+        $validated = $request->validated();
+        $confirmations->confirm($request->user(), $user, 'promotion', $validated['confirmation_id'], $validated['code']);
 
         return response()->json([
             'message' => 'Am acordat '.(FirstTopupPromotion::AMOUNT_MINOR / 100).' puncte promoționale.',
@@ -488,8 +483,16 @@ class AdminOperationsController extends Controller
                 }
             }
 
-            if ($key === 'consultations.addendum_days' && (! is_numeric($value) || (int) $value != $value || $value != 14)) {
-                throw ValidationException::withMessages(['settings' => ['Fereastra completărilor trebuie să fie egală cu 14 zile.']]);
+            if (str_starts_with((string) $key, 'performance.') && (! array_key_exists(substr($key, 12), DoctorPerformance::DEFAULT_WEIGHTS) || ! is_numeric($value) || $value < 0 || $value > 1000)) {
+                throw ValidationException::withMessages(['settings' => ['Ponderea de performanță trebuie să fie între 0 și 1000.']]);
+            }
+
+            if ($key === 'consultations.addendum_days' && (! is_numeric($value) || (int) $value != $value || $value != 10)) {
+                throw ValidationException::withMessages(['settings' => ['Fereastra completărilor trebuie să fie egală cu 10 zile.']]);
+            }
+
+            if ($key === 'affiliate.patient_topup_first_only' && ! in_array($value, [true, 1, '1', 'true'], true)) {
+                throw ValidationException::withMessages(['settings' => ['Referalul se acordă numai la prima alimentare efectivă.']]);
             }
 
             if ($key === 'affiliate.patient_topup_min_amount') {
@@ -604,27 +607,8 @@ class AdminOperationsController extends Controller
     {
         $this->authorizeAdmin($request);
 
-        $data = DoctorProfile::with('user')
-            ->get()
-            ->map(function (DoctorProfile $profile) {
-                $doctorId = $profile->user_id;
-                $performance = app(DoctorPerformance::class)->forDoctor($profile);
-                $affiliatePatients = DoctorProfileView::where('doctor_id', $doctorId)->count();
-
-                return [
-                    'doctor_id' => (string) $doctorId,
-                    'doctor' => $profile->user?->name ?? 'Medic',
-                    'rating' => (float) $profile->rating,
-                    'reviews_count' => (int) $profile->reviews_count,
-                    'affiliate_patients' => $affiliatePatients,
-                    'current_month_consultations' => $performance['current_month_consultations'],
-                    'previous_total_consultations' => $performance['previous_total_consultations'],
-                    'average_response_minutes' => $performance['average_response_minutes'],
-                    'score' => $performance['score'],
-                ];
-            })
-            ->sortByDesc('score')
-            ->values();
+        $views = DoctorProfileView::selectRaw('doctor_id, COUNT(*) as total')->groupBy('doctor_id')->pluck('total', 'doctor_id');
+        $data = app(DoctorPerformance::class)->leaderboard()->map(fn ($row) => [...$row, 'affiliate_patients' => (int) $views->get($row['doctor_id'], 0)]);
 
         return response()->json(['data' => $data]);
     }
@@ -638,6 +622,9 @@ class AdminOperationsController extends Controller
 
     private function platformFeeFor(WalletTransaction $transaction): int
     {
+        if ($transaction->type === 'institution_consultation_income') {
+            return (int) ($transaction->metadata['platform_fee_minor'] ?? 0);
+        }
         if ($transaction->amount_minor <= 0) {
             return 0;
         }

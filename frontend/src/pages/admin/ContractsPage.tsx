@@ -32,6 +32,7 @@ export function ContractsPage() {
   const [editContent, setEditContent] = useState('');
   const [editTitle, setEditTitle] = useState('');
   const [editType, setEditType] = useState('general');
+  const [editStatus, setEditStatus] = useState('draft');
 
   const loadContracts = () => {
     apiRequest<{data: Contract[]}>('/admin/contracts')
@@ -48,6 +49,7 @@ export function ContractsPage() {
     setEditTitle(contract.title);
     setEditContent(contract.content);
     setEditType(contract.type);
+    setEditStatus(contract.status);
     setIsEditModalOpen(true);
   };
 
@@ -56,6 +58,7 @@ export function ContractsPage() {
     setEditTitle('');
     setEditContent('');
     setEditType('general');
+    setEditStatus('draft');
     setIsEditModalOpen(true);
   };
 
@@ -64,7 +67,7 @@ export function ContractsPage() {
       title: editTitle,
       type: editType || 'general',
       content: editContent,
-      status: 'active'
+      status: editStatus
     };
 
     if (selectedContract) {
@@ -165,10 +168,13 @@ export function ContractsPage() {
               </div>
               <div className="space-y-2">
                 <Label>Tip</Label>
-                <Input value={editType} onChange={(event) => setEditType(event.target.value)} placeholder="doctor/operator/patient" className="rounded-xl" />
+                <Input list="contract-types" value={editType} onChange={(event) => setEditType(event.target.value)} placeholder="doctor/operator/patient" className="rounded-xl" />
               </div>
             </div>
 
+            <datalist id="contract-types"><option value="medical_consultation_consent"/><option value="data_processing_consent"/><option value="general"/></datalist>
+            <label className="space-y-1 text-sm">Stare<select aria-label="Starea modelului" value={editStatus} onChange={e=>setEditStatus(e.target.value)} className="ml-3 rounded-lg border p-2"><option value="draft">Ciornă</option><option value="active">Activ</option><option value="archived">Arhivat</option></select></label>
+            <p className="text-xs text-slate-500">Consimțămintele folosesc tipurile medical_consultation_consent și data_processing_consent. Fluxul devine activ când ambele modele sunt active. Păstrează textele neaprobate în ciornă.</p>
             <div className="space-y-2 flex-1 flex flex-col min-h-[300px]">
               <Label>Conținut</Label>
               <div className="flex items-center gap-1 p-1 border border-b-0 border-slate-200 rounded-t-xl bg-slate-50">

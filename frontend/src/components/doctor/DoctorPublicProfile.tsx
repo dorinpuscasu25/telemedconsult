@@ -9,6 +9,7 @@ export interface PublicDoctor {
   experience_years?: number | null;
   rating?: number | string | null;
   reviews_count?: number | null;
+  consultations_count?: number;
   institution?: { name: string; address?: string | null } | null;
   bio?: string | null;
   avatar?: string | null;
@@ -25,14 +26,15 @@ export function PublicDoctorHeader({ doctor, compact = false }: { doctor: Public
     <div className={cn('flex flex-col rounded-2xl border border-slate-200 bg-white', compact ? 'gap-3.5 p-4' : 'gap-[18px] p-6')}>
       <div className={cn('flex items-center', compact ? 'gap-3.5' : 'gap-[18px]')}>
         {doctor.avatar
-          ? <img src={doctor.avatar} alt="" className={cn('shrink-0 rounded-full object-cover', compact ? 'h-[60px] w-[60px]' : 'h-[76px] w-[76px]')} />
-          : <span className={cn('grid shrink-0 place-items-center rounded-full bg-blue-100 font-semibold text-blue-700', compact ? 'h-[60px] w-[60px] text-[19px]' : 'h-[76px] w-[76px] text-2xl')}>{initialsOf(doctor.name)}</span>}
-        <div className={cn('flex flex-col', compact ? 'gap-[3px]' : 'gap-1.5')}>
+          ? <img src={doctor.avatar} alt="" className={cn('shrink-0 rounded-xl object-cover', compact ? 'h-[100px] w-[90px]' : 'h-[120px] w-[108px]')} />
+          : <span className={cn('grid shrink-0 place-items-center rounded-xl bg-blue-100 font-semibold text-blue-700', compact ? 'h-[100px] w-[90px] text-[19px]' : 'h-[120px] w-[108px] text-2xl')}>{initialsOf(doctor.name)}</span>}
+        <div className={cn('flex min-w-0 flex-1 flex-col break-words', compact ? 'gap-[3px]' : 'gap-1.5')}>
           <span className={cn('font-bold text-slate-950', compact ? 'text-[19px] tracking-[-.01em]' : 'text-2xl tracking-[-.02em]')}>{displayName(doctor.name)}</span>
           <span className={cn('text-slate-600', compact ? 'text-[13px]' : 'text-sm')}>{[doctor.specialty, doctor.experience_years ? `${doctor.experience_years} ani${compact ? '' : ' experiență'}` : null].filter(Boolean).join(' · ')}</span>
           {Number(doctor.reviews_count ?? 0) > 0
             ? <span className="flex items-center gap-1.5 text-[13px] text-slate-600"><Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" /><b className="text-slate-950">{rating(doctor.rating)}</b> · {doctor.reviews_count} {Number(doctor.reviews_count) === 1 ? 'recenzie' : 'recenzii'}</span>
             : <span className="text-[13px] text-slate-500">Fără recenzii încă</span>}
+          <span className="text-[13px] text-slate-500">{doctor.consultations_count ?? 0} {(doctor.consultations_count ?? 0) === 1 ? 'consultație efectuată' : 'consultații efectuate'}</span>
         </div>
       </div>
       {doctor.institution && (

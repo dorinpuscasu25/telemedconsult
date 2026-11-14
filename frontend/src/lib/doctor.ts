@@ -44,7 +44,7 @@ export interface Proposal {
   patient_note?: string | null;
 }
 
-export const SERVICE_TYPE_LABEL: Record<ServiceType, string> = { video: 'Video', chat: 'Chat', home: 'La domiciliu' };
+export const SERVICE_TYPE_LABEL: Record<ServiceType, string> = { video: 'Consultație video + chat', chat: 'Consultație în chat', home: 'La domiciliu' };
 
 /** „2 000 MDL” — separatorul de mii e un spațiu, ca în design. */
 export function mdl(value: unknown): string {
@@ -54,7 +54,7 @@ export function mdl(value: unknown): string {
 
 /** „Video · 30 min”, „Chat · răspuns în 24 h”, „La domiciliu · 60 min”. */
 export function serviceMeta(service: { type: ServiceType; duration?: number | null }): string {
-  if (service.type === 'chat') return service.duration ? `Chat · răspuns în ${service.duration} h` : 'Chat';
+  if (service.type === 'chat') return service.duration ? `${SERVICE_TYPE_LABEL.chat} · răspuns în ${service.duration} h` : SERVICE_TYPE_LABEL.chat;
   return service.duration ? `${SERVICE_TYPE_LABEL[service.type]} · ${service.duration} min` : SERVICE_TYPE_LABEL[service.type];
 }
 

@@ -33,6 +33,20 @@ class SiteContentTest extends TestCase
         $this->assertSame($defaults, $data);
         $this->assertSame('Întrebări frecvente', $data['home.faq.title']);
         $this->assertSame('Medici', $data['header.nav_doctors']);
+        $this->assertSame('Consultație video + chat', $data['home.services.video.title']);
+        $this->assertSame('Consultație în chat', $data['home.services.chat.title']);
+        $this->assertStringContainsString('recenzia', $data['home.steps.3.text']);
+        $this->assertCount(3, array_filter(array_keys($data), fn ($key) => preg_match('/^home\.steps\.\d\.title$/', $key)));
+    }
+
+    public function test_service_label_migration_updates_old_defaults_and_preserves_admin_text(): void
+    {
+        SiteContentModel::create(['key' => 'home.services.video.title', 'value' => 'Consultație video']);
+        SiteContentModel::create(['key' => 'home.services.chat.title', 'value' => 'Denumire personalizată de administrator']);
+        $migration = require database_path('migrations/2026_11_14_094804_update_default_consultation_service_labels.php');
+        $migration->up();
+        $this->assertSame('Consultație video + chat', SiteContentModel::where('key', 'home.services.video.title')->value('value'));
+        $this->assertSame('Denumire personalizată de administrator', SiteContentModel::where('key', 'home.services.chat.title')->value('value'));
     }
 
     public function test_admin_can_edit_a_text_and_it_becomes_public(): void

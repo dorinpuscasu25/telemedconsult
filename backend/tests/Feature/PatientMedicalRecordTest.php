@@ -24,6 +24,28 @@ class PatientMedicalRecordTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_legacy_document_can_be_classified_without_changing_file_title_or_date(): void
+    {
+        [$patient, $profile] = $this->patient();
+        Storage::fake('public');
+        Storage::disk('public')->put('legacy.pdf', 'legacy content');
+        $document = PatientInvestigation::create(['patient_profile_id' => $profile->id, 'type' => 'investigation', 'title' => 'ECG vechi', 'performed_at' => '2025-01-02', 'file_disk' => 'public', 'file_path' => 'legacy.pdf', 'mime_type' => 'application/pdf']);
+        Sanctum::actingAs($patient);
+        $url = "/api/v1/patient/profiles/{$profile->id}/investigations/{$document->id}/category";
+        $this->patchJson($url, ['type' => 'functional'])->assertOk()->assertJsonPath('document.type', 'functional')->assertJsonPath('document.title', 'ECG vechi')->assertJsonPath('document.performed_at', '2025-01-02');
+        $this->assertSame('legacy.pdf', $document->fresh()->file_path);
+        Storage::disk('public')->assertExists('legacy.pdf');
+        $this->patchJson($url, ['type' => 'investigation'])->assertUnprocessable();
+        [$other, $otherProfile] = $this->patient();
+        Sanctum::actingAs($other);
+        $this->patchJson($url, ['type' => 'analysis'])->assertForbidden();
+        $this->patchJson("/api/v1/patient/profiles/{$otherProfile->id}/investigations/{$document->id}/category", ['type' => 'analysis'])->assertNotFound();
+        Sanctum::actingAs($patient);
+        $document->update(['type' => 'nasal_left']);
+        $this->patchJson($url, ['type' => 'imaging'])->assertUnprocessable();
+        $this->assertSame('nasal_left', $document->fresh()->type);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

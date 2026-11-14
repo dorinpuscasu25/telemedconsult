@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ReclassifyPatientInvestigationRequest;
 use App\Http\Requests\UpdateMedicalRecordSectionRequest;
 use App\Models\Consultation;
 use App\Models\ConsultationRequest;
@@ -10,13 +11,14 @@ use App\Models\Conversation;
 use App\Models\MedicalDocument;
 use App\Models\PatientInvestigation;
 use App\Models\PatientProfile;
+use App\Services\ConsultationResultAccess;
 use App\Services\MedicalRecordSchema;
 use App\Services\ObjectiveDataSchema;
+use App\Services\PatientRecordAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\URL;
 use Symfony\Component\HttpFoundation\Response;
 
 class PatientMedicalRecordController extends Controller
@@ -34,27 +36,30 @@ class PatientMedicalRecordController extends Controller
             'patient_profile' => ['id' => (string) $patientProfile->id, 'name' => $patientProfile->display_name, 'patient_code' => $patientProfile->patient_code, 'birth_date' => $patientProfile->birth_date?->toDateString(), 'gender' => $patientProfile->gender, 'medical_record' => $patientProfile->medical_record ?? (object) []],
             'medical_record' => $patientProfile->medical_record ?? (object) [],
             'documents' => $patientProfile->investigations()->orderByDesc('performed_at')->latest()->get()->map(fn ($item) => self::document($item)),
-            'consultations' => $requests->map(function ($item) use ($conclusions, $chats, $documents) {
+            'consultations' => $requests->map(function ($item) use ($conclusions, $chats, $documents, $request) {
                 $conclusion = $conclusions->get($item->id);
+                $locked = $item->status === 'completed' && ! app(ConsultationResultAccess::class)->canRead($item, $request->user());
 
                 return [
                     'id' => $item->id, 'consultation_id' => $conclusion?->id, 'status' => $item->status,
+                    'result_locked' => $locked,
                     'date' => $item->completed_at ?? $item->scheduled_at ?? $item->created_at,
                     'doctor' => $item->doctor?->name, 'specialty' => $item->specialty?->name ?? $item->doctor?->doctorProfile?->specialty?->name,
-                    'current_illness_history' => $conclusion?->current_illness_history ?? $item->current_illness_history,
-                    'documents' => ($documents->get($item->id) ?? collect())->map(fn ($document) => ConsultationDocumentController::serialize($document))->values(), 'symptoms' => $conclusion?->patient_complaints ?? $item->symptoms,
-                    'objective_exam' => $conclusion?->objective_exam, 'higo_reviewed' => (bool) $conclusion?->higo_reviewed,
-                    'prescription_notes' => $conclusion?->prescription_notes,
-                    'investigation_recommendations' => $conclusion?->investigation_recommendations,
-                    'diagnosis' => $conclusion?->diagnosis, 'recommendations' => $conclusion?->recommendations,
-                    'treatment_plan' => $conclusion?->treatment_plan, 'conversation_id' => $chats->get($item->id)?->id,
+                    'current_illness_history' => $locked ? $item->current_illness_history : ($conclusion?->current_illness_history ?? $item->current_illness_history),
+                    'documents' => $locked ? [] : ($documents->get($item->id) ?? collect())->map(fn ($document) => ConsultationDocumentController::serialize($document))->values(), 'symptoms' => $locked ? $item->symptoms : ($conclusion?->patient_complaints ?? $item->symptoms),
+                    'doctor_history_notes' => $locked ? null : $conclusion?->doctor_history_notes,
+                    'objective_exam' => $locked ? null : $conclusion?->objective_exam, 'higo_reviewed' => ! $locked && (bool) $conclusion?->higo_reviewed,
+                    'prescription_notes' => $locked ? null : $conclusion?->prescription_notes,
+                    'investigation_recommendations' => $locked ? null : $conclusion?->investigation_recommendations,
+                    'diagnosis' => $locked ? null : $conclusion?->diagnosis, 'recommendations' => $locked ? null : $conclusion?->recommendations,
+                    'treatment_plan' => $locked ? null : $conclusion?->treatment_plan, 'conversation_id' => $chats->get($item->id)?->id,
                     'objective_data' => $item->objectiveData->map(fn ($entry) => [
                         'id' => $entry->id, 'source' => $entry->source, 'completed_at' => $entry->completed_at,
                         'values' => collect($entry->payload)->map(fn ($value, $key) => ['key' => $key, 'label' => ObjectiveDataSchema::label($key), 'unit' => ObjectiveDataSchema::unit($key), 'value' => $value])->values(),
                     ]),
                     'exam_media' => $item->examMedia->filter(fn ($media) => $media->isStored())->map(fn ($media) => [
                         'id' => $media->id, 'kind' => $media->kind, 'exam_type' => $media->exam_type,
-                        'url' => URL::temporarySignedRoute('exam-media.show', now()->addHour(), ['media' => $media->id]),
+                        'url' => app(PatientRecordAccess::class)->fileUrl('exam-media.show', ['media' => $media->id]),
                     ])->values(),
                 ];
             })->sortByDesc('date')->values(),
@@ -97,12 +102,13 @@ class PatientMedicalRecordController extends Controller
             'consultation_request_id' => $item->consultation_request_id,
             'performed_at' => $item->performed_at?->toDateString(), 'created_at' => $item->created_at,
             'mime_type' => $item->mime_type,
-            'url' => $item->file_path ? URL::temporarySignedRoute('patient-investigation.file', now()->addHour(), ['investigation' => $item->id]) : null,
+            'url' => $item->file_path ? app(PatientRecordAccess::class)->fileUrl('patient-investigation.file', ['investigation' => $item->id]) : null,
         ];
     }
 
     public function file(Request $request, PatientInvestigation $investigation): Response
     {
+        abort_unless(app(PatientRecordAccess::class)->canReadProfile(app(PatientRecordAccess::class)->signedViewer($request), $investigation->patientProfile), 403, 'Accesul la fișa pacientului a expirat.');
         abort_unless($investigation->file_path, 404);
         $disk = Storage::disk($investigation->file_disk ?: 'public');
         abort_unless($disk->exists($investigation->file_path), 404);
@@ -125,11 +131,17 @@ class PatientMedicalRecordController extends Controller
         return response()->json(['message' => 'Document șters.']);
     }
 
+    public function reclassifyDocument(ReclassifyPatientInvestigationRequest $request, PatientProfile $patientProfile, PatientInvestigation $investigation): JsonResponse
+    {
+        abort_unless((int) $investigation->patient_profile_id === (int) $patientProfile->id, 404);
+        abort_unless(in_array($investigation->type, ['investigation', 'analysis', 'functional', 'imaging'], true), 422, 'Fotografiile clinice se păstrează în secțiunea examinării.');
+        $investigation->update($request->validated());
+
+        return response()->json(['document' => self::document($investigation)]);
+    }
+
     private function authorizeRead(Request $request, PatientProfile $profile): void
     {
-        $user = $request->user();
-        $assigned = $profile->consultationRequests()->whereNotIn('status', ['rejected', 'cancelled', 'expired', 'no_operator_available'])
-            ->where(fn ($query) => $query->where('doctor_id', $user->id)->orWhere('operator_id', $user->id))->exists();
-        abort_unless((int) $profile->user_id === (int) $user->id || $user->hasRole('admin') || $assigned, 403);
+        abort_unless(app(PatientRecordAccess::class)->canReadProfile($request->user(), $profile), 403, 'Accesul la fișa pacientului a expirat.');
     }
 }

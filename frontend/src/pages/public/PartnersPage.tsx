@@ -80,10 +80,11 @@ export function PartnersPage() {
             const on = item.id === selected;
             return (
               <button key={item.id} type="button" onClick={() => { setSelected(item.id); setSheet(true); }} aria-pressed={on}
-                className={cn('flex h-[120px] flex-col items-center justify-center gap-2 rounded-[14px] bg-white px-2 md:h-[180px] md:gap-3.5 md:rounded-2xl',
+                className={cn('flex min-h-[170px] flex-col items-center justify-start gap-2 rounded-[14px] bg-white px-3 py-4 md:min-h-[220px] md:gap-3.5 md:rounded-2xl',
                   on ? 'border border-slate-200 md:border-[1.5px] md:border-blue-600 md:shadow-[0_0_0_3px_rgba(37,99,235,.12)]' : 'border border-slate-200 hover:border-slate-300')}>
                 <Logo partner={item} className="h-12 max-w-[85%] text-[17px] md:h-[72px] md:w-[200px] md:text-2xl" />
-                {item.category && <span className="text-[11px] font-medium text-slate-500 md:text-xs">{item.category}</span>}
+                {item.logo_url && <span className="text-sm font-semibold text-slate-900">{item.name}</span>}
+                {(item.description || item.category) && <span className="line-clamp-3 text-center text-xs leading-5 text-slate-500">{item.description || item.category}</span>}
               </button>
             );
           })}

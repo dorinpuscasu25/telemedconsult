@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\SetApiLocale;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -23,6 +24,14 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->render(function (UniqueConstraintViolationException $exception, Request $request) {
+            if ($request->is('api/*') && str_contains($exception->getMessage(), 'normalized_phone')) {
+                return response()->json([
+                    'message' => 'Există deja un cont cu acest număr de telefon.',
+                    'errors' => ['phone' => ['Există deja un cont cu acest număr de telefon.']],
+                ], 422);
+            }
+        });
         $exceptions->render(function (ValidationException $exception, Request $request) {
             if ($request->is('api/*')) {
                 return response()->json([

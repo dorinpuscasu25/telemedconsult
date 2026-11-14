@@ -11,7 +11,7 @@ import type { PatientProfileSummary } from '../PatientChart';
 
 export interface ConclusionRequest {
   id: string;
-  settlement?: { auto_close_days: number; no_show_refund_hours: number } | null;
+  settlement?: { auto_close_days: number | null; no_show_refund_hours: number } | null;
   consultation_kind?: string | null;
   symptoms?: string | null;
   current_illness_history?: string | null;
@@ -22,6 +22,7 @@ export interface ConclusionRequest {
 }
 
 interface ConclusionContext {
+  higo_exams?: Array<{ id: string; external_id: string; performed_at: string }>;
   weight: number | null;
   height: number | null;
   previous: Array<{ date: string | null; kind?: string | null; service?: string | null; diagnosis?: string | null }>;
@@ -37,16 +38,17 @@ interface Draft {
   rec: string;
   inv: string;
   meds: Array<{ n: string; d: string }>;
-  higo: boolean;
+  higoStatus: '' | 'not_performed' | 'reviewed';
+  higoExamId: string;
 }
 
 const STEPS = ['Anamneză', 'Examen obiectiv', 'Concluzie', 'Rețetă'] as const;
 const DAYS = ['duminică', 'luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă'];
 const MONTHS = ['ian', 'feb', 'mar', 'apr', 'mai', 'iun', 'iul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
-const blank = (request: ConclusionRequest): Draft => ({
-  anam: request.current_illness_history || request.symptoms || '',
-  exam: '', diag: '', plan: '', rec: '', inv: '', meds: [{ n: '', d: '' }], higo: false
+const blank = (): Draft => ({
+  anam: '',
+  exam: '', diag: '', plan: '', rec: '', inv: '', meds: [{ n: '', d: '' }], higoStatus: '', higoExamId: ''
 });
 
 /**
@@ -70,10 +72,10 @@ export function useConclusionDraft(request: ConclusionRequest | null, enabled: b
         if (cancelled) return;
         setContext(response.context ?? null);
         const saved = response.draft ?? {};
-        setDraft({ ...blank(request), ...saved, meds: Array.isArray(saved.meds) && saved.meds.length ? saved.meds : [{ n: '', d: '' }] });
+        setDraft({ ...blank(), ...saved, meds: Array.isArray(saved.meds) && saved.meds.length ? saved.meds : [{ n: '', d: '' }] });
         setSavedAt(response.saved_at);
       })
-      .catch(() => { if (!cancelled) setDraft(blank(request)); });
+      .catch(() => { if (!cancelled) setDraft(blank()); });
     return () => { cancelled = true; };
   }, [enabled, requestId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -112,14 +114,15 @@ const filledSteps = (draft: Draft | null, hasFile: boolean) => [
 function formData(draft: Draft, file: File | null) {
   const body = new FormData();
   const meds = draft.meds.filter((med) => med.n.trim()).map((med) => (med.d.trim() ? `${med.n.trim()} — ${med.d.trim()}` : med.n.trim())).join('\n');
-  body.append('current_illness_history', draft.anam);
+  body.append('doctor_history_notes', draft.anam);
   body.append('objective_exam', draft.exam);
   body.append('diagnosis', draft.diag);
   body.append('treatment_plan', draft.plan);
   body.append('recommendations', draft.rec);
   body.append('investigation_recommendations', draft.inv);
   body.append('prescription_notes', meds);
-  body.append('higo_reviewed', draft.higo ? '1' : '0');
+  body.append('higo_status', draft.higoStatus);
+  if (draft.higoStatus === 'reviewed') body.append('higo_exam_id', draft.higoExamId);
   if (file) body.append('prescription', file);
   return body;
 }
@@ -131,18 +134,18 @@ function freeChatUntil(days = 3) {
 
 const inputClass = 'w-full rounded-[10px] border border-slate-200 px-3 text-sm text-slate-950 outline-none focus:border-blue-600 focus:ring-[3px] focus:ring-blue-600/15';
 
-function StepFields({ step, draft, update, request, file, setFile }: {
+function StepFields({ step, draft, update, request, file, setFile, context }: {
+  context: ConclusionContext | null;
   step: number; draft: Draft; update: (patch: Partial<Draft>) => void; request: ConclusionRequest; file: File | null; setFile: (file: File | null) => void;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const allergies = request.patient_profile?.medical_record ? sectionState(request.patient_profile.medical_record as MedicalRecord, 'drug_allergies') === 'done' : false;
   if (step === 0) {
-    return (
-      <label className="flex flex-col gap-1.5">
-        <span className="flex items-center gap-2 text-[13px] font-medium text-slate-700">Istoricul bolii actuale<span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">din cerere</span></span>
-        <textarea rows={7} value={draft.anam} onChange={(event) => update({ anam: event.target.value })} className={cn(inputClass, 'resize-y py-3 leading-[1.55]')} />
-      </label>
-    );
+    const declaration = [request.current_illness_history ? `Istoricul declarat: ${request.current_illness_history}` : '', request.symptoms].filter(Boolean).join('\n\n');
+    return <>
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-[13px] font-semibold text-slate-700">Istoricul bolii și acuzele pacientului</p><p className="mt-2 whitespace-pre-wrap text-sm text-slate-800">{declaration || 'Declarație necompletată.'}</p></div>
+      <label className="flex flex-col gap-1.5"><span className="text-[13px] font-medium text-slate-700">Completările medicului la istoricul bolii</span><textarea rows={5} value={draft.anam} onChange={(event) => update({ anam: event.target.value })} placeholder="Precizările tale, separat de declarația pacientului…" className={cn(inputClass, 'resize-y py-3 leading-[1.55]')} /></label>
+    </>;
   }
   if (step === 1) {
     return (
@@ -151,12 +154,12 @@ function StepFields({ step, draft, update, request, file, setFile }: {
           <span className="text-[13px] font-medium text-slate-700">Observațiile tale</span>
           <textarea rows={7} value={draft.exam} onChange={(event) => update({ exam: event.target.value })} placeholder="Ex: Faringe hiperemiat, amigdale mărite fără depozite. Respirație liberă." className={cn(inputClass, 'resize-y py-3 leading-[1.55]')} />
         </label>
-        {request.consultation_kind === 'with_exam' && (
-          <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-3 text-sm text-slate-700">
-            <input type="checkbox" className="mt-0.5 h-4 w-4 accent-blue-600" checked={draft.higo} onChange={(event) => update({ higo: event.target.checked })} />
-            Confirm că am examinat datele din aparat și investigațiile din serviciu
-          </label>
-        )}
+        <fieldset className="space-y-3 rounded-xl border border-slate-200 p-3">
+          <legend className="px-1 text-sm font-semibold text-slate-700">Examinare HIGO · alegere obligatorie</legend>
+          <label className="flex items-start gap-2 text-sm"><input type="radio" name={`higo-${request.id}`} checked={draft.higoStatus === 'not_performed'} onChange={() => update({ higoStatus: 'not_performed', higoExamId: '' })} disabled={Boolean(context?.higo_exams?.length)} />Nu a fost efectuată</label>
+          <label className="flex items-start gap-2 text-sm"><input type="radio" name={`higo-${request.id}`} checked={draft.higoStatus === 'reviewed'} onChange={() => update({ higoStatus: 'reviewed' })} />A fost efectuată; am consultat datele</label>
+          {draft.higoStatus === 'reviewed' && <label className="flex flex-col gap-1.5 text-sm">Examinarea consultată<select value={draft.higoExamId} onChange={(event) => update({ higoExamId: event.target.value })} className={cn(inputClass, 'h-11')}><option value="">Selectează examinarea</option>{(context?.higo_exams ?? []).map((exam) => <option key={exam.id} value={exam.id}>{new Date(exam.performed_at).toLocaleString('ro-RO')} · {exam.external_id}</option>)}</select>{!context?.higo_exams?.length && <span className="text-xs text-amber-700">Nu există încă date HIGO asociate acestei consultații.</span>}</label>}
+        </fieldset>
       </>
     );
   }
@@ -164,11 +167,11 @@ function StepFields({ step, draft, update, request, file, setFile }: {
     return (
       <>
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-slate-700">Diagnostic <span className="text-red-600">*</span></span>
+          <span className="text-[13px] font-medium text-slate-700">Diagnostic clinic prezumtiv <span className="text-red-600">*</span></span>
           <input value={draft.diag} onChange={(event) => update({ diag: event.target.value })} placeholder="Ex: Faringită acută (J02.9)" className={cn(inputClass, 'h-11 text-[15px]', !draft.diag.trim() && 'border-amber-300')} />
         </label>
-        <label className="flex flex-col gap-1.5"><span className="text-[13px] font-medium text-slate-700">Planul de tratament</span><textarea rows={3} value={draft.plan} onChange={(event) => update({ plan: event.target.value })} className={cn(inputClass, 'resize-y py-3 leading-[1.55]')} /></label>
-        <label className="flex flex-col gap-1.5"><span className="text-[13px] font-medium text-slate-700">Recomandări</span><textarea rows={3} value={draft.rec} onChange={(event) => update({ rec: event.target.value })} placeholder="Lichide calde, odihnă…" className={cn(inputClass, 'resize-y py-3 leading-[1.55]')} /></label>
+        <label className="flex flex-col gap-1.5"><span className="text-[13px] font-medium text-slate-700">Tratament medicamentos</span><textarea rows={3} value={draft.plan} onChange={(event) => update({ plan: event.target.value })} className={cn(inputClass, 'resize-y py-3 leading-[1.55]')} /></label>
+        <label className="flex flex-col gap-1.5"><span className="text-[13px] font-medium text-slate-700">Recomandări de stil de viață, alimentație și hidratare</span><textarea rows={3} value={draft.rec} onChange={(event) => update({ rec: event.target.value })} placeholder="Lichide calde, odihnă…" className={cn(inputClass, 'resize-y py-3 leading-[1.55]')} /></label>
         <label className="flex flex-col gap-1.5"><span className="text-[13px] font-medium text-slate-700">Investigații recomandate</span><input value={draft.inv} onChange={(event) => update({ inv: event.target.value })} placeholder="Ex: Hemoleucogramă, exsudat faringian" className={cn(inputClass, 'h-10')} /></label>
       </>
     );
@@ -226,7 +229,7 @@ function PublishConfirm({ request, onBack, onPublish, busy, error }: { request: 
   const first = (request.patient_profile?.name || request.patient?.name || 'Pacientul').split(' ')[0];
   const effects = [
     `${first} primește PDF-ul și o cerere de evaluare.`,
-    `${mdl(request.service?.price ?? request.amount)} ajung în balanța ta când ${first} închide consultația cu o recenzie${request.settlement ? ` sau automat după ${request.settlement.auto_close_days} ${request.settlement.auto_close_days === 1 ? 'zi' : 'zile'}` : ''}.`,
+    `Plata se decontează când ${first} lasă recenzia și închide consultația. Atunci se deblochează și rezultatul.`,
     'Apelul video se închide, dacă e deschis.',
     `Chatul rămâne gratuit 3 zile, până ${freeChatUntil()}.`
   ];
@@ -283,7 +286,7 @@ export function ConclusionDialog({ request, open, onOpenChange, onPublished }: {
 
   if (!request) return null;
   const filled = filledSteps(draft, Boolean(file));
-  const canPublish = filled[2];
+  const canPublish = filled[2] && Boolean(draft?.higoStatus) && (draft?.higoStatus !== 'reviewed' || Boolean(draft?.higoExamId));
   const name = request.patient_profile?.name || request.patient?.name || 'Pacient';
   const profile = request.patient_profile;
   const record = (profile?.medical_record ?? {}) as MedicalRecord;
@@ -294,8 +297,8 @@ export function ConclusionDialog({ request, open, onOpenChange, onPublished }: {
     if (!draft) return;
     try {
       const blob = await apiBlob(`/requests/${request.id}/documents/preview`, { method: 'POST', body: JSON.stringify({
-        current_illness_history: draft.anam, objective_exam: draft.exam, diagnosis: draft.diag, treatment_plan: draft.plan, recommendations: draft.rec,
-        investigation_recommendations: draft.inv, prescription_notes: draft.meds.filter((med) => med.n.trim()).map((med) => `${med.n} — ${med.d}`).join('\n'), has_prescription: Boolean(file)
+        doctor_history_notes: draft.anam, objective_exam: draft.exam, diagnosis: draft.diag, treatment_plan: draft.plan, recommendations: draft.rec,
+        investigation_recommendations: draft.inv, prescription_notes: draft.meds.filter((med) => med.n.trim()).map((med) => `${med.n} — ${med.d}`).join('\n'), has_prescription: Boolean(file), higo_status: draft.higoStatus, ...(draft.higoStatus === 'reviewed' ? { higo_exam_id: Number(draft.higoExamId) } : {})
       }) });
       setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return URL.createObjectURL(blob); });
     } catch (err) {
@@ -344,14 +347,14 @@ export function ConclusionDialog({ request, open, onOpenChange, onPublished }: {
           <div className="flex min-h-0 flex-col">
             <StepTabs step={step} setStep={setStep} filled={filled} />
             <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-6">
-              {draft ? <StepFields step={step} draft={draft} update={update} request={request} file={file} setFile={setFile} /> : <p className="text-sm text-slate-500">Se încarcă ciorna…</p>}
+              {draft ? <StepFields context={context} step={step} draft={draft} update={update} request={request} file={file} setFile={setFile} /> : <p className="text-sm text-slate-500">Se încarcă ciorna…</p>}
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-2.5 border-t border-slate-200 px-6 py-3.5">
               <Link to={`/doctor/chat?request=${request.id}`} className="flex h-[42px] items-center gap-2 rounded-[10px] border border-slate-200 px-3.5 text-sm font-medium text-slate-950 hover:bg-slate-50"><MessageSquare className="h-4 w-4" />Întreabă pacientul</Link>
               <button type="button" onClick={() => setStep((step + 1) % 4)} className="h-[42px] rounded-[10px] border border-slate-200 bg-white px-3.5 text-sm font-medium hover:bg-slate-50">{step < 3 ? 'Pasul următor' : 'Înapoi la început'}</button>
-              <div className="flex-1 text-right text-[13px] text-amber-700">{canPublish ? '' : 'Completează diagnosticul ca să publici'}</div>
+              <div className="flex-1 text-right text-[13px] text-amber-700">{canPublish ? '' : !filled[2] ? 'Completează diagnosticul ca să publici' : 'Selectează starea examinării HIGO'}</div>
               <button type="button" onClick={() => void preview()} disabled={!canPublish} className="hidden h-[42px] rounded-[10px] border border-slate-200 bg-white px-3.5 text-sm font-medium hover:bg-slate-50 disabled:opacity-50 lg:block">Previzualizează PDF</button>
-              <button type="button" onClick={() => (canPublish ? setConfirming(true) : setStep(2))} className={cn('h-[42px] rounded-[10px] px-[18px] text-sm font-semibold text-white', canPublish ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-300')}>Publică concluzia</button>
+              <button type="button" onClick={() => (canPublish ? setConfirming(true) : setStep(filled[2] ? 1 : 2))} className={cn('h-[42px] rounded-[10px] px-[18px] text-sm font-semibold text-white', canPublish ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-300')}>Publică concluzia</button>
             </div>
           </div>
         </div>
@@ -363,13 +366,13 @@ export function ConclusionDialog({ request, open, onOpenChange, onPublished }: {
 
 /** P2a · concluzia în dreapta apelului video; aceeași ciornă ca în Consultații. */
 export function ConclusionPanel({ request, onPublished }: { request: ConclusionRequest; onPublished: () => void }) {
-  const { draft, update, savedAt, flush } = useConclusionDraft(request, true);
+  const { draft, update, savedAt, flush, context } = useConclusionDraft(request, true);
   const [step, setStep] = useState(2);
   const [file, setFile] = useState<File | null>(null);
   const [confirming, setConfirming] = useState(false);
   const { busy, error, publish } = usePublish(request, draft, file, flush, () => { setConfirming(false); onPublished(); });
   const filled = filledSteps(draft, Boolean(file));
-  const canPublish = filled[2];
+  const canPublish = filled[2] && Boolean(draft?.higoStatus) && (draft?.higoStatus !== 'reviewed' || Boolean(draft?.higoExamId));
 
   return (
     <div className="relative flex h-full w-full flex-col bg-white text-slate-950">
@@ -379,11 +382,11 @@ export function ConclusionPanel({ request, onPublished }: { request: ConclusionR
       </div>
       <StepTabs step={step} setStep={setStep} filled={filled} compact />
       <div className="flex flex-1 flex-col gap-3.5 overflow-y-auto p-5">
-        {draft ? <StepFields step={step} draft={draft} update={update} request={request} file={file} setFile={setFile} /> : <p className="text-sm text-slate-500">Se încarcă ciorna…</p>}
+        {draft ? <StepFields context={context} step={step} draft={draft} update={update} request={request} file={file} setFile={setFile} /> : <p className="text-sm text-slate-500">Se încarcă ciorna…</p>}
       </div>
       <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 px-5 py-3.5">
-        <button type="button" onClick={() => (canPublish ? setConfirming(true) : setStep(2))} className={cn('h-[46px] rounded-[10px] text-[15px] font-semibold text-white', canPublish ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-300')}>Publică și închide apelul</button>
-        <span className="text-center text-xs text-slate-500">{canPublish ? 'Sau închide apelul și termină concluzia din Consultații.' : 'Completează diagnosticul ca să publici.'}</span>
+        <button type="button" onClick={() => (canPublish ? setConfirming(true) : setStep(filled[2] ? 1 : 2))} className={cn('h-[46px] rounded-[10px] text-[15px] font-semibold text-white', canPublish ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-300')}>Publică și închide apelul</button>
+        <span className="text-center text-xs text-slate-500">{canPublish ? 'Sau închide apelul și termină concluzia din Consultații.' : !filled[2] ? 'Completează diagnosticul ca să publici.' : 'Selectează starea examinării HIGO.'}</span>
       </div>
       {confirming && <PublishConfirm request={request} busy={busy} error={error} onBack={() => setConfirming(false)} onPublish={() => void publish()} />}
     </div>

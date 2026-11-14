@@ -110,7 +110,8 @@ class PatientOnboardingCheckoutTest extends TestCase
 
         $this->postJson('/api/v1/payments/callback/maib', ['payId' => $payment->provider_payment_id, 'status' => 'OK'])->assertOk();
 
-        $this->assertSame(7400, Wallet::where('user_id', $payment->user_id)->where('type', 'points')->value('balance_minor'));
+        $this->assertSame(31400, Wallet::where('user_id', $payment->user_id)->where('type', 'points')->value('balance_minor'));
+        $this->assertSame(1, WalletTransaction::where('user_id', $payment->user_id)->where('type', 'patient_card_bonus')->count());
     }
 
     public function test_package_deactivated_before_confirmation_keeps_the_money_in_the_wallet(): void

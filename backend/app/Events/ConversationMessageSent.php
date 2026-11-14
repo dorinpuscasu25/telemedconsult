@@ -33,24 +33,7 @@ class ConversationMessageSent implements ShouldBroadcast
 
     public function broadcastWith(): array
     {
-        return [
-            'conversation_id' => $this->conversation->id,
-            'message' => [
-                'id' => $this->message->id,
-                'conversation_id' => $this->message->conversation_id,
-                'sender_id' => $this->message->sender_id,
-                'sender' => $this->message->sender ? [
-                    'id' => $this->message->sender->id,
-                    'name' => $this->message->sender->name,
-                    'email' => $this->message->sender->email,
-                ] : null,
-                'body' => $this->message->body,
-                'type' => $this->message->type ?? 'text',
-                'read_at' => $this->message->read_at,
-                'metadata' => $this->message->metadata,
-                'created_at' => $this->message->created_at,
-            ],
-        ];
+        return ['conversation_id' => $this->conversation->id, 'message_id' => $this->message->id];
     }
 
     private function participantChannels(): array

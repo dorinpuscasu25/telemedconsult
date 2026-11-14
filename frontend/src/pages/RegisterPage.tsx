@@ -297,13 +297,13 @@ export function RegisterPage({ audience = 'patient' }: { audience?: 'patient' | 
                       className="h-11 rounded-xl border-slate-200 bg-white" />
                   </Field>
 
-                  {!isPatientForm && <Field label="Telefon *" htmlFor="phone">
+                  <Field label="Telefon" htmlFor="phone">
                     <Input
                       id="phone"
                       type="tel"
                       autoComplete="tel"
                       placeholder="069 123 456"
-                      required={accountType !== 'patient'}
+                      required
                       value={phone}
                       onChange={(event) => setPhone(event.target.value)}
                       className="h-11 rounded-xl border-slate-200 bg-white" />
@@ -312,7 +312,7 @@ export function RegisterPage({ audience = 'patient' }: { audience?: 'patient' | 
                         Obligatoriu — pacienții te contactează la acest număr.
                       </p>
                     )}
-                  </Field>}
+                  </Field>
 
                   {accountType === 'doctor' && (
                     <>

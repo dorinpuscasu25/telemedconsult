@@ -35,6 +35,7 @@ export interface InstitutionDoctor {
   joined_at?: string | null;
   is_available: boolean;
   consultations: number;
+  appointments: number;
   doctor_total: number;
   institution_total: number;
   balance: number;
@@ -70,4 +71,19 @@ export interface InstitutionWithdrawal {
 export function splitExample(sharePercent: number, net = 100) {
   const doctor = Math.round(net * sharePercent) / 100;
   return { doctor, institution: Math.round((net - doctor) * 100) / 100 };
+}
+
+export interface InstitutionTransfer {
+  id: number;
+  doctor_id: number;
+  doctor_name: string;
+  from_institution: { id: number; name: string } | null;
+  to_institution: { id: number; name: string };
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  note?: string | null;
+  decision_note?: string | null;
+  doctor_share_percent?: number | null;
+  created_at: string;
+  decided_at?: string | null;
+  direction?: 'incoming' | 'outgoing';
 }

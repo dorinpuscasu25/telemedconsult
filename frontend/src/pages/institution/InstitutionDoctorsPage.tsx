@@ -14,6 +14,7 @@ import { EmptyState } from '../../components/app/EmptyState';
 import { ToneBadge } from '../../components/app/StatusBadge';
 import { MoreMenu } from '../../components/app/MoreMenu';
 import { useDialogs } from '../../components/app/DialogProvider';
+import { InstitutionTransfersPanel } from '../../components/InstitutionTransfersPanel';
 import { apiRequest } from '../../lib/api';
 import { dateOnly, money } from '../../lib/format';
 import { splitExample, type Institution, type InstitutionDoctor, type InstitutionInvitation } from '../../lib/institution';
@@ -22,6 +23,7 @@ interface DoctorsResponse {
   institution: Institution;
   doctors: InstitutionDoctor[];
   invitations: InstitutionInvitation[];
+  pending_doctors: Array<{ id: number; name: string; email: string; phone?: string; specialty?: string; license_number?: string }>;
 }
 
 type Specialty = { id: number; name: string };
@@ -59,6 +61,15 @@ export function InstitutionDoctorsPage() {
     const params = new URLSearchParams(searchParams);
     if (next) params.set('add', next); else params.delete('add');
     setSearchParams(params, { replace: true });
+  };
+
+  const decideApplication = async (doctor: DoctorsResponse['pending_doctors'][number], approve: boolean) => {
+    if (!(await dialogs.confirm({ title: `${approve ? 'Aprobi' : 'Respingi'} cererea lui ${doctor.name}?`, description: approve ? 'Medicul va putea presta servicii prin instituția ta.' : 'Medicul va fi anunțat că cererea nu a fost aprobată.', confirmLabel: approve ? 'Aprobă medicul' : 'Respinge', tone: approve ? undefined : 'danger' }))) return;
+    try {
+      const response = await apiRequest<{ message: string }>(`/institution/doctors/${doctor.id}/${approve ? 'approve' : 'reject'}`, { method: 'POST' });
+      toast.success(response.message);
+      load();
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Nu am putut procesa cererea.'); }
   };
 
   const defaultShare = data?.institution.doctor_share_percent ?? 70;
@@ -165,6 +176,20 @@ export function InstitutionDoctorsPage() {
         }
       />
 
+      {data && <InstitutionTransfersPanel defaultShare={defaultShare} onChanged={load} />}
+
+      {(data?.pending_doctors?.length ?? 0) > 0 && (
+        <section className="rounded-2xl border border-blue-200 bg-white p-5">
+          <SectionHeader title={`Cereri de înregistrare (${data?.pending_doctors.length})`} description="Medicii care au ales instituția ta și și-au confirmat emailul." />
+          <ul className="mt-4 divide-y divide-slate-100">
+            {data?.pending_doctors.map((doctor) => <li key={doctor.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center">
+              <div className="min-w-0 flex-1"><p className="font-semibold text-slate-950">{doctor.name}</p><p className="text-sm text-slate-500">{[doctor.specialty, doctor.email, doctor.phone].filter(Boolean).join(' · ')}</p>{doctor.license_number && <p className="text-xs text-slate-500">Licență: {doctor.license_number}</p>}</div>
+              <Button variant="outline" onClick={() => void decideApplication(doctor, false)}>Respinge</Button><Button onClick={() => void decideApplication(doctor, true)}><Check className="h-4 w-4" />Aprobă medicul</Button>
+            </li>)}
+          </ul>
+        </section>
+      )}
+
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-5">
           <SectionHeader title={`Medicii instituției${data ? ` (${data.doctors.length})` : ''}`} description={`Procent implicit pentru medici: ${defaultShare}% din suma rămasă după comisionul platformei.`} />
@@ -188,7 +213,7 @@ export function InstitutionDoctorsPage() {
                 <tr className="border-b border-slate-100 text-left text-xs font-medium text-slate-500">
                   <th className="px-5 py-3 font-medium">Medic</th>
                   <th className="px-3 py-3 font-medium">Procent</th>
-                  <th className="px-3 py-3 text-right font-medium">Consultații</th>
+                  <th className="px-3 py-3 text-right font-medium">Programări</th><th className="px-3 py-3 text-right font-medium">Finalizate</th>
                   <th className="px-3 py-3 text-right font-medium">Câștigat de medic</th>
                   <th className="px-3 py-3 text-right font-medium">De plătit</th>
                   <th className="px-3 py-3 text-right font-medium">Pentru instituție</th>
@@ -213,7 +238,7 @@ export function InstitutionDoctorsPage() {
                         {doctor.doctor_share_percent === null && <span className="text-xs font-normal text-slate-400">implicit</span>}
                       </button>
                     </td>
-                    <td className="tabular px-3 py-3.5 text-right text-slate-700">{doctor.consultations}</td>
+                    <td className="tabular px-3 py-3.5 text-right text-slate-700">{doctor.appointments}</td><td className="tabular px-3 py-3.5 text-right text-slate-700">{doctor.consultations}</td>
                     <td className="tabular px-3 py-3.5 text-right text-slate-700">{money(doctor.doctor_total)}</td>
                     <td className="tabular px-3 py-3.5 text-right">{doctor.balance > 0 ? <span className="font-semibold text-amber-700">{money(doctor.balance)}</span> : <span className="text-slate-400">0.00</span>}</td>
                     <td className="tabular px-3 py-3.5 text-right font-semibold text-slate-950">{money(doctor.institution_total)}</td>

@@ -71,7 +71,7 @@ class AdminPatientCardPackageController extends Controller
             'description' => $validated['description'] ?? null,
             'profile_slots' => $validated['profile_slots'],
             'price_minor' => (int) round(((float) $validated['price']) * 100),
-            'bonus_points_minor' => (int) round(((float) ($validated['bonus_points'] ?? 0)) * 100),
+            'bonus_points_minor' => (int) round(((float) $validated['price']) * 100),
             'validity_days' => $validated['validity_days'] ?? 365,
             'is_active' => $validated['is_active'] ?? true,
         ];
@@ -85,7 +85,7 @@ class AdminPatientCardPackageController extends Controller
             'description' => $package->description,
             'profile_slots' => $package->profile_slots,
             'price' => $package->price_minor / 100,
-            'bonus_points' => $package->bonus_points_minor / 100,
+            'bonus_points' => $package->price_minor / 100,
             'validity_days' => $package->validity_days,
             'is_active' => $package->is_active,
         ];

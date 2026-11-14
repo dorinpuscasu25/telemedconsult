@@ -51,3 +51,5 @@ Schedule::command('telegram:poll')
     ->everyFiveSeconds()
     ->withoutOverlapping()
     ->when(fn () => app(TelegramBot::class)->configured() && app(TelegramBot::class)->polling());
+
+Schedule::command('doctors:expire-promotions')->hourly()->withoutOverlapping();

@@ -15,6 +15,7 @@ export type ReferralResponse = {
   minimum_topup: number;
   /** true = comision doar la prima alimentare a invitatului. */
   first_deposit_only: boolean;
+  reward_wallet_type?: 'real' | 'points' | null;
   currency: string;
   rules: string | null;
   stats: {
@@ -48,6 +49,7 @@ export type ReferralResponse = {
  * comisioane. Folosit de pacienți și de operatori (același mecanism de 3%).
  */
 export function ReferralPanel({ data: referralData, audience = 'patient' }: { data: ReferralResponse; audience?: 'patient' | 'operator' }) {
+  const rewardLabel = referralData.reward_wallet_type === 'real' ? 'bani în soldul de remunerare' : 'puncte pentru servicii';
   const [copiedReferral, setCopiedReferral] = useState(false);
   const [copyError, setCopyError] = useState('');
   const copyReferralLink = async () => {
@@ -90,13 +92,13 @@ export function ReferralPanel({ data: referralData, audience = 'patient' }: { da
                     <ReferralStep
                       number="3"
                       title="Primești comisionul"
-                      text={`La fiecare suplinire de cont, ${referralData.commission_rate}% din sumă intră automat pe cartela ta de bonusuri.`}
+                      text={`La prima alimentare efectivă primești ${referralData.commission_rate}% ca ${rewardLabel}. Prețul pachetului este exclus.`}
                     />
                   </div>
 
                   <p className="mt-4 rounded-xl bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-900">
                     Primești <strong>{referralData.commission_rate}%</strong> din{' '}
-                    {referralData.first_deposit_only ? 'prima sumă alimentată' : 'fiecare sumă alimentată'} de persoana invitată, ca bonusuri pe cartela de bonusuri.
+                    prima alimentare efectivă a persoanei invitate, ca {rewardLabel}. Prețul pachetului este exclus.
                     {referralData.minimum_topup > 0 && ` Sunt eligibile alimentările de cel puțin ${money(referralData.minimum_topup)} ${referralData.currency}.`}
                     {' '}Comisionul se acordă doar pentru plăți confirmate, nu la simpla înregistrare.
                   </p>
@@ -172,7 +174,7 @@ export function ReferralPanel({ data: referralData, audience = 'patient' }: { da
               <Card className="border-slate-200/70 bg-white shadow-sm">
                 <CardHeader>
                   <CardTitle>Comisioane primite</CardTitle>
-                  <CardDescription>Fiecare alimentare a persoanelor invitate generează un comision separat.</CardDescription>
+                  <CardDescription>Prima alimentare efectivă a fiecărui invitat generează un singur comision.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {(referralData.latest_commissions ?? []).length === 0 && (

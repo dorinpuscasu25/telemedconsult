@@ -77,7 +77,7 @@ class WalletAdjustment
                 'reason' => $reason,
             ]);
 
-            $this->notify($user, $amountMinor, $reason);
+            DB::afterCommit(fn () => $this->notify($user, $amountMinor, $reason));
 
             return $transaction;
         });

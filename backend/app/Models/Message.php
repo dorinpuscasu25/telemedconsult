@@ -3,10 +3,10 @@
 namespace App\Models;
 
 use App\Models\Concerns\StoresDatesInAppTimezone;
+use App\Services\PatientRecordAccess;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\URL;
 
 #[Fillable(['conversation_id', 'sender_id', 'body', 'type', 'read_at', 'metadata'])]
 class Message extends Model
@@ -18,6 +18,11 @@ class Message extends Model
         return $this->belongsTo(User::class, 'sender_id');
     }
 
+    public function conversation(): BelongsTo
+    {
+        return $this->belongsTo(Conversation::class);
+    }
+
     public function getMetadataAttribute(mixed $value): ?array
     {
         if ($value === null) {
@@ -25,7 +30,7 @@ class Message extends Model
         }
         $data = is_array($value) ? $value : json_decode($value, true);
         if (($data['disk'] ?? null) === 'local') {
-            $data['url'] = URL::temporarySignedRoute('chat-attachment.file', now()->addMinutes(15), ['message' => $this->id]);
+            $data['url'] = app(PatientRecordAccess::class)->fileUrl('chat-attachment.file', ['message' => $this->id]);
             unset($data['path'], $data['disk']);
         }
 

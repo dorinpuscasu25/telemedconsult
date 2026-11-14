@@ -13,6 +13,7 @@ type PublicDoctor = {
   specialty_id?: number | null;
   rating: string | number;
   reviews_count: number;
+  consultations_count?: number;
   avatar?: string | null;
   institution?: { name: string } | null;
   services?: DoctorServiceItem[];
@@ -102,11 +103,12 @@ export function DoctorsPage() {
               <article key={doctor.id} className="flex min-w-0 flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:gap-3.5 md:p-5">
                 <div className="flex items-center gap-3 md:gap-3.5">
                   {doctor.avatar
-                    ? <img src={doctor.avatar} alt="" className="h-12 w-12 shrink-0 rounded-full object-cover md:h-[52px] md:w-[52px]" />
-                    : <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-blue-100 font-semibold text-blue-700 md:h-[52px] md:w-[52px] md:text-base">{initialsOf(doctor.name)}</span>}
+                    ? <img src={doctor.avatar} alt="" className="h-[88px] w-20 shrink-0 rounded-xl object-cover md:h-[106px] md:w-24" />
+                    : <span className="grid h-[88px] w-20 shrink-0 place-items-center rounded-xl bg-blue-100 text-2xl font-semibold text-blue-700 md:h-[106px] md:w-24">{initialsOf(doctor.name)}</span>}
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5 md:gap-[3px]">
                     <span className="truncate text-base font-semibold md:text-[17px]">{doctorName(doctor.name)}</span>
                     <span className="truncate text-xs text-slate-500 md:text-[13px] md:text-slate-600">{[doctor.specialty || 'Medic', doctor.institution?.name].filter(Boolean).join(' · ')}</span>
+                    <span className="text-xs text-slate-500">{doctor.consultations_count ?? 0} {(doctor.consultations_count ?? 0) === 1 ? 'consultație efectuată' : 'consultații efectuate'}</span>
                   </div>
                   {doctor.reviews_count > 0 && <span className="whitespace-nowrap text-[13px] text-slate-600">★ <b className="text-slate-950">{rating(doctor.rating)}</b><span className="hidden md:inline"> ({doctor.reviews_count})</span></span>}
                 </div>

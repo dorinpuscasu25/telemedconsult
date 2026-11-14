@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\CloseConsultationVideo;
 use App\Models\ConsultationRequest;
 use App\Models\DoctorInvestigationRequirement;
 use App\Models\DoctorProfile;
@@ -14,6 +15,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\ConsultationCostEstimator;
+use App\Services\LiveKitService;
 use App\Services\OperatorAssignmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -27,6 +29,7 @@ class HigoConsultationUpgradeTest extends TestCase
     public function test_doctor_proposes_and_only_owner_confirms_extra_cost_once(): void
     {
         [$request, $investigation, $operator] = $this->scenario();
+        $oldRoom = app(LiveKitService::class)->roomName($request);
         $this->mockServices($operator);
         Sanctum::actingAs($request->doctor);
         $this->postJson('/api/v1/requests/'.$request->id.'/higo-proposal', ['investigation_ids' => [$investigation->id], 'notes' => 'Examinare recomandată'])->assertOk();
@@ -39,6 +42,9 @@ class HigoConsultationUpgradeTest extends TestCase
         $this->postJson('/api/v1/requests/'.$request->id.'/higo-confirm', ['proposal_id' => $quote['proposal_id'], 'additional_minor' => 1])->assertUnprocessable();
         $this->postJson('/api/v1/requests/'.$request->id.'/higo-confirm', ['proposal_id' => $quote['proposal_id'], 'additional_minor' => $quote['additional_minor']])->assertOk();
         $this->assertSame('with_exam', $request->fresh()->consultation_kind);
+        $this->assertNotNull($request->fresh()->video_session_id);
+        $this->assertNotSame($oldRoom, app(LiveKitService::class)->roomName($request->fresh()));
+        Queue::assertPushed(CloseConsultationVideo::class, fn ($job) => $job->roomName === $oldRoom && $job->participantIds === [$request->patient_id, $request->doctor_id]);
         $this->assertSame($operator->id, $request->fresh()->operator_id);
         $this->assertSame(80000, $request->fresh()->amount_minor);
         $this->assertSame(10000, Wallet::where('user_id', $request->patient_id)->value('balance_minor'));

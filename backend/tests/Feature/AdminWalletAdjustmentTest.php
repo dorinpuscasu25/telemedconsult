@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\AdminWalletConfirmationMail;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\Wallet;
@@ -9,7 +10,9 @@ use App\Models\WalletTransaction;
 use App\Notifications\AppEventNotification;
 use App\Services\WalletAdjustment;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Testing\TestResponse;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -26,7 +29,7 @@ class AdminWalletAdjustmentTest extends TestCase
         $user = $this->userWithRole('patient');
         $this->actingAsAdmin();
 
-        $this->postJson("/api/v1/admin/users/{$user->id}/wallet", [
+        $this->adjust($user, [
             'amount' => 150.50,
             'direction' => 'credit',
             'reason' => 'compensare consultație anulată',
@@ -50,7 +53,7 @@ class AdminWalletAdjustmentTest extends TestCase
         $this->actingAsAdmin();
 
         foreach ([100, 50] as $amount) {
-            $this->postJson("/api/v1/admin/users/{$user->id}/wallet", [
+            $this->adjust($user, [
                 'amount' => $amount,
                 'direction' => 'credit',
                 'reason' => 'alimentare manuală',
@@ -67,13 +70,13 @@ class AdminWalletAdjustmentTest extends TestCase
         $user = $this->userWithRole('patient');
         $this->actingAsAdmin();
 
-        $this->postJson("/api/v1/admin/users/{$user->id}/wallet", [
+        $this->adjust($user, [
             'amount' => 100,
             'direction' => 'credit',
             'reason' => 'alimentare',
         ])->assertOk();
 
-        $this->postJson("/api/v1/admin/users/{$user->id}/wallet", [
+        $this->adjust($user, [
             'amount' => 250,
             'direction' => 'debit',
             'reason' => 'corecție',
@@ -90,11 +93,11 @@ class AdminWalletAdjustmentTest extends TestCase
         $user = $this->userWithRole('patient');
         $this->actingAsAdmin();
 
-        $this->postJson("/api/v1/admin/users/{$user->id}/wallet", [
+        $this->adjust($user, [
             'amount' => 100, 'direction' => 'credit', 'reason' => 'alimentare',
         ])->assertOk();
 
-        $this->postJson("/api/v1/admin/users/{$user->id}/wallet", [
+        $this->adjust($user, [
             'amount' => 40, 'direction' => 'debit', 'reason' => 'stornare parțială',
         ])->assertOk()->assertJsonPath('data.points_balance', 60);
 
@@ -109,7 +112,8 @@ class AdminWalletAdjustmentTest extends TestCase
         $user = $this->userWithRole('patient');
         $this->actingAsAdmin();
 
-        $this->postJson("/api/v1/admin/users/{$user->id}/wallet", [
+        $this->postJson("/api/v1/admin/users/{$user->id}/wallet/confirmation", [
+            'operation' => 'adjustment',
             'amount' => 10, 'direction' => 'credit', 'reason' => '',
         ])->assertStatus(422)->assertJsonValidationErrors('reason');
 
@@ -121,7 +125,8 @@ class AdminWalletAdjustmentTest extends TestCase
         $user = $this->userWithRole('patient');
         Sanctum::actingAs($this->userWithRole('doctor'));
 
-        $this->postJson("/api/v1/admin/users/{$user->id}/wallet", [
+        $this->postJson("/api/v1/admin/users/{$user->id}/wallet/confirmation", [
+            'operation' => 'adjustment',
             'amount' => 500, 'direction' => 'credit', 'reason' => 'îmi pun singur bani',
         ])->assertForbidden();
 
@@ -134,7 +139,7 @@ class AdminWalletAdjustmentTest extends TestCase
         $user = $this->userWithRole('patient');
         $this->actingAsAdmin();
 
-        $this->postJson("/api/v1/admin/users/{$user->id}/wallet", [
+        $this->adjust($user, [
             'amount' => 75, 'direction' => 'credit', 'reason' => 'bonus manual',
         ])->assertOk();
 
@@ -152,13 +157,23 @@ class AdminWalletAdjustmentTest extends TestCase
         Wallet::create(['user_id' => $user->id, 'type' => 'real', 'balance_minor' => 20000, 'currency' => 'MDL']);
         $this->actingAsAdmin();
 
-        $this->postJson("/api/v1/admin/users/{$user->id}/wallet", [
+        $this->adjust($user, [
             'amount' => 500, 'direction' => 'credit', 'reason' => 'compensare',
         ])->assertOk();
 
         $this->assertSame(20000, (int) Wallet::where('user_id', $user->id)->where('type', 'real')->value('balance_minor'));
         $this->assertSame(50000, (int) Wallet::where('user_id', $user->id)->where('type', 'points')->value('balance_minor'));
         $this->assertSame('points', WalletTransaction::where('user_id', $user->id)->value('wallet_type'));
+    }
+
+    private function adjust(User $user, array $payload): TestResponse
+    {
+        Mail::fake();
+        $this->travel(61)->seconds();
+        $id = $this->postJson("/api/v1/admin/users/{$user->id}/wallet/confirmation", ['operation' => 'adjustment', ...$payload])->assertCreated()->json('confirmation_id');
+        $mail = Mail::sent(AdminWalletConfirmationMail::class)->last();
+
+        return $this->postJson("/api/v1/admin/users/{$user->id}/wallet", ['confirmation_id' => $id, 'code' => $mail->code]);
     }
 
     private function actingAsAdmin(): User

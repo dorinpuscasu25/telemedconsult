@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['clinic_logo_path', 'clinic_logo_mime', 'signature_path', 'signature_mime', 'clinic_name', 'clinic_details', 'user_id', 'higo_doctor_id', 'specialty_id', 'license_number', 'bio', 'experience_years', 'consultation_price', 'video_price', 'video_duration_minutes', 'google_meet_account', 'platforms', 'service_catalog', 'required_investigations', 'affiliate_code', 'rating', 'reviews_count', 'is_available', 'is_approved', 'accepts_points', 'medical_institution_id', 'institution_share_percent', 'institution_joined_at', 'payout_bank', 'payout_iban', 'requested_institution_id', 'institution_chosen_at'])]
+#[Fillable(['clinic_logo_path', 'clinic_logo_mime', 'signature_path', 'signature_mime', 'clinic_name', 'clinic_details', 'user_id', 'higo_doctor_id', 'specialty_id', 'license_number', 'bio', 'experience_years', 'consultation_price', 'video_price', 'video_duration_minutes', 'google_meet_account', 'platforms', 'service_catalog', 'required_investigations', 'affiliate_code', 'rating', 'reviews_count', 'is_available', 'is_approved', 'accepts_points', 'points_payment_percent', 'medical_institution_id', 'institution_share_percent', 'institution_joined_at', 'payout_bank', 'payout_iban', 'requested_institution_id', 'institution_chosen_at'])]
 class DoctorProfile extends Model
 {
     use StoresDatesInAppTimezone;
@@ -68,6 +68,11 @@ class DoctorProfile extends Model
         return (float) ($this->institution_share_percent ?? $this->medicalInstitution?->doctor_share_percent ?? 0);
     }
 
+    public function effectivePointsPercent(): int
+    {
+        return $this->accepts_points ? min(50, max(0, $this->points_payment_percent ?? (int) app(PlatformConfig::class)->number('wallet.max_points_payment_percent', 40))) : 0;
+    }
+
     protected function casts(): array
     {
         return [
@@ -78,6 +83,7 @@ class DoctorProfile extends Model
             'is_available' => 'boolean',
             'is_approved' => 'boolean',
             'accepts_points' => 'boolean',
+            'points_payment_percent' => 'integer',
             'institution_share_percent' => 'float',
             'institution_joined_at' => 'datetime',
             'institution_chosen_at' => 'datetime',

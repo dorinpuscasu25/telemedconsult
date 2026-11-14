@@ -18,8 +18,7 @@ use Illuminate\Support\Facades\DB;
  *
  * - Concluzia medicului NU ia banii. Pacientul închide consultația lăsând
  *   recenzia și abia atunci plata ajunge la prestator (și la instituția lui).
- * - Dacă pacientul nu lasă recenzie, consultația se închide singură după
- *   `consultations.auto_close_days` zile de la concluzie și plata se face atunci.
+ * - Fără recenzie, rezultatul rămâne blocat și plata rămâne rezervată.
  * - Dacă la `consultations.no_show_refund_hours` ore după ora programată nu
  *   există concluzie, consultația nu a avut loc: banii revin pacientului.
  *   Excepție: examinarea la domiciliu deja făcută rămâne pentru decizia adminului.
@@ -42,14 +41,10 @@ class ConsultationSettlement
         return max(1, (int) $this->config->number(self::NO_SHOW_REFUND_HOURS, 24));
     }
 
-    /** Când se închide singură o consultație finalizată fără recenzie. */
+    /** Păstrează compatibilitatea răspunsurilor API; închiderea necesită recenzie. */
     public function autoCloseAt(ConsultationRequest $request): ?CarbonInterface
     {
-        if ($request->status !== 'completed' || $request->closed_at || ! $request->completed_at) {
-            return null;
-        }
-
-        return $request->completed_at->copy()->addDays($this->autoCloseDays());
+        return null;
     }
 
     /** Ora după care o consultație confirmată fără concluzie își returnează banii. */
@@ -68,7 +63,7 @@ class ConsultationSettlement
     {
         DB::transaction(function () use ($request) {
             $locked = ConsultationRequest::lockForUpdate()->findOrFail($request->id);
-            if ($locked->status !== 'completed') {
+            if ($locked->status !== 'completed' || ! app(ConsultationResultAccess::class)->reviewsComplete($locked)) {
                 return;
             }
             if (! $locked->closed_at) {
@@ -91,28 +86,37 @@ class ConsultationSettlement
             return;
         }
 
+        $earning = $provider->hasRole('doctor') ? app(InstitutionLedger::class)->recordEarning($request, $provider) : null;
+
         $consultationId = Consultation::where('consultation_request_id', $request->id)->value('id');
 
         $providerWallet = Wallet::where('user_id', $provider->id)->where('type', 'real')->lockForUpdate()->first()
             ?? Wallet::create(['user_id' => $provider->id, 'balance_minor' => 0, 'currency' => 'MDL']);
 
         if ($request->provider_amount_minor > 0) {
-            $providerWallet->increment('balance_minor', $request->provider_amount_minor);
+            if (! $earning) {
+                $providerWallet->increment('balance_minor', $request->provider_amount_minor);
+            }
 
             WalletTransaction::create([
                 'wallet_id' => $providerWallet->id,
                 'user_id' => $provider->id,
-                'amount_minor' => $request->provider_amount_minor,
+                'amount_minor' => $earning ? 0 : $request->provider_amount_minor,
                 'currency' => $providerWallet->currency,
-                'type' => $provider->hasRole('operator') ? 'operator_exam_income' : 'consultation_income',
+                'type' => $earning ? 'institution_consultation_income' : ($provider->hasRole('operator') ? 'operator_exam_income' : 'consultation_income'),
                 'status' => 'completed',
-                'description' => $provider->hasRole('operator') ? 'Venit examinare operator' : 'Venit consultație medic',
+                'description' => $earning ? 'Venit evidențiat la instituție' : ($provider->hasRole('operator') ? 'Venit examinare operator' : 'Venit consultație medic'),
                 'metadata' => [
                     'consultation_request_id' => $request->id,
                     'consultation_id' => $consultationId,
                     'gross_amount_minor' => $request->amount_minor,
+                    'institution_earning_id' => $earning?->id,
+                    'institution_provider_amount_minor' => $earning?->provider_amount_minor,
+                    'doctor_earned_minor' => $earning?->doctor_amount_minor,
                     'platform_fee_minor' => $request->platform_fee_minor,
-                    'promo_subsidy_minor' => (int) $request->promo_amount_minor,
+                    'promo_discount_minor' => (int) $request->promo_amount_minor,
+                    'points_discount_minor' => (int) $request->points_amount_minor,
+                    'cash_base_minor' => $request->pricing_snapshot['cash_base_minor'] ?? $request->real_amount_minor,
                 ],
                 'rate_snapshot' => $request->pricing_snapshot['rate_snapshot'] ?? [],
                 'consultation_request_id' => $request->id,
@@ -138,11 +142,12 @@ class ConsultationSettlement
             ]);
         }
 
-        $request->forceFill(['payment_status' => 'captured'])->save();
+        if ($provider->hasRole('doctor') && $request->points_amount_minor > 0) {
+            $ledger = app(WalletLedger::class);
+            $ledger->move($ledger->locked($provider->id, WalletLedger::POINTS), (int) $request->points_amount_minor, 'consultation_points_income', 'Puncte primite pentru promovare', ['settlement_rule' => $request->pricing_snapshot['settlement_rule'] ?? 'legacy', 'source' => 'patient_points'], $request->id);
+        }
 
-        $earning = $provider->hasRole('doctor')
-            ? app(InstitutionLedger::class)->recordEarning($request->refresh(), $provider)
-            : null;
+        $request->forceFill(['payment_status' => 'captured'])->save();
 
         $provider->notify(new AppEventNotification(
             'Plată primită',
@@ -191,8 +196,7 @@ class ConsultationSettlement
     }
 
     /**
-     * Rulează periodic (și la încărcarea listelor): închide consultațiile fără
-     * recenzie ajunse la termen și returnează banii celor care nu au avut loc.
+     * Returnează banii consultațiilor care nu au avut loc. Nu plătește fără recenzie.
      *
      * @return array{closed: int, refunded: int}
      */
@@ -200,23 +204,6 @@ class ConsultationSettlement
     {
         $closed = 0;
         $refunded = 0;
-
-        ConsultationRequest::where('status', 'completed')
-            ->whereNull('closed_at')
-            ->whereNotNull('completed_at')
-            ->where('completed_at', '<', now()->subDays($this->autoCloseDays()))
-            ->limit($limit)
-            ->get()
-            ->each(function (ConsultationRequest $item) use (&$closed) {
-                $this->close($item);
-                $item->refresh()->patient?->notify(new AppEventNotification(
-                    'Consultația s-a închis',
-                    'Consultația s-a închis automat și plata a ajuns la medic. Poți lăsa în continuare o recenzie.',
-                    '/patient/consultations?request='.$item->id,
-                    'info',
-                ));
-                $closed++;
-            });
 
         $hours = $this->noShowRefundHours();
         ConsultationRequest::where('status', 'accepted')

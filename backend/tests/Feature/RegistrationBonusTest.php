@@ -37,6 +37,7 @@ class RegistrationBonusTest extends TestCase
         $this->enableBonus(150);
 
         $this->postJson('/api/v1/auth/register', [
+            'phone' => fake()->unique()->numerify('069######'),
             'name' => 'Ion Popescu',
             'email' => 'ion@example.com',
             'password' => 'parola-buna-123',
@@ -145,6 +146,7 @@ class RegistrationBonusTest extends TestCase
     private function registeredPatient(string $email = 'pacient@example.com'): User
     {
         $this->postJson('/api/v1/auth/register', [
+            'phone' => fake()->unique()->numerify('069######'),
             'name' => 'Utilizator Test',
             'email' => $email,
             'password' => 'parola-buna-123',

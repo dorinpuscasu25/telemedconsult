@@ -39,10 +39,10 @@ export const SITE_CONTENT_DEFAULTS = {
   'home.services.title_online': 'Două feluri de a ajunge la medic',
   'home.services.subtitle': 'Fiecare medic își alege serviciile și prețurile. Vezi totul înainte să programezi.',
   'home.services.link': 'Vezi medicii',
-  'home.services.video.title': 'Consultație video',
+  'home.services.video.title': 'Consultație video + chat',
   'home.services.video.text': 'Vorbești cu medicul față în față, de pe telefon sau calculator.',
   'home.services.video.meta': '15–30 min',
-  'home.services.chat.title': 'Întrebare în chat',
+  'home.services.chat.title': 'Consultație în chat',
   'home.services.chat.text': 'Scrii întrebarea și atașezi analize sau poze. Medicul răspunde în scris.',
   'home.services.chat.meta': 'răspuns în 24 h',
   'home.services.home.title': 'Vizită la domiciliu',
@@ -57,7 +57,7 @@ export const SITE_CONTENT_DEFAULTS = {
   'home.steps.2.title': 'Alege serviciul și ora',
   'home.steps.2.text': 'Suma se rezervă din portofel. Dacă medicul nu confirmă, revine integral.',
   'home.steps.3.title': 'Primești concluzia',
-  'home.steps.3.text': 'Diagnosticul, recomandările și PDF-ul rămân în fișa medicală.',
+  'home.steps.3.text': 'Lasă recenzia pentru a debloca diagnosticul, recomandările și documentul PDF. Monitorizarea continuă în chat.',
 
   // Acasă · Parteneri și noutăți
   'home.partners.title': 'Parteneri',

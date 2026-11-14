@@ -1,3 +1,4 @@
+import { ConsultationDocuments } from '../../components/ConsultationDocuments';
 import { ProposalResponse } from '../../components/patient/ProposalResponse';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -414,8 +415,15 @@ function episodeState(request?: PatientConsultation) {
 
 function Timeline({ episodes, requests, currentUserId, newFrom, onChanged }: { episodes: Conversation[]; requests: Record<string, PatientConsultation>; currentUserId: number | null; newFrom?: number; onChanged: () => void }) {
   const end = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  const pinned = useRef(true);
   const total = episodes.reduce((sum, item) => sum + item.messages.length, 0);
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [total, episodes.length]);
+  useEffect(() => {
+    const observer = new ResizeObserver(() => { if (pinned.current) end.current?.scrollIntoView({ block: 'end' }); });
+    if (content.current) observer.observe(content.current);
+    return () => observer.disconnect();
+  }, []);
   let lastDay = '';
   const dayPill = (value: string, key: string) => {
     const day = new Date(value).toLocaleDateString('en-CA', { timeZone: TZ });
@@ -426,7 +434,8 @@ function Timeline({ episodes, requests, currentUserId, newFrom, onChanged }: { e
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto px-4 py-3.5 lg:gap-3 lg:px-6 lg:py-4">
+    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3.5 lg:px-6 lg:py-4" onScroll={(event) => { const element = event.currentTarget; pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight < 48; }}>
+      <div ref={content} className="flex flex-col gap-2.5 lg:gap-3">
       <div className="flex-1" />
       {episodes.length === 0 && <p className="py-10 text-center text-sm text-slate-500">Niciun mesaj încă.</p>}
       {episodes.map((episode, index) => {
@@ -470,12 +479,13 @@ function Timeline({ episodes, requests, currentUserId, newFrom, onChanged }: { e
                 </Fragment>
               );
             })}
-            {request?.status === 'completed' && <ConclusionCard requestId={request.id} />}
+            {request?.status === 'completed' && <ConsultationDocuments requestId={request.id} compact onUnlocked={onChanged} />}
             {isCurrent && request?.status === 'rescheduled' && <ProposalResponse request={request} onChanged={onChanged} className="my-3 w-full max-w-md" />}
           </Fragment>
         );
       })}
       <div ref={end} />
+      </div>
     </div>
   );
 }
@@ -499,27 +509,15 @@ function useDocuments(requestId: string): ConsultationDoc[] {
   const [docs, setDocs] = useState<ConsultationDoc[]>([]);
   useEffect(() => {
     let alive = true;
-    if (!documentCache.has(requestId)) documentCache.set(requestId, apiRequest<{ documents: ConsultationDoc[] }>(`/requests/${requestId}/documents`).then((response) => response.documents ?? []).catch(() => []));
-    void documentCache.get(requestId)!.then((list) => { if (alive) setDocs(list); });
-    return () => { alive = false; };
+    const load = () => {
+      documentCache.delete(requestId);
+      void apiRequest<{ documents: ConsultationDoc[] }>(`/requests/${requestId}/documents`).then((response) => { if (alive) setDocs(response.documents ?? []); }).catch(() => { if (alive) setDocs([]); });
+    };
+    load();
+    window.addEventListener('consultation-result-unlocked', load);
+    return () => { alive = false; window.removeEventListener('consultation-result-unlocked', load); };
   }, [requestId]);
   return docs;
-}
-
-/** Concluzia publicată, ca un card în cronologie. */
-function ConclusionCard({ requestId }: { requestId: string }) {
-  const docs = useDocuments(requestId);
-  return (
-    <>
-      {docs.filter((doc) => doc.url).map((doc) => (
-        <div key={doc.id} className="flex max-w-[78%] shrink-0 items-center gap-2.5 rounded-xl border border-slate-200 bg-white p-3">
-          <span className="grid h-11 w-9 shrink-0 place-items-center rounded-md bg-red-50 text-[10px] font-bold text-red-700">PDF</span>
-          <span className="flex min-w-0 flex-1 flex-col gap-0.5"><span className="text-[13px] font-semibold text-slate-950">Concluzia a fost publicată</span><span className="truncate text-xs text-slate-500">{doc.title}{doc.prescription_url ? ' · rețetă inclusă' : ''}</span></span>
-          <a href={doc.url!} target="_blank" rel="noreferrer" className="shrink-0 text-[13px] font-medium text-blue-600 hover:underline">Deschide</a>
-        </div>
-      ))}
-    </>
-  );
 }
 
 /**

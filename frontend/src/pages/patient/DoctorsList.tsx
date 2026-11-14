@@ -1,3 +1,5 @@
+import { ConsultationConsentFields, type ConsentPayload } from '../../components/patient/ConsultationConsentFields';
+import { PromotionImpression } from '../../components/patient/PromotionImpression';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Check, ChevronDown, ChevronLeft, CreditCard, Home, Info, Lock, MapPin, Send, Star, Stethoscope, Video, X } from 'lucide-react';
@@ -37,8 +39,10 @@ interface Doctor {
   investigation_requirements?: { required: InvestigationLine[]; optional: InvestigationLine[] } | null;
   rating: string | number;
   reviews_count: number;
+  consultations_count?: number;
   is_available: boolean;
   accepts_points?: boolean;
+  promoted?: boolean; promotion_token?: string;
   services?: DoctorServiceItem[];
   institution?: { name: string; address?: string | null } | null;
   bio?: string | null;
@@ -102,6 +106,7 @@ interface PatientProfile {
   has_complete_address?: boolean;
   status?: string | null;
   active_until?: string | null;
+  is_free?: boolean;
   can_request_consultation?: boolean;
   request_unavailable_reason?: string | null;
 }
@@ -128,6 +133,7 @@ interface DoctorReview {
 
 export function DoctorsList() {
   const navigate = useNavigate();
+  const [consent, setConsent] = useState<ConsentPayload>({ valid: false, data: {} });
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedProfileId = searchParams.get('patient_profile');
   const { isEnabled, isLoading: featuresLoading } = useFeatureFlags();
@@ -170,7 +176,7 @@ export function DoctorsList() {
   const resumeHandled = useRef(false);
 
   useEffect(() => {
-    apiRequest<{data: Doctor[]}>('/catalog/doctors', { auth: false })
+    apiRequest<{data: Doctor[]}>('/patient/doctor-catalog')
       .then((response) => setDoctors(response.data ?? []))
       .catch(() => setDoctors([]))
       .finally(() => setIsLoading(false));
@@ -294,6 +300,7 @@ export function DoctorsList() {
       const response = await apiRequest<{conversation?: { id: number }}>('/requests', {
         method: 'POST',
         body: JSON.stringify({
+          ...consent.data,
           type: effectiveKind === 'video' ? 'video' : 'doctor',
           consultation_kind: effectiveKind,
           patient_profile_id: patientProfileId ? Number(patientProfileId) : null,
@@ -474,7 +481,7 @@ export function DoctorsList() {
       {fromWizard && (
         <div className="-mx-4 -mt-5 border-b border-slate-200 bg-white px-5 pb-0 pt-[calc(16px+env(safe-area-inset-top))] lg:-mx-8 lg:-mt-7 lg:flex lg:h-[68px] lg:items-center lg:px-8 lg:pt-0">
           <ol className="grid grid-cols-3 gap-1.5 lg:flex lg:w-[420px] lg:gap-2.5" aria-label="Pașii de pornire">
-            {['Pachet', 'Pacient', 'Programare'].map((label, index) => (
+            {[selectedProfile?.is_free ? 'Profil gratuit' : 'Pachet', 'Pacient', 'Programare'].map((label, index) => (
               <li key={label} className="flex flex-col gap-1.5 lg:flex-1" aria-current={index === 2 ? 'step' : undefined}>
                 <span className="h-1 rounded-sm bg-blue-600" />
                 <span className="text-xs font-semibold text-blue-600">{index < 2 ? `✓ ${label}` : <><span className="lg:hidden">{label}</span><span className="hidden lg:inline">3 · {label}</span></>}</span>
@@ -510,15 +517,17 @@ export function DoctorsList() {
             const book = () => openRequestDialog(doctor, videoEnabled ? 'video' : 'with_exam');
             return (
               <article key={doctor.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 lg:gap-3.5 lg:p-5">
+                {doctor.promoted && doctor.promotion_token && <PromotionImpression token={doctor.promotion_token}/>}
                 <button type="button" className="flex items-center gap-3 text-left lg:gap-3.5" onClick={openProfile}>
                   {doctor.avatar
-                    ? <img src={doctor.avatar} alt="" className="h-12 w-12 shrink-0 rounded-full object-cover lg:h-[52px] lg:w-[52px]" />
-                    : <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-blue-100 font-semibold text-blue-700 lg:h-[52px] lg:w-[52px] lg:text-base">{initialsOf(doctor.name)}</span>}
+                    ? <img src={doctor.avatar} alt="" className="h-[88px] w-20 shrink-0 rounded-xl object-cover lg:h-[106px] lg:w-24" />
+                    : <span className="grid h-[88px] w-20 shrink-0 place-items-center rounded-xl bg-blue-100 text-2xl font-semibold text-blue-700 lg:h-[106px] lg:w-24">{initialsOf(doctor.name)}</span>}
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="truncate text-base font-semibold text-slate-950">{doctor.name}</span>
                     {doctor.institution
                       ? <span className="flex items-center gap-[5px] truncate text-xs text-slate-500"><Building2 className="h-3.5 w-3.5 shrink-0" />{doctor.institution.name}</span>
                       : <span className="truncate text-[13px] text-slate-500">{doctor.specialty || 'Medic'}{doctor.experience_years > 0 ? ` · ${doctor.experience_years} ani` : ''}</span>}
+                    <span className="text-xs text-slate-500">{doctor.consultations_count ?? 0} {(doctor.consultations_count ?? 0) === 1 ? 'consultație efectuată' : 'consultații efectuate'}</span>
                   </span>
                   {doctor.reviews_count > 0
                     ? <span className="shrink-0 whitespace-nowrap text-[13px] text-slate-600">★ {Number(doctor.rating || 0).toLocaleString('ro-RO', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
@@ -527,7 +536,7 @@ export function DoctorsList() {
                 {legacy ? (
                   <>
                     <div className="grid grid-cols-2 gap-2 lg:flex lg:items-stretch lg:gap-2.5">
-                      {video && <PriceTile label="Video" value={video} />}
+                      {video && <PriceTile label="Consultație video + chat" value={video} />}
                       {exam && <PriceTile label="Cu examinare acasă" value={exam} />}
                     </div>
                     {(video || exam) ? <button type="button" onClick={book} className="h-11 rounded-[10px] bg-blue-600 text-sm font-semibold text-white hover:bg-blue-700">Programează</button> : <p className="text-sm text-slate-500">Consultațiile sunt momentan dezactivate.</p>}
@@ -574,7 +583,7 @@ export function DoctorsList() {
                     {legacy ? (
                       <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-4 text-sm">
                         {withExamEnabled && <PriceRow icon={Home} label="Consultație cu examinare la domiciliu" value={`${detailDoctor.consultation_price} MDL`} />}
-                        {videoEnabled && <PriceRow icon={Video} label={`Consultație video · ${detailDoctor.video_duration_minutes ?? 10} min`} value={`${detailDoctor.video_price ?? 500} MDL`} />}
+                        {videoEnabled && <PriceRow icon={Video} label={`Consultație video + chat · ${detailDoctor.video_duration_minutes ?? 10} min`} value={`${detailDoctor.video_price ?? 500} MDL`} />}
                       </div>
                     ) : (
                       <>
@@ -734,7 +743,7 @@ export function DoctorsList() {
                               <CostLine label="Deplasarea operatorului" value={preview.cost.travel_fee} />
                             </>
                           ) : (
-                            <CostLine label={`Consultație video${selectedDoctor.video_duration_minutes ? ` · ${selectedDoctor.video_duration_minutes} min` : ''}`} value={preview.payment.total} first />
+                            <CostLine label={`Consultație video + chat${selectedDoctor.video_duration_minutes ? ` · ${selectedDoctor.video_duration_minutes} min` : ''}`} value={preview.payment.total} first />
                           )}
                           {preview.payment.promo_amount > 0 && <CostLine label="Bonus promoțional (automat)" value={-preview.payment.promo_amount} accent />}
                           <div className="flex justify-between border-t border-slate-200 px-4 py-3.5 text-base font-semibold text-slate-950"><span>Total</span><span className="tabular-nums">{mdl(preview.payment.total)} MDL</span></div>
@@ -750,13 +759,14 @@ export function DoctorsList() {
                         ) : (
                           <div className="flex gap-2.5 rounded-xl bg-blue-50 px-3.5 py-3 text-[13px] leading-[1.45] text-blue-950">
                             <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
-                            <span>Rezervăm {mdl(preview.payment.real_amount)} MDL din Bani{preview.payment.points_amount > 0 ? ` și ${mdl(preview.payment.points_amount)} bonusuri` : ''}{preview.wallet ? ` (rămân ${mdl(Math.max(0, preview.wallet.balance - preview.payment.real_amount))} MDL)` : ''}. Medicul primește banii abia după ce închizi consultația lăsând o recenzie{preview.settlement ? ` (sau automat după ${preview.settlement.auto_close_days} ${preview.settlement.auto_close_days === 1 ? 'zi' : 'zile'})` : ''}. Dacă medicul refuză, se anulează sau consultația nu are loc{preview.settlement ? ` în ${preview.settlement.no_show_refund_hours} h de la ora stabilită` : ''}, banii revin în portofel.</span>
+                            <span>Rezervăm {mdl(preview.payment.real_amount)} MDL din Bani{preview.payment.points_amount > 0 ? ` și ${mdl(preview.payment.points_amount)} bonusuri` : ''}{preview.wallet ? ` (rămân ${mdl(Math.max(0, preview.wallet.balance - preview.payment.real_amount))} MDL)` : ''}. Medicul primește banii abia după ce închizi consultația lăsând o recenzie. Dacă medicul refuză, se anulează sau consultația nu are loc{preview.settlement ? ` în ${preview.settlement.no_show_refund_hours} h de la ora stabilită` : ''}, banii revin în portofel.</span>
                           </div>
                         )}
                       </>
                     )}
                   </>
                 )}
+                {step === 3 && <ConsultationConsentFields key={patientProfileId} onChange={setConsent}/>}
               </div>
 
               <div className="flex shrink-0 gap-2 border-t border-slate-100 px-5 py-4">
@@ -764,7 +774,7 @@ export function DoctorsList() {
                 {step < 3 ? (
                   <Button type="submit" className="h-12 flex-1 text-[15px] font-semibold sm:ml-auto sm:flex-none sm:px-8" disabled={step === 1 ? !canContinueStep1 || savingAddress || missingRegion : !canContinueStep2}>{savingAddress ? 'Se salvează…' : 'Continuă'}</Button>
                 ) : (
-                  <Button type="submit" className="h-12 flex-1 text-[15px] font-semibold sm:ml-auto sm:flex-none sm:px-6" disabled={isSubmitting || isToppingUp || autoSubmit || !effectiveKind || !patientProfileId || previewLoading || !preview?.eligible}>
+                  <Button type="submit" className="h-12 flex-1 text-[15px] font-semibold sm:ml-auto sm:flex-none sm:px-6" disabled={!consent.valid || isSubmitting || isToppingUp || autoSubmit || !effectiveKind || !patientProfileId || previewLoading || !preview?.eligible}>
                     {shortfall > 0 && !isSubmitting && !isToppingUp && !autoSubmit && <CreditCard className="h-4 w-4" />}
                     {isSubmitting || autoSubmit ? 'Se trimite…' : isToppingUp ? 'Se deschide plata…' : shortfall > 0 ? `Alimentează ${mdl(Math.ceil(shortfall))} MDL și trimite cererea` : 'Trimite cererea'}
                   </Button>

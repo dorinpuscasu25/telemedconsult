@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Building2, Check, ChevronRight, Eye, GripVertical, Lock, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Building2, ChevronRight, Eye, GripVertical, Lock, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../components/ui/dropdown-menu';
 import { cn } from '../../components/ui/utils';
@@ -14,6 +14,7 @@ import { PublicDoctorHeader, ServiceChoices } from '../../components/doctor/Doct
 import { useAuth } from '../../contexts/AuthContext';
 import { apiRequest } from '../../lib/api';
 import { investigationsText, mdl, serviceMeta, type DoctorServiceItem } from '../../lib/doctor';
+import { DoctorInstitutionTransfers } from '../../components/doctor/DoctorInstitutionTransfers';
 import { usePageTitle } from '../../lib/use-page-title';
 
 interface Specialty { id: number; name: string }
@@ -23,7 +24,7 @@ interface Slot { id?: number; weekday: number; starts_at: string; ends_at: strin
 interface ProfileResponse {
   user: { name: string; email: string; phone?: string | null };
   profile?: {
-    clinic_name?: string | null; clinic_details?: string | null; accepts_points?: boolean; specialty_id?: number | null; license_number?: string | null;
+    clinic_name?: string | null; clinic_details?: string | null; accepts_points?: boolean; points_payment_percent?: number | null; specialty_id?: number | null; license_number?: string | null;
     bio?: string | null; experience_years?: number | null; is_available?: boolean; rating?: string | number | null; reviews_count?: number | null;
     payout_bank?: string | null; payout_iban?: string | null;
   } | null;
@@ -31,7 +32,7 @@ interface ProfileResponse {
   availability: Slot[];
   specialties: Specialty[];
   services?: DoctorServiceItem[];
-  institution?: { name: string; address?: string | null } | null;
+  institution?: { id: number; name: string; address?: string | null } | null;
   has_signature?: boolean;
   has_clinic_logo?: boolean;
   avatar?: string | null;
@@ -57,8 +58,7 @@ export function DoctorProfilePage() {
   // Fără vizite la domiciliu, serviciile „la domiciliu” nu se mai arată.
   const homeVisits = useFeatureFlags().isEnabled('with_exam_consultations');
   const [data, setData] = useState<ProfileResponse | null>(null);
-  const [form, setForm] = useState({ name: '', phone: '', specialty_id: '', license_number: '', experience_years: '0', bio: '', clinic_name: '', clinic_details: '', accepts_points: false, is_available: true, payout_bank: '', payout_iban: '' });
-  const [adminOpen, setAdminOpen] = useState(false);
+  const [form, setForm] = useState({ name: '', phone: '', specialty_id: '', license_number: '', experience_years: '0', bio: '', clinic_name: '', clinic_details: '', accepts_points: false, points_payment_percent: 0, is_available: true, payout_bank: '', payout_iban: '' });
   const avatarInput = useRef<HTMLInputElement | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -81,7 +81,7 @@ export function DoctorProfilePage() {
     setForm({
       name: response.user.name ?? '', phone: response.user.phone ?? '', specialty_id: response.profile?.specialty_id ? String(response.profile.specialty_id) : '',
       license_number: response.profile?.license_number ?? '', experience_years: String(response.profile?.experience_years ?? 0), bio: response.profile?.bio ?? '',
-      clinic_name: response.profile?.clinic_name ?? '', clinic_details: response.profile?.clinic_details ?? '', accepts_points: Boolean(response.profile?.accepts_points), is_available: response.profile?.is_available ?? true,
+      clinic_name: response.profile?.clinic_name ?? '', clinic_details: response.profile?.clinic_details ?? '', accepts_points: Boolean(response.profile?.accepts_points), points_payment_percent: response.profile?.accepts_points ? response.profile?.points_payment_percent ?? 40 : 0, is_available: response.profile?.is_available ?? true,
       payout_bank: response.profile?.payout_bank ?? '', payout_iban: response.profile?.payout_iban ?? ''
     });
     setDirty(false);
@@ -108,7 +108,7 @@ export function DoctorProfilePage() {
       await apiRequest('/doctor/profile', { method: 'PUT', body: JSON.stringify({
         name: next.name, phone: next.phone || null, specialty_id: next.specialty_id ? Number(next.specialty_id) : null, license_number: next.license_number || null,
         experience_years: Number(next.experience_years) || 0, bio: next.bio || null, clinic_name: next.clinic_name || null, clinic_details: next.clinic_details || null,
-        accepts_points: next.accepts_points, is_available: next.is_available, payout_bank: next.payout_bank || null, payout_iban: next.payout_iban || null
+        accepts_points: next.accepts_points, points_payment_percent: next.points_payment_percent, is_available: next.is_available, payout_bank: next.payout_bank || null, payout_iban: next.payout_iban || null
       }) });
       setForm(next);
       setDirty(false);
@@ -250,16 +250,16 @@ export function DoctorProfilePage() {
       title: 'Instituția medicală',
       description: 'Apare în profilul tău public, sub nume.',
       lock: true,
-      action: <span className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600"><Lock className="h-3 w-3" />Atribuită de administrator</span>,
+      action: <span className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600"><Lock className="h-3 w-3" />Aprobată de instituție</span>,
       body: data.institution ? (
         <>
           <div className="flex items-center gap-3.5 rounded-xl border border-slate-100 bg-slate-50 p-4">
             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] border border-slate-200 bg-white text-slate-600"><Building2 className="h-5 w-5" /></span>
             <div className="flex flex-col gap-[3px]"><span className="text-[15px] font-semibold text-slate-950">{data.institution.name}</span>{data.institution.address && <span className="text-[13px] text-slate-500">{data.institution.address}</span>}</div>
           </div>
-          <span className="text-[13px] text-slate-500">Lucrezi în altă instituție? <button type="button" onClick={() => setAdminOpen(true)} className="font-medium text-blue-600 hover:underline">Scrie administratorului</button> și o schimbă el.</span>
+          <DoctorInstitutionTransfers currentId={data.institution.id} onAffiliationChanged={() => { void apiRequest<ProfileResponse>('/doctor/profile').then((response) => setData((current) => current ? { ...current, institution: response.institution } : current)); }} />
         </>
-      ) : <span className="text-sm text-slate-500">Nu ești atribuit unei instituții. Lucrezi printr-una? <button type="button" onClick={() => setAdminOpen(true)} className="font-medium text-blue-600 hover:underline">Scrie administratorului</button>.</span>
+      ) : <DoctorInstitutionTransfers onAffiliationChanged={() => { void apiRequest<ProfileResponse>('/doctor/profile').then((response) => setData((current) => current ? { ...current, institution: response.institution } : current)); }} />
     },
     serv: {
       title: 'Servicii și prețuri',
@@ -304,7 +304,7 @@ export function DoctorProfilePage() {
       description: 'Se pun automat pe concluziile publicate. Sunt ale tale, nu ale instituției.',
       body: (
         <div className="grid gap-4 sm:grid-cols-2">
-          <UploadCard title="Parafă și semnătură" missing={!data.has_signature} status={data.has_signature ? 'Încărcată' : 'Lipsește'} text={data.has_signature ? 'Apare pe fiecare concluzie. Poți încărca alta oricând.' : 'Fără parafă nu poți publica concluzii. JPG sau PNG, maximum 2 MB.'} button={data.has_signature ? 'Înlocuiește imaginea' : 'Încarcă imaginea'} onFile={(file) => void upload('signature', file)} />
+          <UploadCard title="Parafă și semnătură" missing={!data.has_signature} status={data.has_signature ? 'Încărcată' : 'Lipsește'} text={data.has_signature ? 'Apare pe fiecare concluzie. Poți încărca alta oricând.' : 'Folosește o scanare clară, decupată, pe fundal alb sau PNG transparent, maximum 2 MB. Fără parafă nu poți publica concluzii.'} button={data.has_signature ? 'Înlocuiește imaginea' : 'Încarcă imaginea'} onFile={(file) => void upload('signature', file)} />
           <UploadCard title="Sigla pentru antet" status={data.has_clinic_logo ? 'Încărcată' : 'Opțional'} text="Apare sus pe PDF, lângă datele de mai jos. JPG sau PNG, maximum 2 MB." button={data.has_clinic_logo ? 'Înlocuiește sigla' : 'Încarcă sigla'} onFile={(file) => void upload('logo', file)} />
           <Field label="Denumirea din antet"><input value={form.clinic_name} onChange={(event) => set({ clinic_name: event.target.value })} placeholder="Ex: Cabinet Dr. Ana Ciobanu" className={field} /></Field>
           <Field label="Date de contact din antet"><input value={form.clinic_details} onChange={(event) => set({ clinic_details: event.target.value })} placeholder="Adresă, telefon, IDNO" className={field} /></Field>
@@ -320,10 +320,7 @@ export function DoctorProfilePage() {
           <Field label="Banca"><input value={form.payout_bank} onChange={(event) => set({ payout_bank: event.target.value })} placeholder="Ex: MAIB" className={field} /></Field>
           <Field label={<>IBAN <span className="font-normal text-slate-400">· aici primești extragerile</span></>}><input value={form.payout_iban} onChange={(event) => set({ payout_iban: event.target.value.toUpperCase() })} placeholder="MD24 AG00 0000 0225 1000 4821" className={cn(field, 'font-mono')} /></Field>
         </div>
-        <button type="button" onClick={() => void save({ accepts_points: !form.accepts_points })} className="flex items-start gap-3 text-left">
-          <span className={cn('mt-px grid h-5 w-5 shrink-0 place-items-center rounded-md border text-white', form.accepts_points ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-white')}>{form.accepts_points && <Check className="h-3.5 w-3.5" strokeWidth={3} />}</span>
-          <span className="flex flex-col gap-[3px]"><span className="text-sm font-medium text-slate-950">Accept plăți parțiale din bonusuri</span><span className="text-[13px] text-slate-500">Pacientul poate achita o parte din preț cu bonusuri. Tu primești suma întreagă.</span></span>
-        </button>
+        <Field label="Procent acceptat în puncte"><select value={form.points_payment_percent} disabled={saving} onChange={(event) => void save({ points_payment_percent: Number(event.target.value), accepts_points: Number(event.target.value) > 0 })} className={field}>{[0, 10, 20, 30, 40, 50].map((value) => <option key={value} value={value}>{value === 0 ? 'Nu accept puncte' : `Până la ${value}%`}</option>)}</select><p className="mt-2 text-[13px] text-slate-500">Împărțirea banilor se calculează din suma achitată în bani. Punctele folosite de pacient intră în soldul tău pentru promovare după recenzie. Condițiile programărilor existente se păstrează.</p></Field>
         </>
       )
     }
@@ -436,7 +433,6 @@ export function DoctorProfilePage() {
       </div>
 
       <ServiceEditor service={editing} open={editorOpen} catalog={catalog} onOpenChange={setEditorOpen} onSaved={() => { toast.success('Serviciul a fost salvat.'); void load(); }} />
-      <AdminMessageDialog open={adminOpen} onOpenChange={setAdminOpen} />
       <VacationDialog open={vacationOpen} onOpenChange={setVacationOpen} onSaved={() => void load()} />
       <Dialog open={preview} onOpenChange={setPreview}>
         <DialogContent className="max-h-[92dvh] w-[calc(100%-1rem)] overflow-y-auto bg-slate-50 sm:max-w-2xl">
@@ -547,44 +543,16 @@ function TimeInput({ value, onChange }: { value: string; onChange: (value: strin
 
 function UploadCard({ title, status, text, button, missing = false, onFile }: { title: string; status: string; text: string; button: string; missing?: boolean; onFile: (file: File) => void }) {
   const input = useRef<HTMLInputElement | null>(null);
+  const [imagePreview, setImagePreview] = useState('');
+  useEffect(() => () => { if (imagePreview) URL.revokeObjectURL(imagePreview); }, [imagePreview]);
   return (
     <div className={cn('flex flex-col gap-2.5 rounded-xl border p-4', missing ? 'border-amber-200 bg-amber-50' : 'border-slate-200')}>
       <div className="flex items-center justify-between"><span className="text-sm font-semibold text-slate-950">{title}</span><span className={cn('text-xs', missing ? 'font-semibold text-amber-800' : 'text-slate-500')}>{status}</span></div>
       <span className={cn('text-[13px]', missing ? 'text-amber-900' : 'text-slate-500')}>{text}</span>
-      <input ref={input} type="file" accept="image/jpeg,image/png" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) onFile(file); event.target.value = ''; }} />
+      <input ref={input} type="file" accept="image/jpeg,image/png" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) { if (['image/jpeg','image/png'].includes(file.type) && file.size <= 2 * 1024 * 1024) setImagePreview(URL.createObjectURL(file)); onFile(file); } event.target.value = ''; }} />
+      {imagePreview && <img src={imagePreview} alt={`Imagine selectată: ${title}`} className="h-28 max-w-full self-start rounded-lg border bg-white object-contain p-2"/>}
       <button type="button" onClick={() => input.current?.click()} className="h-9 self-start rounded-[10px] border border-slate-200 bg-white px-3 text-[13px] font-medium hover:bg-slate-50">{button}</button>
     </div>
-  );
-}
-
-function AdminMessageDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  const [message, setMessage] = useState('');
-  const [busy, setBusy] = useState(false);
-  useEffect(() => { if (open) setMessage(''); }, [open]);
-  const send = async () => {
-    setBusy(true);
-    try {
-      await apiRequest('/doctor/institution-request', { method: 'POST', body: JSON.stringify({ message }) });
-      toast.success('Mesajul a ajuns la administrator.');
-      onOpenChange(false);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Nu am putut trimite mesajul.');
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100%-1rem)] gap-4 rounded-2xl p-6 sm:max-w-[440px]">
-        <DialogTitle className="text-lg font-semibold">Scrie administratorului</DialogTitle>
-        <DialogDescription>Spune în ce instituție lucrezi; administratorul o schimbă în profilul tău.</DialogDescription>
-        <textarea value={message} rows={4} maxLength={1000} onChange={(event) => setMessage(event.target.value)} placeholder="Ex: Lucrez la IMSP CMF nr. 2, str. Ismail 12." className={cn(field, 'h-auto resize-y py-2.5 leading-normal')} />
-        <div className="flex justify-end gap-2.5">
-          <button type="button" onClick={() => onOpenChange(false)} className="h-10 rounded-[10px] border border-slate-200 bg-white px-4 text-sm font-medium">Anulează</button>
-          <button type="button" onClick={() => void send()} disabled={busy || message.trim().length < 5} className="h-10 rounded-[10px] bg-blue-600 px-4 text-sm font-semibold text-white disabled:bg-blue-300">Trimite</button>
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }
 

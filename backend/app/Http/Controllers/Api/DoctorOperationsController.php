@@ -12,6 +12,7 @@ use App\Models\DoctorProfileView;
 use App\Models\DoctorVacation;
 use App\Models\InstitutionEarning;
 use App\Models\InvestigationType;
+use App\Models\MedicalInstitution;
 use App\Models\PlatformSetting;
 use App\Models\Specialty;
 use App\Models\User;
@@ -27,6 +28,8 @@ use App\Services\PublicImageStorage;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -40,7 +43,7 @@ class DoctorOperationsController extends Controller
         $doctor = $request->user()->loadMissing(['roles', 'doctorProfile']);
         abort_unless($doctor->hasRole('doctor') || $doctor->hasRole('admin'), 403, 'Ai nevoie de rol medic.');
 
-        $now = CarbonImmutable::now();
+        $now = CarbonImmutable::now('Europe/Chisinau');
         $currentMonthStart = $now->startOfMonth();
         $currentMonthEnd = $now->endOfMonth();
         $previousMonthStart = $now->subMonth()->startOfMonth();
@@ -54,20 +57,12 @@ class DoctorOperationsController extends Controller
         $currentMonthConsultations = $completedConsultations
             ->filter(fn (Consultation $consultation) => $consultation->completed_at?->betweenIncluded($currentMonthStart, $currentMonthEnd));
 
-        $currentMonthRevenue = (float) $currentMonthConsultations->sum('price');
-        $previousMonthRevenue = (float) $completedConsultations
-            ->filter(fn (Consultation $consultation) => $consultation->completed_at?->betweenIncluded($previousMonthStart, $previousMonthEnd))
-            ->sum('price');
+        $income = $this->settledIncome($doctor);
+        $currentMonthRevenue = (float) $income->filter(fn (array $row) => $row['date']->betweenIncluded($currentMonthStart, $currentMonthEnd))->sum('amount');
+        $previousMonthRevenue = (float) $income->filter(fn (array $row) => $row['date']->betweenIncluded($previousMonthStart, $previousMonthEnd))->sum('amount');
 
-        $acceptedRequests = ConsultationRequest::query()
-            ->where('doctor_id', $doctor->id)
-            ->whereNotNull('accepted_at')
-            ->get();
-
-        $averageResponseMinutes = $acceptedRequests
-            ->map(fn (ConsultationRequest $item) => $item->created_at?->diffInMinutes($item->accepted_at))
-            ->filter(fn (?int $minutes) => $minutes !== null)
-            ->avg();
+        $performance = $doctor->doctorProfile ? app(DoctorPerformance::class)->forDoctor($doctor->doctorProfile) : null;
+        $averageResponseMinutes = $performance['average_response_minutes'] ?? null;
 
         $pendingRequests = ConsultationRequest::query()
             ->with(['patient', 'patientProfile', 'specialty'])
@@ -91,7 +86,7 @@ class DoctorOperationsController extends Controller
                 'rating' => (float) ($doctor->doctorProfile?->rating ?? 0),
                 'reviews_count' => (int) ($doctor->doctorProfile?->reviews_count ?? 0),
                 'average_response_minutes' => $averageResponseMinutes !== null ? (int) round($averageResponseMinutes) : null,
-                'performance' => $doctor->doctorProfile ? app(DoctorPerformance::class)->forDoctor($doctor->doctorProfile) : null,
+                'performance' => $performance,
             ],
             'pending_requests' => $pendingRequests->map(fn (ConsultationRequest $item) => [
                 'id' => (string) $item->id,
@@ -112,6 +107,15 @@ class DoctorOperationsController extends Controller
                 'created_at' => $item->created_at,
             ])->values(),
         ]);
+    }
+
+    public function ranking(Request $request): JsonResponse
+    {
+        $doctor = $request->user()->loadMissing('roles');
+        abort_unless($doctor->hasRole('doctor'), 403);
+        $rows = app(DoctorPerformance::class)->leaderboard();
+
+        return response()->json(['data' => $rows, 'own_position' => $rows->firstWhere('doctor_id', $doctor->id)['position'] ?? null, 'total' => $rows->count()]);
     }
 
     public function profile(Request $request): JsonResponse
@@ -138,6 +142,7 @@ class DoctorOperationsController extends Controller
             'specialties' => Specialty::orderBy('name')->get(),
             'services' => app(DoctorServiceCatalog::class)->serialize($doctor->doctorServices()->get()),
             'institution' => $doctor->doctorProfile?->medicalInstitution ? [
+                'id' => $doctor->doctorProfile->medicalInstitution->id,
                 'name' => $doctor->doctorProfile->medicalInstitution->name,
                 'address' => $doctor->doctorProfile->medicalInstitution->address,
             ] : null,
@@ -154,12 +159,13 @@ class DoctorOperationsController extends Controller
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber],
+            'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber(unique: true, ignoreUserId: $doctor->id)],
             'specialty_id' => ['nullable', Rule::exists('specialties', 'id')],
             'license_number' => ['nullable', 'string', 'max:255'],
             'clinic_name' => ['nullable', 'string', 'max:255'],
             'clinic_details' => ['nullable', 'string', 'max:2000'],
             'accepts_points' => ['sometimes', 'boolean'],
+            'points_payment_percent' => ['sometimes', 'integer', Rule::in([0, 10, 20, 30, 40, 50])],
             'bio' => ['nullable', 'string', 'max:4000'],
             'experience_years' => ['nullable', 'integer', 'min:0', 'max:80'],
             'consultation_price' => ['nullable', 'integer', 'min:0'],
@@ -204,7 +210,8 @@ class DoctorOperationsController extends Controller
                 'license_number' => $validated['license_number'] ?? null,
                 'clinic_name' => $validated['clinic_name'] ?? null,
                 'clinic_details' => $validated['clinic_details'] ?? null,
-                'accepts_points' => $validated['accepts_points'] ?? $doctor->doctorProfile?->accepts_points ?? false,
+                'accepts_points' => isset($validated['points_payment_percent']) ? $validated['points_payment_percent'] > 0 : ($validated['accepts_points'] ?? $doctor->doctorProfile?->accepts_points ?? false),
+                'points_payment_percent' => $validated['points_payment_percent'] ?? $doctor->doctorProfile?->points_payment_percent,
                 'bio' => $validated['bio'] ?? null,
                 'experience_years' => $validated['experience_years'] ?? 0,
                 // Prețurile vin din servicii; câmpurile vechi se schimbă doar când sunt trimise.
@@ -330,6 +337,7 @@ class DoctorOperationsController extends Controller
     {
         return [
             ...$profile->toArray(),
+            'points_payment_percent' => $profile->effectivePointsPercent(),
             'required_investigation_ids' => $profile->investigationRequirements
                 ->where('requirement', 'required')
                 ->pluck('investigation_type_id')
@@ -400,19 +408,16 @@ class DoctorOperationsController extends Controller
         $doctor = $request->user()->loadMissing(['roles', 'doctorProfile.medicalInstitution']);
         abort_unless($doctor->hasRole('doctor') || $doctor->hasRole('admin'), 403, 'Ai nevoie de rol medic.');
 
-        $now = CarbonImmutable::now();
+        $now = CarbonImmutable::now('Europe/Chisinau');
         $consultations = Consultation::query()
             ->where('doctor_id', $doctor->id)
             ->where('status', 'completed')
             ->get();
 
-        $currentMonthRevenue = $consultations
-            ->filter(fn (Consultation $consultation) => $consultation->completed_at?->betweenIncluded($now->startOfMonth(), $now->endOfMonth()))
-            ->sum('price');
-
-        $previousMonthRevenue = $consultations
-            ->filter(fn (Consultation $consultation) => $consultation->completed_at?->betweenIncluded($now->subMonth()->startOfMonth(), $now->subMonth()->endOfMonth()))
-            ->sum('price');
+        $monthConsultations = $consultations->filter(fn (Consultation $consultation) => $consultation->completed_at?->betweenIncluded($now->startOfMonth(), $now->endOfMonth()));
+        $income = $this->settledIncome($doctor);
+        $currentMonthRevenue = $income->filter(fn (array $row) => $row['date']->betweenIncluded($now->startOfMonth(), $now->endOfMonth()))->sum('amount');
+        $previousMonthRevenue = $income->filter(fn (array $row) => $row['date']->betweenIncluded($now->subMonth()->startOfMonth(), $now->subMonth()->endOfMonth()))->sum('amount');
 
         $withdrawals = WithdrawalRequest::query()
             ->with('institution')
@@ -422,36 +427,13 @@ class DoctorOperationsController extends Controller
 
         $profileViews = DoctorProfileView::where('doctor_id', $doctor->id)->count();
 
-        $monthlyRevenue = collect(range(5, 0))
-            ->map(function (int $monthsBack) use ($consultations, $now) {
-                $month = $now->subMonths($monthsBack);
+        $monthlyRevenue = collect(range(5, 0))->map(function (int $monthsBack) use ($income, $now): array {
+            $month = $now->subMonths($monthsBack);
 
-                return [
-                    'name' => $month->locale('ro')->isoFormat('MMM'),
-                    'total' => (float) $consultations
-                        ->filter(fn (Consultation $consultation) => $consultation->completed_at?->betweenIncluded($month->startOfMonth(), $month->endOfMonth()))
-                        ->sum('price'),
-                ];
-            })
-            ->values();
-
-        // Venitul lunii pe servicii: câte consultații și cât au adus.
-        $monthConsultations = $consultations
-            ->filter(fn (Consultation $consultation) => $consultation->completed_at?->betweenIncluded($now->startOfMonth(), $now->endOfMonth()));
-        $requests = ConsultationRequest::whereIn('id', $monthConsultations->pluck('consultation_request_id')->filter())->get()->keyBy('id');
-        $byService = $monthConsultations
-            ->groupBy(function (Consultation $consultation) use ($requests) {
-                $item = $requests->get($consultation->consultation_request_id);
-
-                return $item?->pricing_snapshot['service']['name'] ?? match ($item?->consultation_kind) {
-                    'with_exam' => 'Consultație cu examinare la domiciliu',
-                    'preliminary' => 'Consultație prin chat',
-                    default => 'Consultație video',
-                };
-            })
-            ->map(fn ($group, string $name) => ['name' => $name, 'count' => $group->count(), 'total' => (float) $group->sum('price')])
-            ->sortByDesc('total')
-            ->values();
+            return ['name' => $month->locale('ro')->isoFormat('MMM'), 'total' => (float) $income->filter(fn (array $row) => $row['date']->betweenIncluded($month->startOfMonth(), $month->endOfMonth()))->sum('amount')];
+        })->values();
+        $byService = $income->filter(fn (array $row) => $row['date']->betweenIncluded($now->startOfMonth(), $now->endOfMonth()))->groupBy('service')
+            ->map(fn (Collection $group, string $name) => ['name' => $name, 'count' => $group->count(), 'total' => (float) $group->sum('amount')])->sortByDesc('total')->values();
 
         $weeklyConsultations = collect(range(6, 0))
             ->map(function (int $daysBack) use ($consultations, $now) {
@@ -465,6 +447,8 @@ class DoctorOperationsController extends Controller
                 ];
             })
             ->values();
+
+        $institutionBalances = $this->institutionBalances($doctor);
 
         return response()->json([
             'summary' => [
@@ -483,7 +467,8 @@ class DoctorOperationsController extends Controller
                     ? trim(($doctor->doctorProfile->payout_bank ?? '').' ···· '.substr($doctor->doctorProfile->payout_iban, -4))
                     : null,
             ],
-            'institution' => $this->institutionSummary($doctor),
+            'institution' => collect($institutionBalances)->firstWhere('is_current', true),
+            'institution_balances' => $institutionBalances,
             'revenue' => $monthlyRevenue,
             'by_service' => $byService,
             'current_month_consultations' => $monthConsultations->count(),
@@ -515,6 +500,7 @@ class DoctorOperationsController extends Controller
 
         $validated = $request->validate([
             'amount' => ['required', 'numeric', 'min:1', 'max:1000000'],
+            'institution_id' => ['nullable', 'integer', 'exists:medical_institutions,id'],
             'source' => ['nullable', Rule::in([InstitutionLedger::PAYER_PLATFORM, InstitutionLedger::PAYER_INSTITUTION])],
         ]);
         $source = $validated['source'] ?? ($institution ? InstitutionLedger::PAYER_INSTITUTION : InstitutionLedger::PAYER_PLATFORM);
@@ -523,28 +509,24 @@ class DoctorOperationsController extends Controller
         // Medicul afiliat cere partea lui de la instituție, care decide singură
         // când și cum plătește; regulile de calendar ale platformei nu se aplică.
         if ($source === InstitutionLedger::PAYER_INSTITUTION) {
-            abort_unless($institution, 422, 'Nu faci parte dintr-o instituție medicală.');
-            $ledger = app(InstitutionLedger::class);
-            $availableMinor = $ledger->doctorBalanceMinor($institution->id, $doctor->id) - $ledger->doctorPendingMinor($institution->id, $doctor->id);
-            abort_if($amountMinor > $availableMinor, 422, 'Suma solicitată depășește suma disponibilă la instituție.');
+            [$institution, $withdrawal] = DB::transaction(function () use ($doctor, $validated, $amountMinor): array {
+                $doctor = User::whereKey($doctor->id)->lockForUpdate()->firstOrFail();
+                $institutionId = $validated['institution_id'] ?? $doctor->doctorProfile?->medical_institution_id;
+                abort_unless($institutionId, 422, 'Alege instituția de la care soliciți plata.');
+                $institution = MedicalInstitution::findOrFail($institutionId);
+                abort_unless((int) $doctor->doctorProfile?->medical_institution_id === (int) $institutionId
+                    || InstitutionEarning::where('doctor_id', $doctor->id)->where('medical_institution_id', $institutionId)->exists(), 404);
+                $ledger = app(InstitutionLedger::class);
+                $availableMinor = $ledger->doctorBalanceMinor($institution->id, $doctor->id) - $ledger->doctorPendingMinor($institution->id, $doctor->id);
+                abort_if($amountMinor > $availableMinor, 422, 'Suma solicitată depășește suma disponibilă la instituție.');
+                $withdrawal = WithdrawalRequest::create([
+                    'user_id' => $doctor->id, 'medical_institution_id' => $institution->id, 'payer' => InstitutionLedger::PAYER_INSTITUTION,
+                    'amount_minor' => $amountMinor, 'currency' => 'MDL', 'iban' => '', 'payout_period' => now()->format('Y-m'), 'status' => 'pending',
+                ]);
+                DB::afterCommit(fn () => Notification::send($institution->managers()->get(), new AppEventNotification('Cerere de plată de la medic', $doctor->name.' a solicitat '.number_format($amountMinor / 100, 2).' MDL.', '/institution/payouts', 'warning')));
 
-            $withdrawal = WithdrawalRequest::create([
-                'user_id' => $doctor->id,
-                'medical_institution_id' => $institution->id,
-                'payer' => InstitutionLedger::PAYER_INSTITUTION,
-                'amount_minor' => $amountMinor,
-                'currency' => 'MDL',
-                'iban' => '',
-                'payout_period' => now()->format('Y-m'),
-                'status' => 'pending',
-            ]);
-
-            Notification::send($institution->managers()->get(), new AppEventNotification(
-                'Cerere de plată de la medic',
-                $doctor->name.' a solicitat '.number_format($amountMinor / 100, 2).' MDL.',
-                '/institution/payouts',
-                'warning',
-            ));
+                return [$institution, $withdrawal];
+            }, attempts: 3);
 
             return response()->json([
                 'message' => 'Cererea a fost trimisă către '.$institution->name.'.',
@@ -590,22 +572,22 @@ class DoctorOperationsController extends Controller
     /**
      * @return array{id: int, name: string, doctor_share_percent: float, balance: float, pending: float, earned_total: float}|null
      */
-    private function institutionSummary(User $doctor): ?array
+    private function institutionBalances(User $doctor): array
     {
-        $institution = $doctor->doctorProfile?->medicalInstitution;
-        if (! $institution) {
-            return null;
-        }
-        $ledger = app(InstitutionLedger::class);
+        $earnings = InstitutionEarning::where('doctor_id', $doctor->id)->selectRaw('medical_institution_id, SUM(doctor_amount_minor) as total')->groupBy('medical_institution_id')->pluck('total', 'medical_institution_id');
+        $paid = WithdrawalRequest::where('user_id', $doctor->id)->where('payer', InstitutionLedger::PAYER_INSTITUTION)->where('status', 'approved')
+            ->selectRaw('medical_institution_id, SUM(COALESCE(approved_amount_minor, amount_minor)) as total')->groupBy('medical_institution_id')->pluck('total', 'medical_institution_id');
+        $pending = WithdrawalRequest::where('user_id', $doctor->id)->where('payer', InstitutionLedger::PAYER_INSTITUTION)->where('status', 'pending')
+            ->selectRaw('medical_institution_id, SUM(amount_minor) as total')->groupBy('medical_institution_id')->pluck('total', 'medical_institution_id');
+        $currentId = $doctor->doctorProfile?->medical_institution_id;
+        $ids = $earnings->keys()->merge($paid->keys())->merge($pending->keys())->push($currentId)->filter()->unique();
 
-        return [
-            'id' => $institution->id,
-            'name' => $institution->name,
-            'doctor_share_percent' => (float) $doctor->doctorProfile->effectiveInstitutionSharePercent(),
-            'balance' => $ledger->doctorBalanceMinor($institution->id, $doctor->id) / 100,
-            'pending' => $ledger->doctorPendingMinor($institution->id, $doctor->id) / 100,
-            'earned_total' => (int) InstitutionEarning::where('medical_institution_id', $institution->id)->where('doctor_id', $doctor->id)->sum('doctor_amount_minor') / 100,
-        ];
+        return MedicalInstitution::whereIn('id', $ids)->orderBy('name')->get()->map(fn ($institution) => [
+            'id' => $institution->id, 'name' => $institution->name, 'is_current' => (int) $institution->id === (int) $currentId,
+            'doctor_share_percent' => (int) $institution->id === (int) $currentId ? (float) $doctor->doctorProfile->effectiveInstitutionSharePercent() : null,
+            'balance' => max(0, (int) $earnings->get($institution->id, 0) - (int) $paid->get($institution->id, 0)) / 100,
+            'pending' => (int) $pending->get($institution->id, 0) / 100, 'earned_total' => (int) $earnings->get($institution->id, 0) / 100,
+        ])->all();
     }
 
     public function storeVacation(Request $request): JsonResponse
@@ -685,6 +667,20 @@ class DoctorOperationsController extends Controller
             'message' => 'Programul a fost salvat.',
             'availability' => $doctor->doctorAvailabilities()->orderBy('weekday')->orderBy('starts_at')->get(),
         ]);
+    }
+
+    private function settledIncome(User $doctor): Collection
+    {
+        $shares = InstitutionEarning::where('doctor_id', $doctor->id)->pluck('doctor_amount_minor', 'consultation_request_id');
+
+        return ConsultationRequest::where('doctor_id', $doctor->id)->where('payment_status', 'captured')->get()->map(function (ConsultationRequest $item) use ($shares): array {
+            $amount = $shares->has($item->id) ? (int) $shares->get($item->id) : (int) $item->provider_amount_minor;
+
+            return ['amount' => $amount / 100, 'date' => $item->closed_at ?? $item->completed_at ?? $item->created_at,
+                'service' => $item->pricing_snapshot['service']['name'] ?? match ($item->consultation_kind) {
+                    'with_exam' => 'Consultație cu examinare la domiciliu', 'preliminary' => 'Consultație în chat', default => 'Consultație video + chat'
+                }];
+        });
     }
 
     private function availableBalanceMinor(int $doctorId): int

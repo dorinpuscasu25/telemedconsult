@@ -83,6 +83,7 @@ function primaryNav(role: RoleName | null, homeVisits = true): NavItem[] {
       return [
         { label: 'Acasă', path: '/institution', icon: Home },
         { label: 'Medici', path: '/institution/doctors', icon: Stethoscope },
+        { label: 'Rapoarte', path: '/institution/reports', icon: BarChart2 },
         { label: 'Plăți', path: '/institution/payouts', icon: Wallet },
         { label: 'Setări', path: '/institution/settings', icon: Building2 }
       ];
@@ -108,6 +109,9 @@ function primaryNav(role: RoleName | null, homeVisits = true): NavItem[] {
 
 function secondaryNav(role: RoleName | null, newsLabel: string): NavItem[] {
   const items: NavItem[] = [];
+  if (role && ['doctor', 'operator', 'institution'].includes(role)) {
+    items.push({ label: 'Mesaje administrator', path: `/${role}/admin-messages`, icon: MessageSquare });
+  }
   if (role === 'patient') {
     items.push({ label: 'Program de afiliere', path: '/patient/profile?tab=referrals', icon: Gift, feature: 'affiliate_program' });
     items.push({ label: 'Reclamații și recenzii', path: '/patient/complaints', icon: MessageSquareWarning });
@@ -300,7 +304,7 @@ export function AppLayout() {
           <div className={cn('flex h-14 items-center justify-between gap-3 pl-4 pr-2 pt-[env(safe-area-inset-top)] lg:h-16 lg:px-6', !headerTitle && 'lg:justify-end')}>
             {headerTitle && <span className="hidden text-lg font-semibold text-slate-950 lg:block">{headerTitle}</span>}
             <span className="lg:hidden">{logo('sm')}</span>
-            <span className="lg:hidden"><NotificationBell bare /></span>
+            <span className="flex items-center gap-1 lg:hidden">{role === 'institution' && <Link to="/institution/admin-messages" aria-label="Mesaje administrator" className="rounded-lg p-2 text-slate-600"><MessageSquare className="h-5 w-5"/></Link>}<NotificationBell bare /></span>
             <span className="hidden lg:block"><NotificationBell /></span>
           </div>
         </header>

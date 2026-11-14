@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\ConsultationRequest;
+use App\Models\OperatorProfile;
+use App\Models\PatientCardPackage;
 use App\Models\Payment;
 use App\Models\PlatformSetting;
 use App\Models\ReferralCommission;
@@ -20,7 +22,7 @@ use Tests\TestCase;
 
 /**
  * Regula de business testată: invitatorul primește un procent configurabil din
- * FIECARE alimentare de portofel confirmată a utilizatorului invitat. Nimic nu
+ * PRIMA alimentare de portofel confirmată a utilizatorului invitat. Nimic nu
  * se plătește la înregistrare sau la confirmarea emailului.
  */
 class PatientReferralProgramTest extends TestCase
@@ -42,7 +44,7 @@ class PatientReferralProgramTest extends TestCase
         Specialty::firstOrCreate(['slug' => 'cardiologie'], ['name' => 'Cardiologie']);
     }
 
-    public function test_inviter_receives_percentage_of_each_confirmed_top_up(): void
+    public function test_inviter_receives_percentage_only_of_first_confirmed_top_up(): void
     {
         $this->setRate(10);
         $referrer = $this->patient('inviter@example.test');
@@ -58,12 +60,12 @@ class PatientReferralProgramTest extends TestCase
         $this->completeTopUp($invited, 500.00);
         $this->assertSame(5000, Wallet::where('user_id', $referrer->id)->value('balance_minor'));
 
-        // A doua alimentare: 200 MDL la 10% => 20 MDL, cumulat 70 MDL.
+        // A doua alimentare nu mai generează comision.
         $this->completeTopUp($invited, 200.00);
-        $this->assertSame(7000, Wallet::where('user_id', $referrer->id)->value('balance_minor'));
+        $this->assertSame(5000, Wallet::where('user_id', $referrer->id)->value('balance_minor'));
 
-        $this->assertSame(2, ReferralCommission::where('referrer_id', $referrer->id)->count());
-        $this->assertSame(2, WalletTransaction::where('type', 'referral_topup_commission')->count());
+        $this->assertSame(1, ReferralCommission::where('referrer_id', $referrer->id)->count());
+        $this->assertSame(1, WalletTransaction::where('type', 'referral_topup_commission')->count());
     }
 
     public function test_repeated_payment_confirmation_does_not_pay_twice(): void
@@ -112,7 +114,7 @@ class PatientReferralProgramTest extends TestCase
         $this->assertSame(0, ReferralCommission::count());
 
         $this->completeTopUp($invited, 250.00);
-        $this->assertSame(2500, Wallet::where('user_id', $referrer->id)->value('balance_minor'));
+        $this->assertNull(Wallet::where('user_id', $referrer->id)->value('balance_minor'));
     }
 
     public function test_rate_is_snapshotted_per_commission_and_uses_the_current_value(): void
@@ -125,15 +127,14 @@ class PatientReferralProgramTest extends TestCase
         $this->completeTopUp($invited, 1000.00);
         $this->assertSame(5000, Wallet::where('user_id', $referrer->id)->value('balance_minor'));
 
-        // Adminul urcă procentul: alimentările următoare folosesc noua cotă,
-        // iar cele deja plătite își păstrează cota istorică.
+        // Schimbarea cotei nu reactivează eligibilitatea deja consumată.
         $this->setRate(20);
         $this->completeTopUp($invited, 1000.00);
 
-        $this->assertSame(25000, Wallet::where('user_id', $referrer->id)->value('balance_minor'));
+        $this->assertSame(5000, Wallet::where('user_id', $referrer->id)->value('balance_minor'));
 
         $rates = ReferralCommission::orderBy('id')->pluck('rate_percent')->map(fn ($rate) => (float) $rate)->all();
-        $this->assertSame([5.0, 20.0], $rates);
+        $this->assertSame([5.0], $rates);
     }
 
     public function test_zero_rate_and_disabled_program_pay_nothing(): void
@@ -269,7 +270,7 @@ class PatientReferralProgramTest extends TestCase
         $invited = $this->registerAndVerifyPatient('adus-de-operator@example.test', $summary['code']);
         $this->registerPatient('fara-alimentare@example.test', $summary['code'])->assertCreated();
         $this->completeTopUp($invited, 1000.00);
-        $this->assertSame(3000, (int) Wallet::where('user_id', $operator->id)->where('type', 'points')->value('balance_minor'));
+        $this->assertSame(3000, (int) Wallet::where('user_id', $operator->id)->where('type', 'real')->value('balance_minor'));
 
         Sanctum::actingAs($operator);
         $this->getJson('/api/v1/referrals')->assertOk()->assertJsonPath('stats.invited_count', 2)->assertJsonPath('stats.active_count', 1);
@@ -366,6 +367,58 @@ class PatientReferralProgramTest extends TestCase
         $this->getJson('/api/v1/referrals')->assertOk()->assertJsonPath('enabled', true)->assertJsonPath('bonus_enabled', false)->assertJsonPath('stats.invited_count', 1);
     }
 
+    public function test_operator_reward_is_money_even_with_patient_role_and_explicit_code_cannot_double_it(): void
+    {
+        $this->setRate(3);
+        $operator = $this->operator();
+        $operator->roles()->attach(Role::where('name', 'patient')->value('id'));
+        OperatorProfile::create(['user_id' => $operator->id, 'affiliate_code' => 'OP-CODE']);
+        $patient = $this->registerAndVerifyPatient('operator-bonus@example.test', app(ReferralProgram::class)->ensureCode($operator));
+        $payment = $this->pendingPayment($patient, 500);
+        $payment->update(['metadata' => ['affiliate_code' => 'OP-CODE']]);
+        $this->confirmPayment($payment);
+        $this->confirmPayment($payment);
+        $this->completeTopUp($patient, 1000);
+        $this->assertSame(1500, Wallet::where('user_id', $operator->id)->where('type', 'real')->value('balance_minor'));
+        $this->assertSame(0, Wallet::where('user_id', $operator->id)->where('type', 'points')->count());
+        $this->assertSame(1, ReferralCommission::count());
+        $this->assertSame(0, WalletTransaction::where('type', 'affiliate_bonus')->count());
+    }
+
+    public function test_package_only_preserves_first_deposit_and_combined_checkout_excludes_package_price(): void
+    {
+        $this->setRate(3);
+        $referrer = $this->patient('package-inviter@example.test');
+        $patient = $this->registerAndVerifyPatient('package-invited@example.test', app(ReferralProgram::class)->ensureCode($referrer));
+        $package = PatientCardPackage::create(['name' => 'Pachet', 'price_minor' => 20000, 'profile_slots' => 1, 'validity_days' => 365, 'is_active' => true]);
+        $payment = $this->pendingPayment($patient, 200);
+        $payment->update(['metadata' => ['buy_package_id' => $package->id, 'package_price_minor' => 20000]]);
+        $this->confirmPayment($payment);
+        $this->assertSame(0, ReferralCommission::count());
+        $payment = $this->pendingPayment($patient, 700);
+        $payment->update(['metadata' => ['buy_package_id' => $package->id, 'package_price_minor' => 20000]]);
+        $this->confirmPayment($payment);
+        $this->assertSame(50000, ReferralCommission::firstOrFail()->deposit_amount_minor);
+        $this->assertSame(1500, Wallet::where('user_id', $referrer->id)->where('type', 'points')->value('balance_minor'));
+        $this->completeTopUp($patient, 1000);
+        $this->assertSame(1, ReferralCommission::count());
+    }
+
+    public function test_disabled_or_zero_rate_first_deposit_consumes_eligibility_and_doctor_gets_no_commission(): void
+    {
+        $this->setRate(0);
+        $referrer = $this->patient('no-retro@example.test');
+        $patient = $this->registerAndVerifyPatient('no-retro-invited@example.test', app(ReferralProgram::class)->ensureCode($referrer));
+        $this->completeTopUp($patient, 500);
+        $this->setRate(3);
+        $this->completeTopUp($patient, 500);
+        $this->assertSame(0, ReferralCommission::count());
+        $referrer->roles()->attach(Role::where('name', 'doctor')->value('id'));
+        $other = $this->registerAndVerifyPatient('doctor-no-reward@example.test', app(ReferralProgram::class)->ensureCode($referrer));
+        $this->completeTopUp($other, 500);
+        $this->assertSame(0, ReferralCommission::count());
+    }
+
     // --- helpers ---------------------------------------------------------
 
     private function operator(): User
@@ -397,6 +450,7 @@ class PatientReferralProgramTest extends TestCase
     private function registerPatient(string $email, string $referralCode)
     {
         return $this->postJson('/api/v1/auth/register', [
+            'phone' => fake()->unique()->numerify('069######'),
             'name' => 'Pacient Invitat',
             'email' => $email,
             'password' => 'password123',
@@ -424,7 +478,7 @@ class PatientReferralProgramTest extends TestCase
     private function pendingPayment(User $user, float $amount): Payment
     {
         $wallet = Wallet::firstOrCreate(
-            ['user_id' => $user->id],
+            ['user_id' => $user->id, 'type' => 'real'],
             ['balance_minor' => 0, 'currency' => 'MDL'],
         );
 

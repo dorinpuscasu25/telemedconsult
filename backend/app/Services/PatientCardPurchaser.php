@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\PatientCardPackage;
 use App\Models\PatientCardPurchase;
 use App\Models\Payment;
-use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -25,8 +24,8 @@ class PatientCardPurchaser
     {
         return DB::transaction(function () use ($userId, $package, $payment, $priceMinor) {
             $priceMinor ??= (int) $package->price_minor;
-            $wallet = Wallet::where('user_id', $userId)->where('type', WalletLedger::REAL)->lockForUpdate()->first()
-                ?? Wallet::create(['user_id' => $userId, 'type' => WalletLedger::REAL, 'balance_minor' => 0, 'currency' => 'MDL']);
+            $ledger = app(WalletLedger::class);
+            $wallet = $ledger->locked($userId, WalletLedger::REAL);
 
             if ($wallet->balance_minor < $priceMinor) {
                 throw new InsufficientWalletBalance($priceMinor, (int) $wallet->balance_minor);
@@ -42,7 +41,7 @@ class PatientCardPurchaser
                 'amount_minor' => $priceMinor,
                 'validity_days' => $package->validity_days,
                 'expires_at' => now()->addDays($package->validity_days),
-                'settings_snapshot' => $package->toArray(),
+                'settings_snapshot' => [...$package->toArray(), 'bonus_points_minor' => $priceMinor, 'bonus_rule' => 'once_per_package'],
             ]);
 
             WalletTransaction::create([
@@ -60,13 +59,14 @@ class PatientCardPurchaser
                 ]),
             ]);
 
-            if ($package->bonus_points_minor > 0) {
-                $ledger = app(WalletLedger::class);
-                $ledger->move($ledger->locked($userId, WalletLedger::POINTS), (int) $package->bonus_points_minor, 'patient_card_bonus', 'Bonus la cumpărarea pachetului: '.$package->name, ['patient_card_package_id' => $package->id, 'patient_card_purchase_id' => $purchase->id]);
+            $alreadyAwarded = WalletTransaction::where('user_id', $userId)->where('type', 'patient_card_bonus')->where('amount_minor', '>', 0)
+                ->where('metadata->patient_card_package_id', $package->id)->lockForUpdate()->exists();
+            if ($priceMinor > 0 && ! $alreadyAwarded) {
+                $ledger->move($ledger->locked($userId, WalletLedger::POINTS), $priceMinor, 'patient_card_bonus', 'Bonus unic la cumpărarea pachetului: '.$package->name, ['patient_card_package_id' => $package->id, 'patient_card_purchase_id' => $purchase->id, 'bonus_rule' => 'once_per_package']);
             }
 
             return $purchase;
-        });
+        }, attempts: 3);
     }
 
     /**

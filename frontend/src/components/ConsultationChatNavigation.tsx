@@ -8,7 +8,7 @@ import { apiRequest } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from './ui/button';
 
-type Context = { status: string; scheduled_at: string | null; proposed_scheduled_at: string | null; doctor_started_at: string | null; ready_for_doctor: boolean; can_accept: boolean; can_start: boolean; can_start_early: boolean };
+type Context = { status: string; scheduled_at: string | null; proposed_scheduled_at: string | null; doctor_started_at: string | null; ready_for_doctor: boolean; video_allowed: boolean; can_accept: boolean; can_start: boolean; can_start_early: boolean };
 const labels: Record<string, string> = { new: 'În așteptarea confirmării', accepted: 'Confirmată', rescheduled: 'Oră nouă propusă', completed: 'Finalizată', cancelled: 'Anulată', rejected: 'Refuzată', expired: 'Expirată', no_operator_available: 'Fără operator disponibil' };
 
 export function ConsultationChatNavigation({ requestId, onRefresh, showVideoLink = true, showCallStatus = true }: { requestId: string | number; onRefresh?: () => void; showVideoLink?: boolean; showCallStatus?: boolean }) {
@@ -42,11 +42,12 @@ export function ConsultationChatNavigation({ requestId, onRefresh, showVideoLink
   };
   const active = context?.status === 'accepted';
   const finished = context?.status === 'completed';
-  const canCall = Boolean(active && context?.ready_for_doctor);
+  const canCall = Boolean(active && context?.ready_for_doctor && context.video_allowed);
   const callReason = !context ? 'Se verifică disponibilitatea apelului.'
     : finished ? 'Consultația este finalizată. Pentru un apel nou este necesară o consultație nouă.'
     : ['cancelled', 'rejected', 'expired', 'no_operator_available'].includes(context.status) ? 'Această solicitare este închisă.'
     : !active ? 'Apelul devine disponibil după confirmarea consultației.'
+    : !context.video_allowed ? 'Apelul video nu este disponibil pentru această consultație.'
     : !context.ready_for_doctor ? 'Apelul va fi disponibil după completarea examinării.' : '';
 
   return <div className="shrink-0 border-b border-slate-100 bg-white px-3 py-2.5 sm:px-5">
@@ -64,7 +65,7 @@ export function ConsultationChatNavigation({ requestId, onRefresh, showVideoLink
         {context?.can_start && <Button size="sm" variant="outline" disabled={busy} onClick={() => act('start')}><Play size={16} />Începe</Button>}
         {/* Medicul poate propune până la trei ore: pacientul alege în cardul propunerii. */}
         {role === 'patient' && context?.status === 'rescheduled' && <Button asChild size="sm"><Link to="/patient/consultations"><Clock3 size={16} />Alege ora</Link></Button>}
-        <Button size="sm" variant={canCall ? 'default' : 'outline'} disabled={busy || !canCall} title={callReason || 'Sună participantul consultației'} aria-describedby={!canCall ? `call-reason-${requestId}` : undefined} onClick={() => act('video/invite')}><Video size={16} /><span className="hidden sm:inline">{busy ? 'Se conectează…' : 'Apel video'}</span><span className="sm:hidden">{busy ? '…' : 'Apel'}</span></Button>
+        {role === 'doctor' && <Button size="sm" variant={canCall ? 'default' : 'outline'} disabled={busy || !canCall} title={callReason || 'Sună pacientul'} aria-describedby={!canCall ? `call-reason-${requestId}` : undefined} onClick={() => act('video/invite')}><Video size={16} /><span className="hidden sm:inline">{busy ? 'Se conectează…' : 'Apel video'}</span><span className="sm:hidden">{busy ? '…' : 'Apel'}</span></Button>}
       </div>
     </div>
     {!canCall && context && <p id={`call-reason-${requestId}`} className="sr-only mt-1.5 pl-[42px] text-xs text-slate-500 sm:not-sr-only sm:block">{callReason}</p>}

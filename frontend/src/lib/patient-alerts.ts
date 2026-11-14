@@ -70,11 +70,12 @@ function forWhom(request: PatientConsultation): string {
   return request.patient_profile?.name ? ` · pentru ${request.patient_profile.name}` : '';
 }
 
-export function buildHomeAlerts({ requests, reviewable, profiles, needsPackage, now = new Date() }: {
+export function buildHomeAlerts({ requests, reviewable, profiles, needsPackage, freeProfileAvailable = false, now = new Date() }: {
   requests: PatientConsultation[];
   reviewable: ReviewableRequest[];
   profiles: HomeProfile[];
   needsPackage: boolean;
+  freeProfileAvailable?: boolean;
   now?: Date;
 }): HomeAlert[] {
   const alerts: HomeAlert[] = [];
@@ -84,7 +85,7 @@ export function buildHomeAlerts({ requests, reviewable, profiles, needsPackage, 
   if (requestable.length === 0 && profiles.length === 0) {
     alerts.push(needsPackage
       ? { id: 'setup', kind: 'setup', level: 1, chip: 'Pasul 1 din 3', title: 'Alege pachetul', sub: 'Un profil este o persoană din familie, cu fișa ei medicală, activ un an. Apoi adaugi pacientul și alegi medicul.' }
-      : { id: 'setup', kind: 'setup', level: 1, chip: 'Pasul 2 din 3', title: 'Adaugă pacientul', sub: 'Pachetul e activ. Spune-ne pentru cine e prima consultație, apoi alegi medicul.' });
+      : { id: 'setup', kind: 'setup', level: 1, chip: 'Pasul 2 din 3', title: 'Adaugă pacientul', sub: freeProfileAvailable ? 'Ai un profil gratuit pentru o persoană, valabil un an. Alege pacientul; consultațiile se achită separat.' : 'Spune-ne pentru cine e prima consultație, apoi alegi medicul.' });
   }
 
   for (const request of active) {

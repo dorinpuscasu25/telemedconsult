@@ -9,6 +9,7 @@ import { cn } from '../../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 import { apiRequest } from '../../lib/api';
+import type { PatientProfileEntitlements } from '../../lib/patient-profiles';
 import { patientAge } from '../../lib/medical-record';
 import { ProposalResponse } from '../../components/patient/ProposalResponse';
 import { buildHomeAlerts, countdown, formatTime, readDismissed, recordProgress, writeDismissed, type AlertLevel, type HomeAlert, type HomeProfile, type ReviewableRequest } from '../../lib/patient-alerts';
@@ -21,8 +22,8 @@ interface WalletData {
   reserved?: { total: number };
 }
 
-type Profile = HomeProfile & { active_until?: string | null };
-type ProfileResponse = {
+type Profile = HomeProfile & { active_until?: string | null; is_free?: boolean };
+type ProfileResponse = PatientProfileEntitlements & {
   patient_profiles: Profile[];
   card_purchases?: Array<{ available_slots: number; profile_slots: number; expires_at: string }>;
 };
@@ -88,15 +89,16 @@ export function PatientHome() {
   const purchases = profileData?.card_purchases ?? [];
   const availableSlots = purchases.reduce((sum, item) => sum + item.available_slots, 0);
   const packagesRequired = isEnabled('patient_cards') && paymentsEnabled;
-  const needsPackage = packagesRequired && availableSlots === 0;
+  const freeAvailable = Boolean(profileData?.free_profile?.available);
+  const needsPackage = packagesRequired && !freeAvailable && availableSlots === 0;
   const requestableProfiles = profiles.filter((profile) => profile.can_request_consultation);
-  const canAddPatient = !packagesRequired || availableSlots > 0;
+  const canAddPatient = profileData?.can_add_patient ?? (!packagesRequired || availableSlots > 0 || freeAvailable);
 
   // Propunerile de oră au cardul lor cu alegerea orei (P1b), deasupra celorlalte.
   const proposals = useMemo(() => requests.filter((request) => request.status === 'rescheduled'), [requests]);
   const alerts = useMemo(
-    () => buildHomeAlerts({ requests, reviewable, profiles, needsPackage, now }).filter((alert) => !dismissed.includes(alert.id) && alert.kind !== 'proposal'),
-    [requests, reviewable, profiles, needsPackage, now, dismissed]
+    () => buildHomeAlerts({ requests, reviewable, profiles, needsPackage, freeProfileAvailable: freeAvailable, now }).filter((alert) => !dismissed.includes(alert.id) && alert.kind !== 'proposal'),
+    [requests, reviewable, profiles, needsPackage, freeAvailable, now, dismissed]
   );
   const [current, ...rest] = alerts;
   const todo = showAll ? rest : rest.slice(0, TODO_VISIBLE);
@@ -127,7 +129,7 @@ export function PatientHome() {
           <Link to="/patient/profile" className="flex w-[140px] shrink-0 flex-col items-center justify-center gap-2 rounded-2xl border-[1.5px] border-dashed border-slate-300 p-3.5 text-center hover:border-slate-400 lg:w-auto">
             <span className="grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-slate-600"><Plus className="h-5 w-5" /></span>
             <span className="text-sm font-semibold text-slate-950">Adaugă pacient</span>
-            {packagesRequired && <span className="text-xs text-slate-500">{availableSlots} {availableSlots === 1 ? 'loc liber' : 'locuri libere'}</span>}
+            {packagesRequired && <span className="text-xs text-slate-500">{freeAvailable ? '1 profil gratuit disponibil' : `${availableSlots} ${availableSlots === 1 ? 'loc liber' : 'locuri libere'}`}</span>}
           </Link>
         )}
       </div>
@@ -152,7 +154,7 @@ export function PatientHome() {
           {proposals.map((request) => <ProposalResponse key={request.id} request={request} onChanged={load} />)}
 
           {isLoading ? <Skeleton className="h-44 w-full rounded-2xl" /> : current ? (
-            <NowCard alert={current} now={now} needsPackage={needsPackage} onChanged={load} onDismiss={dismiss} />
+            <NowCard alert={current} now={now} needsPackage={needsPackage} freeAvailable={freeAvailable} onChanged={load} onDismiss={dismiss} />
           ) : (
             <CalmCard canBook={doctorsEnabled && requestableProfiles.length > 0} />
           )}
@@ -215,8 +217,8 @@ export function PatientHome() {
 }
 
 /** Cardul „Acum”: un singur lucru, cu acțiunea lui. Forma se schimbă după tipul alertei (A–D din design). */
-function NowCard({ alert, now, needsPackage, onChanged, onDismiss }: { alert: HomeAlert; now: Date; needsPackage: boolean; onChanged: () => void; onDismiss: (id: string) => void }) {
-  if (alert.kind === 'setup') return <SetupCard alert={alert} needsPackage={needsPackage} />;
+function NowCard({ alert, now, needsPackage, freeAvailable, onChanged, onDismiss }: { alert: HomeAlert; now: Date; needsPackage: boolean; freeAvailable: boolean; onChanged: () => void; onDismiss: (id: string) => void }) {
+  if (alert.kind === 'setup') return <SetupCard alert={alert} needsPackage={needsPackage} freeAvailable={freeAvailable} />;
   if (alert.kind === 'live') return <LiveCard alert={alert} now={now} />;
 
   const scheduled = alert.request?.scheduled_at ? new Date(alert.request.scheduled_at) : null;
@@ -240,9 +242,9 @@ function NowCard({ alert, now, needsPackage, onChanged, onDismiss }: { alert: Ho
 }
 
 /** A: configurare neterminată, cu cei trei pași. */
-function SetupCard({ alert, needsPackage }: { alert: HomeAlert; needsPackage: boolean }) {
+function SetupCard({ alert, needsPackage, freeAvailable }: { alert: HomeAlert; needsPackage: boolean; freeAvailable: boolean }) {
   const steps = [
-    { label: 'Pachet', state: needsPackage ? 'current' : 'done' },
+    { label: freeAvailable ? 'Profil gratuit' : 'Pachet', state: needsPackage ? 'current' : 'done' },
     { label: 'Pacient', state: needsPackage ? 'todo' : 'current' },
     { label: 'Programare', state: 'todo' }
   ];
@@ -380,7 +382,8 @@ function PatientTile({ profile, canBook }: { profile: Profile; canBook: boolean 
       <Link to={`/patient/patients/${profile.id}`} className="flex flex-col gap-0.5">
         <span className="text-[15px] font-semibold text-slate-950">{name}</span>
         <span className="text-xs text-slate-500">{profile.birth_date ? `${patientAge(profile.birth_date)} · ` : ''}Fișa {progress.done}/{progress.total}</span>
-        {expires && <span className={cn('text-xs', soon ? 'text-orange-700' : 'text-slate-500')}>{soon ? 'Pachetul expiră' : 'Activ'} până la {expires.toLocaleDateString('ro-RO', { timeZone: TZ })}</span>}
+        {profile.is_free && <span className="text-xs font-medium text-blue-600">Profil gratuit</span>}
+        {expires && <span className={cn('text-xs', soon ? 'text-orange-700' : 'text-slate-500')}>{soon ? 'Profilul expiră' : 'Activ'} până la {expires.toLocaleDateString('ro-RO', { timeZone: TZ })}</span>}
       </Link>
       {canBook && profile.can_request_consultation && (
         <Link to={`/patient/doctors?patient_profile=${profile.id}`} className="mt-auto flex h-[38px] items-center justify-center rounded-[10px] border border-slate-200 bg-white text-[13px] font-semibold text-slate-900 hover:bg-slate-50 lg:h-9">Programează</Link>

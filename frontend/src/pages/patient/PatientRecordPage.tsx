@@ -19,7 +19,7 @@ import { MEDICAL_SECTIONS, patientAge, type MedicalRecord } from '../../lib/medi
 type Profile = PersonalProfile & MedicalProfile & { patient_code?: string | null; can_request_consultation?: boolean };
 type Tab = 'date' | 'fisa' | 'documente' | 'consultatii';
 
-const TABS: Array<[Tab, string]> = [['date', 'Date personale'], ['fisa', 'Fișa medicală'], ['documente', 'Documente'], ['consultatii', 'Consultații']];
+const TABS: Array<[Tab, string]> = [['date', 'Date personale'], ['fisa', 'Istoricul vieții'], ['documente', 'Date paraclinice'], ['consultatii', 'Consultații']];
 
 /** Pagina unui pacient: date personale, fișa medicală pe secțiuni, documente și consultații. */
 export function PatientRecordPage() {
@@ -118,10 +118,10 @@ export function PatientRecordPage() {
           <span className="flex min-w-0 flex-1 flex-col gap-0.5"><span className="truncate text-[22px] font-bold tracking-tight text-slate-950">{name}</span><span className="text-[13px] text-slate-500">{age ? `${age} · ` : ''}Cod pacient <span className="font-mono">{formatCode(profile.patient_code)}</span></span></span>
           {menu}
         </div>
-        <nav className="flex justify-between whitespace-nowrap px-2 lg:justify-start lg:gap-1 lg:px-0" aria-label="Secțiunile pacientului">
+        <nav className="flex justify-between overflow-x-auto whitespace-nowrap px-2 lg:justify-start lg:gap-1 lg:px-0" aria-label="Secțiunile pacientului">
           {TABS.map(([key, label]) => (
             <button key={key} type="button" onClick={() => setParam({ tab: key === 'date' ? null : key, section: null })} aria-current={tab === key ? 'page' : undefined}
-              className={cn('flex h-10 items-center px-1.5 text-[13px] lg:px-3 lg:text-sm', tab === key ? 'font-semibold text-slate-950 shadow-[inset_0_-2px_0_#2563EB]' : 'text-slate-500 hover:text-slate-900')}>
+              className={cn('flex h-10 shrink-0 items-center px-1.5 text-[13px] lg:px-3 lg:text-sm', tab === key ? 'font-semibold text-slate-950 shadow-[inset_0_-2px_0_#2563EB]' : 'text-slate-500 hover:text-slate-900')}>
               {label}
             </button>
           ))}

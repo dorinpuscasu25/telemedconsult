@@ -15,6 +15,9 @@ interface DashboardResponse {
   institution: Institution;
   summary: InstitutionSummary & {
     doctors_count: number;
+    pending_registrations: number;
+    appointments_total: number;
+    month_appointments: number;
     pending_invitations: number;
     month_consultations: number;
     month_gross: number;
@@ -69,6 +72,8 @@ export function InstitutionHome() {
         </div>
       )}
 
+      {Boolean(summary?.pending_registrations) && <Link to="/institution/doctors" className="flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm font-medium text-blue-900">{summary?.pending_registrations} cereri de înregistrare de la medici<ArrowRight className="h-4 w-4" /></Link>}
+      <div className="grid grid-cols-2 gap-3"><StatCard label="Programări totale" value={summary?.appointments_total ?? 0} detail="Toate stările" icon={ClipboardList} loading={loading} /><StatCard label="Programări luna aceasta" value={summary?.month_appointments ?? 0} detail="Distinct de consultațiile decontate" icon={ClipboardList} loading={loading} /></div>
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard label="Medici" value={summary?.doctors_count ?? 0} detail={summary?.pending_invitations ? `${summary.pending_invitations} invitații în așteptare` : 'Afiliați instituției'} icon={Stethoscope} loading={loading} />
         <StatCard label="Consultații luna aceasta" value={summary?.month_consultations ?? 0} detail={`${money(summary?.month_gross)} MDL încasați de la pacienți`} icon={ClipboardList} loading={loading} />

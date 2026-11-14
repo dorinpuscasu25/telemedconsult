@@ -4,8 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ConsultationRequest;
-use App\Models\DoctorProfile;
-use App\Models\OperatorProfile;
 use App\Models\Payment;
 use App\Models\PaymentEvent;
 use App\Models\User;
@@ -275,61 +273,13 @@ class WalletController extends Controller
                 $transaction->forceFill(['rate_snapshot' => ['wallet.topup_bonus_percent' => $rate]])->save();
             }
 
-            // Afiliere pacient: procent din alimentare către cel care a invitat
-            // utilizatorul prin linkul de referral. Legătura vine din tabela
-            // `referrals`, nu din body-ul cererii.
-            app(ReferralProgram::class)->creditTopUpCommission($payment);
-
-            // Afiliere medic/operator: codul este transmis explicit la top-up.
-            $this->creditAffiliateBonus($payment);
             app(FirstTopupPromotion::class)->credit($payment);
-
-            // Checkout pachet: plata a alimentat portofelul; pachetul se cumpără
-            // acum, în aceeași tranzacție. Un callback dublat iese mai sus (status paid).
-            app(PatientCardPurchaser::class)->completeCheckout($payment);
+            $purchase = app(PatientCardPurchaser::class)->completeCheckout($payment);
+            $payment->forceFill(['metadata' => [...($payment->metadata ?? []),
+                'referral_deposit_minor' => max(0, $payment->amount_minor - ($purchase?->amount_minor ?? 0)),
+            ]])->save();
+            app(ReferralProgram::class)->creditTopUpCommission($payment);
         });
-    }
-
-    private function creditAffiliateBonus(Payment $payment): void
-    {
-        $code = $payment->metadata['affiliate_code'] ?? null;
-        if (! $code) {
-            return;
-        }
-
-        $doctorProfile = DoctorProfile::where('affiliate_code', $code)->first();
-        $operatorProfile = $doctorProfile ? null : OperatorProfile::where('affiliate_code', $code)->first();
-        $beneficiaryId = $doctorProfile?->user_id ?? $operatorProfile?->user_id;
-        if (! $beneficiaryId || (int) $beneficiaryId === (int) $payment->user_id) {
-            return;
-        }
-
-        $config = app(PlatformConfig::class);
-        $rateKey = $doctorProfile ? 'rate.affiliate_doctor_topup' : 'rate.affiliate_operator';
-        $rate = $config->number($rateKey, 0);
-        $bonusMinor = (int) round($payment->amount_minor * ($rate / 100));
-        if ($bonusMinor <= 0) {
-            return;
-        }
-
-        $affiliateWallet = Wallet::firstOrCreate(
-            ['user_id' => $beneficiaryId, 'type' => WalletLedger::POINTS],
-            ['balance_minor' => 0, 'currency' => $payment->currency],
-        );
-        $affiliateWallet->increment('balance_minor', $bonusMinor);
-
-        WalletTransaction::create([
-            'wallet_id' => $affiliateWallet->id,
-            'wallet_type' => WalletLedger::POINTS,
-            'user_id' => $beneficiaryId,
-            'amount_minor' => $bonusMinor,
-            'currency' => $payment->currency,
-            'type' => 'affiliate_bonus',
-            'status' => 'completed',
-            'description' => 'Bonus afiliere alimentare wallet',
-            'metadata' => ['payment_id' => $payment->id, 'referred_user_id' => $payment->user_id],
-            'rate_snapshot' => [$rateKey => $rate],
-        ]);
     }
 
     private function resolvePaymentFromRequest(Request $request): ?Payment

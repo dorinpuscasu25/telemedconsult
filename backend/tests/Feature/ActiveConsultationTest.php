@@ -18,7 +18,7 @@ class ActiveConsultationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        config(['services.livekit.url' => 'wss://test.livekit.cloud', 'services.livekit.api_key' => 'test', 'services.livekit.api_secret' => 'test']);
+        config(['services.livekit.url' => 'wss://test.livekit.cloud', 'services.livekit.api_key' => 'test', 'services.livekit.api_secret' => 'test-secret-for-livekit-at-least-32-characters']);
     }
 
     public function test_authentication_and_persisted_role_are_required(): void
@@ -92,7 +92,7 @@ class ActiveConsultationTest extends TestCase
         $this->getJson('/api/v1/requests/active?role=operator')->assertOk()->assertJsonPath('data.0.video_available', true);
         config(['services.livekit.api_secret' => null]);
         $this->getJson('/api/v1/requests/active?role=operator')->assertOk()->assertJsonPath('data.0.video_available', false);
-        config(['services.livekit.api_secret' => 'test']);
+        config(['services.livekit.api_secret' => 'test-secret-for-livekit-at-least-32-characters']);
         $consultation->update(['consultation_kind' => 'video']);
         $this->getJson('/api/v1/requests/active?role=operator')->assertOk()->assertJsonPath('data.0.video_available', false);
     }

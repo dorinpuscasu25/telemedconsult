@@ -11,6 +11,7 @@ use App\Models\PatientProfile;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class RepairPatientContextsTest extends TestCase
@@ -29,6 +30,8 @@ class RepairPatientContextsTest extends TestCase
         $this->artisan('patients:repair-contexts')->assertSuccessful();
         $this->assertSame('test bytes', Storage::disk('local')->get($path));
         Storage::disk('public')->assertMissing($path);
+        $this->assertNull($message->fresh()->metadata['url']);
+        Sanctum::actingAs($owner);
         $this->assertStringContainsString('signature=', $message->fresh()->metadata['url']);
         $this->artisan('patients:repair-contexts')->assertSuccessful();
         $this->assertSame('test bytes', Storage::disk('local')->get($path));

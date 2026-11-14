@@ -1,6 +1,7 @@
 name: telemedconsult-local
 services:
   video:
+    profiles: ["local-video"]
     image: livekit/livekit-server@sha256:89ca9ce0791e18d6e03bf6e2c49ceb27e1c754eae8bd50c989386c1a5963791a
     container_name: telemedconsult-livekit-dev
     command: ["--dev", "--bind", "0.0.0.0", "--node-ip", "127.0.0.1", "--udp-port", "7882", "--keys", "devkey: telemedconsult-local-development-secret"]

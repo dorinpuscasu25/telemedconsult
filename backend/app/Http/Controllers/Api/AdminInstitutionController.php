@@ -3,11 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\InstitutionTransfer;
 use App\Models\MedicalInstitution;
 use App\Models\Role;
 use App\Models\User;
 use App\Rules\ValidPhoneNumber;
 use App\Services\InstitutionLedger;
+use App\Services\InstitutionMembership;
+use App\Services\InstitutionReports;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -43,7 +46,7 @@ class AdminInstitutionController extends Controller
             ...$this->institutionRules(),
             'manager_name' => ['required', 'string', 'max:255'],
             'manager_email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
-            'manager_phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber],
+            'manager_phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber(unique: true)],
             'manager_password' => ['nullable', 'string', 'min:8', 'max:255'],
         ], [
             'manager_email.unique' => 'Există deja un cont cu acest email. Alege alt email pentru manager.',
@@ -95,26 +98,19 @@ class AdminInstitutionController extends Controller
     {
         $this->authorizeAdmin($request);
 
-        if ($institution->earnings()->exists() || $institution->withdrawalRequests()->exists()) {
-            return response()->json([
-                'message' => 'Instituția are consultații sau plăți în evidență și nu poate fi ștearsă. Suspend-o în schimb.',
-            ], 422);
-        }
-
-        DB::transaction(function () use ($institution) {
+        DB::transaction(function () use ($institution): void {
+            $institution = MedicalInstitution::whereKey($institution->id)->lockForUpdate()->firstOrFail();
+            abort_if($institution->earnings()->exists() || $institution->withdrawalRequests()->exists()
+                || app(InstitutionReports::class)->appointmentsFor($institution)->exists()
+                || InstitutionTransfer::where('from_institution_id', $institution->id)->orWhere('to_institution_id', $institution->id)->exists(),
+                422, 'Instituția are programări, plăți sau transferuri în evidență și nu poate fi ștearsă. Suspend-o în schimb.');
             $managers = $institution->managers()->with('roles')->get();
-
-            $institution->doctorProfiles()->update([
-                'medical_institution_id' => null,
-                'institution_share_percent' => null,
-                'institution_joined_at' => null,
-            ]);
+            foreach ($institution->doctorProfiles()->get() as $profile) {
+                app(InstitutionMembership::class)->detachDoctor($profile);
+            }
             $institution->delete();
-
-            $managers
-                ->filter(fn (User $user) => $user->roles->every(fn (Role $role) => $role->name === 'institution'))
-                ->each(fn (User $user) => $user->delete());
-        });
+            $managers->filter(fn (User $user) => $user->roles->every(fn (Role $role) => $role->name === 'institution'))->each(fn (User $user) => $user->delete());
+        }, attempts: 3);
 
         return response()->json(['message' => 'Instituția a fost ștearsă.']);
     }
@@ -125,7 +121,7 @@ class AdminInstitutionController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
-            'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber],
+            'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber(unique: true)],
             'password' => ['nullable', 'string', 'min:8', 'max:255'],
         ], [
             'email.unique' => 'Există deja un cont cu acest email. Alege alt email pentru manager.',

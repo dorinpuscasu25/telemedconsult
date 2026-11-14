@@ -20,6 +20,7 @@ export function MedicalRecordDetails({ record, documents = [] }: { record?: Medi
   const nothingFlags = (record?.nothing_to_report ?? {}) as Record<string, unknown>;
   const nothingToReport = MEDICAL_SECTIONS.filter((section) => nothingFlags[section.key] === true).map((section) => section.title);
   return <div className="space-y-3">
+    <h3 className="font-semibold text-slate-900">Istoricul vieții</h3>
     {!sections.length && !nothingToReport.length && <p className="text-sm text-slate-400">Pacientul nu a completat încă antecedentele structurate.</p>}
     {nothingToReport.length > 0 && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600"><span className="font-semibold text-slate-800">Nimic de raportat:</span> {nothingToReport.join(', ')}</p>}
     {sections.map((section) => {
@@ -37,10 +38,11 @@ export function MedicalRecordDetails({ record, documents = [] }: { record?: Medi
         </div>
       </details>;
     })}
-    {(['investigation', 'analysis', 'imaging', 'functional', 'clinical'] as const).map((type) => {
+    <h3 className="pt-3 font-semibold text-slate-900">Date paraclinice</h3>
+    {(['analysis', 'functional', 'imaging', 'investigation', 'clinical'] as const).map((type) => {
       const items = documents.filter((doc) => type === 'clinical' ? !['investigation', 'analysis', 'imaging', 'functional'].includes(doc.type) : doc.type === type);
-      if (!items.length) return null;
-      return <details key={type} open className="rounded-xl border p-3"><summary className="cursor-pointer text-sm font-semibold">{type === 'imaging' ? 'Investigații imagistice' : type === 'functional' ? 'Investigații funcționale' : type === 'analysis' ? 'Analize de laborator' : type === 'clinical' ? 'Fotografii clinice' : 'Investigații'} ({items.length})</summary><div className="mt-3 space-y-3">{items.map((item) => <div key={item.id} className="rounded-lg bg-slate-50 p-3 text-sm"><p className="font-medium">{item.title}</p><p className="text-xs text-slate-500">{item.performed_at ? dateOnly(item.performed_at) : 'Data efectuării neprecizată'}</p>{item.notes && <p className="mt-1 whitespace-pre-wrap">{item.notes}</p>}{item.url && <a href={item.url} target="_blank" rel="noreferrer" className="mt-2 inline-block font-semibold text-blue-700">Deschide documentul</a>}</div>)}</div></details>;
+      if (!items.length && (type === 'investigation' || type === 'clinical')) return null;
+      return <details key={type} open className="rounded-xl border p-3"><summary className="cursor-pointer text-sm font-semibold">{type === 'imaging' ? 'Investigații imagistice' : type === 'functional' ? 'Investigații funcționale' : type === 'analysis' ? 'Analize de laborator' : type === 'clinical' ? 'Fotografii clinice' : 'Documente de încadrat'} ({items.length})</summary><div className="mt-3 space-y-3">{items.length === 0 && <p className="text-sm text-slate-500">Nu sunt documente în această categorie.</p>}{items.map((item) => <div key={item.id} className="rounded-lg bg-slate-50 p-3 text-sm"><p className="font-medium">{item.title}</p><p className="text-xs text-slate-500">{item.performed_at ? dateOnly(item.performed_at) : 'Data efectuării neprecizată'}</p>{item.notes && <p className="mt-1 whitespace-pre-wrap">{item.notes}</p>}{item.url && <a href={item.url} target="_blank" rel="noreferrer" className="mt-2 inline-block font-semibold text-blue-700">Deschide documentul</a>}</div>)}</div></details>;
     })}
   </div>;
 }

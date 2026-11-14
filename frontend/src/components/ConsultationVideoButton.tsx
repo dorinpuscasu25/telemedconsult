@@ -4,7 +4,7 @@ import { Video } from 'lucide-react';
 import { apiRequest } from '../lib/api';
 import { Button, type ButtonProps } from './ui/button';
 
-type VideoStatus = { available: boolean; configured: boolean; status: string; consultation?: { doctor_started_at: string | null } };
+type VideoStatus = { available: boolean; configured: boolean; status: string; includes_video?: boolean; consultation?: { doctor_started_at: string | null } };
 
 /** `onlyWhenStarted`: butonul apare doar după ce medicul a pornit consultația (pacientul nu sună el). */
 export function ConsultationVideoButton({ requestId, size = 'sm', variant = 'default', className, label = 'Intră în apelul video', onlyWhenStarted = false }: { requestId: string | number; size?: ButtonProps['size']; variant?: ButtonProps['variant']; className?: string; label?: string; onlyWhenStarted?: boolean }) {
@@ -22,7 +22,7 @@ export function ConsultationVideoButton({ requestId, size = 'sm', variant = 'def
     const interval = window.setInterval(refresh, 5000);
     return () => { cancelled = true; window.clearInterval(interval); };
   }, [requestId]);
-  if (!status || status.status !== 'accepted') return null;
+  if (!status || status.status !== 'accepted' || status.includes_video === false || !status.configured) return null;
   if (onlyWhenStarted && !status.consultation?.doctor_started_at) return null;
   return <Button asChild size={size} variant={variant} className={className}>
     <Link to={`/consultations/${requestId}/video`} state={{ returnTo: location.pathname + location.search }}><Video className="h-4 w-4" />{label}</Link>

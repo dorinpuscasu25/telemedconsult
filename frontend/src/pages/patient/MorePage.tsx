@@ -7,8 +7,9 @@ import { useFeatureFlags } from '../../contexts/FeatureFlagsContext';
 import { useSiteContent } from '../../contexts/SiteContentContext';
 import { apiRequest } from '../../lib/api';
 import { useShellCounts } from '../../lib/use-shell-counts';
+import type { PatientProfileEntitlements } from '../../lib/patient-profiles';
 
-type ProfileSummary = { patient_profiles: unknown[]; card_purchases?: Array<{ available_slots: number }> };
+type ProfileSummary = PatientProfileEntitlements & { patient_profiles: unknown[]; card_purchases?: Array<{ available_slots: number }> };
 
 /** N2b: „Mai mult” pe telefon — pacienții, afilierea, reclamațiile, noutățile, Telegramul și contul. */
 export function MorePage() {
@@ -27,7 +28,7 @@ export function MorePage() {
   }, [affiliate]);
 
   const count = profiles?.patient_profiles.length ?? 0;
-  const free = (profiles?.card_purchases ?? []).reduce((sum, item) => sum + item.available_slots, 0);
+  const availableSlots = (profiles?.card_purchases ?? []).reduce((sum, item) => sum + item.available_slots, 0);
   const initials = (user?.name || '?').split(' ').map((part) => part.charAt(0)).slice(0, 2).join('').toUpperCase();
 
   return (
@@ -44,11 +45,11 @@ export function MorePage() {
         </Link>
 
         <Group>
-          <Row to="/patient/profile" icon={<Users className="h-5 w-5" />} title="Pacienții mei" sub={profiles ? `${count} ${count === 1 ? 'pacient' : 'pacienți'}${free ? ` · ${free} ${free === 1 ? 'loc liber' : 'locuri libere'}` : ''}` : undefined} />
+          <Row to="/patient/profile" icon={<Users className="h-5 w-5" />} title="Pacienții mei" sub={profiles ? `${count} ${count === 1 ? 'pacient' : 'pacienți'}${profiles.free_profile?.available ? ' · 1 profil gratuit disponibil' : availableSlots ? ` · ${availableSlots} ${availableSlots === 1 ? 'loc liber' : 'locuri libere'}` : ''}` : undefined} />
         </Group>
 
         <Group>
-          {affiliate && <Row to="/patient/profile?tab=referrals" icon={<Gift className="h-5 w-5" />} title="Program de afiliere" sub={commission ? `${commission}% din alimentările celor invitați` : 'Invită pe cineva și primești bonusuri'} />}
+          {affiliate && <Row to="/patient/profile?tab=referrals" icon={<Gift className="h-5 w-5" />} title="Program de afiliere" sub={commission ? `${commission}% din prima alimentare a fiecărui invitat` : 'Invită pe cineva și primești bonusuri'} />}
           <Row to="/patient/complaints" icon={<MessageSquareWarning className="h-5 w-5" />} title="Reclamații și recenzii" sub="Scrie-ne dacă ceva n-a fost în regulă" />
           <Row to="/patient/noutati" icon={<Newspaper className="h-5 w-5" />} title={text('header.nav_news')} sub="Articole și ghiduri" />
           <Row to="/patient/telegram" icon={<Send className="h-5 w-5" />} title="Notificări Telegram" sub={telegramLinked ? 'Conectat' : 'Neconectat'}

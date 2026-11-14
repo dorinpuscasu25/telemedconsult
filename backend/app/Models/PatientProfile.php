@@ -13,6 +13,8 @@ class PatientProfile extends Model
 {
     use StoresDatesInAppTimezone;
 
+    protected $attributes = ['is_free' => false];
+
     /**
      * Codul se generează la creare și nu e mass-assignable: e identificatorul pe
      * care îl trimitem în HIGO și după care operatorul găsește pacientul în
@@ -94,6 +96,7 @@ class PatientProfile extends Model
         return [
             'patient_code' => 'string',
             'pseudonymized' => 'boolean',
+            'is_free' => 'boolean',
             'birth_date' => 'date',
             'life_history' => 'array',
             'address_details' => 'array',

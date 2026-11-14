@@ -196,7 +196,7 @@ class DoctorConsultationViewTest extends TestCase
         // Acuzele au fost date la solicitare; nu există un al doilea pas.
         Sanctum::actingAs($scenario['doctor']);
         $this->postJson("/api/v1/requests/{$requestId}/start")->assertOk();
-        $this->postJson("/api/v1/requests/{$requestId}/complete", [
+        $this->postJson("/api/v1/requests/{$requestId}/complete", ['higo_status' => 'not_performed',
             'diagnosis' => 'Bronșită acută',
         ])->assertOk();
 
@@ -319,7 +319,7 @@ class DoctorConsultationViewTest extends TestCase
 
         Sanctum::actingAs($scenario['operator']);
         $this->postJson("/api/v1/requests/{$requestId}/accept")->assertOk();
-        $this->postJson("/api/v1/requests/{$requestId}/complete", [
+        $this->postJson("/api/v1/requests/{$requestId}/complete", ['higo_status' => 'not_performed',
             'diagnosis' => 'Măsurători efectuate la domiciliu.',
         ])->assertOk();
 
@@ -333,7 +333,7 @@ class DoctorConsultationViewTest extends TestCase
 
         // Aici există medic, deci poarta rămâne: fără date, fără concluzie.
         Sanctum::actingAs($scenario['doctor']);
-        $this->postJson("/api/v1/requests/{$requestId}/complete", ['diagnosis' => 'Grabă'])
+        $this->postJson("/api/v1/requests/{$requestId}/complete", ['higo_status' => 'not_performed', 'diagnosis' => 'Grabă'])
             ->assertStatus(422);
     }
 

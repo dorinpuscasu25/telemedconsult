@@ -25,6 +25,7 @@ class ApiOtpDemoTest extends TestCase
     public function test_registration_returns_demo_otp_and_accepts_it_for_verification(): void
     {
         $response = $this->postJson('/api/v1/auth/register', [
+            'phone' => fake()->unique()->numerify('069######'),
             'name' => 'Ion Popescu',
             'email' => 'ion@example.test',
             'password' => 'password123',

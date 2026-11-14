@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['investigation_recommendations', 'consultation_request_id', 'patient_complaints', 'objective_exam', 'higo_reviewed', 'patient_id', 'patient_profile_id', 'doctor_id', 'status', 'current_illness_history', 'objective_data_snapshot', 'diagnosis', 'treatment_plan', 'recommendations', 'prescription_notes', 'price', 'fhir_payload', 'signed_pdf_path', 'completed_at'])]
+#[Fillable(['higo_status', 'higo_exam_id', 'higo_exam_performed_at', 'higo_reviewed_at', 'doctor_history_notes', 'investigation_recommendations', 'consultation_request_id', 'patient_complaints', 'objective_exam', 'higo_reviewed', 'patient_id', 'patient_profile_id', 'doctor_id', 'status', 'current_illness_history', 'objective_data_snapshot', 'diagnosis', 'treatment_plan', 'recommendations', 'prescription_notes', 'price', 'fhir_payload', 'signed_pdf_path', 'completed_at'])]
 class Consultation extends Model
 {
     use StoresDatesInAppTimezone;
@@ -31,6 +31,8 @@ class Consultation extends Model
     {
         return [
             'higo_reviewed' => 'boolean',
+            'higo_exam_performed_at' => 'datetime',
+            'higo_reviewed_at' => 'datetime',
             'fhir_payload' => 'array',
             'objective_data_snapshot' => 'array',
             'completed_at' => 'datetime',

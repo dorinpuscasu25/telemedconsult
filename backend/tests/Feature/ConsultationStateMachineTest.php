@@ -63,7 +63,7 @@ class ConsultationStateMachineTest extends TestCase
         [$doctor, $consultationRequest] = $this->doctorScenario();
         Sanctum::actingAs($doctor);
 
-        $this->postJson("/api/v1/requests/{$consultationRequest->id}/complete", ['diagnosis' => 'Faringită'])
+        $this->postJson("/api/v1/requests/{$consultationRequest->id}/complete", ['higo_status' => 'not_performed', 'diagnosis' => 'Faringită'])
             ->assertUnprocessable()
             ->assertJsonPath('message', 'Operatorul nu a finalizat încă examinarea la domiciliu.');
     }
@@ -75,7 +75,7 @@ class ConsultationStateMachineTest extends TestCase
 
         $consultationRequest->forceFill(['anamnesis_completed_at' => now(), 'objective_data_completed_at' => now()])->save();
 
-        $this->postJson("/api/v1/requests/{$consultationRequest->id}/complete", ['diagnosis' => 'Faringită acută'])
+        $this->postJson("/api/v1/requests/{$consultationRequest->id}/complete", ['higo_status' => 'not_performed', 'diagnosis' => 'Faringită acută'])
             ->assertSuccessful();
     }
 

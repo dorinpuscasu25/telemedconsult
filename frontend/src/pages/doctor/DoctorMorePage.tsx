@@ -39,6 +39,7 @@ export function DoctorMorePage() {
 
         <Group>
           <Row to="/doctor/stats" title="Statistici și venituri" sub={stats ? `${MONTH[new Date().getMonth()]}: ${mdl(stats.month)}` : undefined} />
+          <Row to="/doctor/admin-messages" title="Mesaje administrator" sub="Corespondență administrativă" />
           <Row to="/doctor/noutati" title="Noutăți" sub={unreadNews ? `${unreadNews} ${unreadNews === 1 ? 'anunț necitit' : 'anunțuri necitite'}` : 'Anunțuri de la platformă'}
             dot={unreadNews > 0} />
           <Row to="/doctor/telegram" title="Notificări Telegram" sub={telegramLinked ? 'Conectat' : 'Neconectat'} />

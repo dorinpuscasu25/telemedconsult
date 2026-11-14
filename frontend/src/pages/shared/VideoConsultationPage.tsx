@@ -12,6 +12,7 @@ import { Button } from '../../components/ui/button';
 import type { VideoStatus, VideoConnection } from '../../lib/consultation-video';
 import { ConclusionPanel, type ConclusionRequest } from '../../components/doctor/ConclusionEditor';
 import { toast } from 'sonner';
+import { NextPatientDelayNotice } from '../../components/NextPatientDelayNotice';
 
 const VideoCallPanel = lazy(() => import('../../components/VideoCallPanel'));
 
@@ -30,6 +31,7 @@ export function VideoConsultationPage() {
   const joiningRef = useRef(false);
   const attempt = useRef(0);
   const answered = useRef<number | null>(null);
+  const joinedSession = useRef<string | null | undefined>(undefined);
   const patientCall = usePatientCall();
   const isPatient = role === 'patient';
   const patientInThisCall = isPatient && patientCall.session?.requestId === String(requestId);
@@ -37,6 +39,7 @@ export function VideoConsultationPage() {
   const navigate = useNavigate();
   // P2a: medicul scrie concluzia din apel; aceeași ciornă ca în Consultații.
   const [conclusionOpen, setConclusionOpen] = useState(false);
+  const [delayOpen, setDelayOpen] = useState(false);
   const [conclusionRequest, setConclusionRequest] = useState<ConclusionRequest | null>(null);
   const darkCall = role === 'doctor' && Boolean(connection);
   useEffect(() => {
@@ -54,19 +57,31 @@ export function VideoConsultationPage() {
     return () => window.clearInterval(timer);
   }, [darkCall]);
   const onDeviceError = useCallback(() => setError('Permite accesul la cameră și microfon. Poți intra și cu acestea oprite.'), []);
+  const stopRinging = useCallback(async () => {
+    if (role !== 'doctor') return;
+    try {
+      const { call } = await apiRequest<{ call: CallInvitation | null }>(`/requests/${requestId}/video/call`);
+      if (call?.status === 'ringing' && Number(call.caller_id) === Number(user?.id)) await apiRequest(`/video-calls/${call.id}/respond`, { method: 'POST', body: JSON.stringify({ action: 'cancel' }) });
+    } catch { /* Invitația expiră dacă rețeaua nu permite anularea. */ }
+  }, [role, requestId, user?.id]);
   const onDisconnected = useCallback(() => {
     if (connection?.attemptId !== attempt.current) return;
     attempt.current += 1;
+    joinedSession.current = undefined;
+    void stopRinging();
     setConnection(null); setRejoining(true); setError(''); setNotice('Ai ieșit din apel. Poți reveni cât timp consultația este activă.');
-  }, [connection?.attemptId]);
+  }, [connection?.attemptId, stopRinging]);
   const onConnectionError = useCallback(() => {
     if (connection?.attemptId !== attempt.current) return;
     attempt.current += 1;
+    joinedSession.current = undefined;
+    void stopRinging();
     setConnection(null); setRejoining(true); setError('Conexiunea video a eșuat. Verifică internetul și încearcă din nou.');
-  }, [connection?.attemptId]);
+  }, [connection?.attemptId, stopRinging]);
 
   useEffect(() => {
     attempt.current += 1;
+    joinedSession.current = undefined;
     setStatus(null);
     setConnection(null);
     setJoining(false);
@@ -74,6 +89,10 @@ export function VideoConsultationPage() {
     setStatusError('');
     setNotice('');
     setRejoining(false);
+    setConclusionRequest(null);
+    setConclusionOpen(false);
+    setDelayOpen(false);
+    answered.current = null;
     joiningRef.current = false;
     let cancelled = false;
     let fetching = false;
@@ -85,6 +104,10 @@ export function VideoConsultationPage() {
         if (cancelled) return;
         setStatus(next);
         setStatusError('');
+        if (joinedSession.current !== undefined && joinedSession.current !== (next.consultation?.session_id ?? null)) {
+          attempt.current += 1; joinedSession.current = undefined; setConnection(null); setJoining(false); joiningRef.current = false;
+          setRejoining(true); setNotice('Consultația a trecut la o sesiune nouă. Intră din nou când medicul reia apelul.');
+        }
         if (!next.available) { attempt.current += 1; setConnection(null); setJoining(false); joiningRef.current = false; setError(''); setNotice(''); }
       } catch (err) {
         if (cancelled) return;
@@ -127,10 +150,11 @@ export function VideoConsultationPage() {
       const current = await apiRequest<{ call: CallInvitation | null }>(`/requests/${requestId}/video/call`);
       if (current.call?.status === 'ringing' && Number(current.call.recipient_id) === Number(user?.id)) {
         await apiRequest(`/video-calls/${current.call.id}/respond`, { method: 'POST', body: JSON.stringify({ action: 'accept' }) });
-      } else if (!location.state?.answerCallId) {
+      } else if (role === 'doctor' && !location.state?.answerCallId) {
         try { await inviteVideoCall(requestId || ''); } catch { setNotice('Ai intrat în pagina apelului, dar invitația nu a fost trimisă. Folosește „Sună prin video” pentru a încerca din nou.'); }
       }
       if (attempt.current !== currentAttempt) return;
+      joinedSession.current = token.session_id ?? null;
       if (isPatient) {
         // Pacientul: apelul rămâne deschis între pagini (ecran întreg sau minimizat).
         const doctor = status?.consultation?.participants.find((person) => person.role === 'doctor');
@@ -139,7 +163,8 @@ export function VideoConsultationPage() {
           connection: { ...token, choices: { ...choices, username: token.participant.name } },
           doctorName: doctor?.name ?? 'Medicul',
           patientName: status?.consultation?.patient_profile?.display_name ?? null,
-          durationMinutes
+          durationMinutes: status?.consultation?.duration_minutes ?? durationMinutes,
+          startedAt: status?.consultation?.doctor_started_at ? new Date(status.consultation.doctor_started_at).getTime() : null
         });
         return;
       }
@@ -163,19 +188,22 @@ export function VideoConsultationPage() {
     const owner = consultation.participants.find((person) => person.role === 'patient');
     const startedAt = consultation.doctor_started_at ? new Date(consultation.doctor_started_at).getTime() : null;
     const elapsed = startedAt ? Math.max(0, Math.floor((tick - startedAt) / 1000)) : 0;
+    const duration = consultation.duration_minutes ?? 10;
+    const remaining = duration * 60 - elapsed;
+    const overtime = remaining < 0;
     const clock = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
     const service = (conclusionRequest as (ConclusionRequest & { service?: { name: string; duration: number | null; type: string } }) | null)?.service;
     const patientName = consultation.patient_profile?.display_name ?? owner?.name ?? 'Pacient';
     return (
       <div className="fixed inset-0 z-50 flex bg-[#0B1220] text-slate-200">
-        <div className="flex min-w-0 flex-1 flex-col gap-3 p-4">
+        <div className="relative flex min-w-0 flex-1 flex-col gap-3 p-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 flex-col gap-0.5">
               <span className="truncate text-[15px] font-semibold text-white">{patientName}{service ? ` · ${service.name}` : ''}</span>
               {owner && owner.name !== patientName && <span className="text-xs text-slate-400">cu {owner.name}</span>}
             </div>
             <div className="flex items-center gap-2">
-              {startedAt && <span className="rounded-lg bg-white/10 px-2.5 py-1.5 font-mono text-sm">{clock(elapsed)}{service?.duration && service.type !== 'chat' ? ` / ${clock(service.duration * 60)}` : ''}</span>}
+              {startedAt && (conclusionOpen ? <span className="rounded-lg bg-white/10 px-2.5 py-1.5 font-mono text-sm">{clock(elapsed)} / {clock(duration * 60)}</span> : <span className={`flex h-10 items-center gap-2.5 rounded-full px-4 sm:absolute sm:left-1/2 sm:top-4 sm:-translate-x-1/2 ${overtime ? 'bg-orange-600' : 'bg-black/40'}`}><span className={`h-2 w-2 rounded-full ${overtime ? 'bg-white' : 'bg-green-400'}`} /><span className="font-mono text-[17px] font-semibold">{overtime ? '−' : ''}{clock(Math.abs(remaining))}</span><span className="text-xs text-white/70 max-sm:hidden">{overtime ? 'peste durată' : 'rămase'}</span></span>)}
               <Link to={returnTo} className="rounded-lg px-2.5 py-1.5 text-sm text-slate-300 hover:bg-white/10">Înapoi</Link>
             </div>
           </div>
@@ -184,9 +212,10 @@ export function VideoConsultationPage() {
           <div className="min-h-0 flex-1">
             <Suspense fallback={<p className="p-12 text-center text-slate-400">Se încarcă interfața video...</p>}>
               <VideoCallPanel dark connection={connection} joining={joining} onJoin={join} participant={status.participant} context={consultation} rejoining={rejoining}
-                onDisconnected={onDisconnected} onConnectionError={onConnectionError} onDeviceError={onDeviceError} onConclusion={openConclusion} conclusionOpen={conclusionOpen} />
+                onDisconnected={onDisconnected} onConnectionError={onConnectionError} onDeviceError={onDeviceError} onConclusion={openConclusion} conclusionOpen={conclusionOpen} onDelay={overtime ? () => setDelayOpen((value) => !value) : undefined} />
             </Suspense>
           </div>
+          {delayOpen && overtime && requestId && <NextPatientDelayNotice requestId={requestId} onClose={() => setDelayOpen(false)} />}
         </div>
         {conclusionOpen && (
           <div className="absolute inset-0 z-10 flex bg-white lg:static lg:w-[460px] lg:shrink-0">

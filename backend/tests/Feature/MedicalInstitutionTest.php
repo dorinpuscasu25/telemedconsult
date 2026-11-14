@@ -138,7 +138,7 @@ class MedicalInstitutionTest extends TestCase
             ->assertJsonPath('invitation.account_exists', false);
 
         $this->postJson('/api/v1/institution-invitations/'.$token.'/accept', [
-            'name' => 'Dr. Nou Medic',
+            'name' => 'Dr. Nou Medic', 'phone' => '069123456',
             'password' => 'parola-sigura-1',
             'password_confirmation' => 'parola-sigura-1',
         ])->assertCreated()->assertJsonStructure(['token']);
@@ -184,7 +184,7 @@ class MedicalInstitutionTest extends TestCase
         $request = $this->consultationFor($doctor, amountMinor: 100000);
 
         Sanctum::actingAs($doctor);
-        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['diagnosis' => 'Test'])->assertOk();
+        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['higo_status' => 'not_performed', 'diagnosis' => 'Test'])->assertOk();
         // Partea instituției se fixează abia când pacientul închide consultația.
         $this->assertSame(0, InstitutionEarning::count());
         Sanctum::actingAs(User::findOrFail($request->patient_id));

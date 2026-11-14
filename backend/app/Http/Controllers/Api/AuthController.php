@@ -7,6 +7,7 @@ use App\Http\Requests\RegisterRequest;
 use App\Mail\EmailOtpMail;
 use App\Models\DoctorProfile;
 use App\Models\EmailVerificationOtp;
+use App\Models\MedicalInstitution;
 use App\Models\OperatorProfile;
 use App\Models\Role;
 use App\Models\Specialty;
@@ -112,7 +113,7 @@ class AuthController extends Controller
 
         return response()->json([
             'message' => $isProvider
-                ? 'Cerere trimisă. Confirmă emailul; contul va fi activat după aprobarea administratorului.'
+                ? ($accountType === 'doctor' ? 'Confirmă emailul și alege instituția medicală. Managerul instituției îți va aproba contul.' : 'Cerere trimisă. Confirmă emailul; contul va fi activat după aprobarea administratorului platformei.')
                 : 'Cont creat. Am trimis codul de verificare pe email.',
             'email' => $user->email,
             'account_type' => $accountType,
@@ -190,23 +191,24 @@ class AuthController extends Controller
         abort_unless($user->email_verified_at, 422, 'Confirmă mai întâi adresa de email.');
 
         $validated = $request->validate([
-            'institution_id' => ['nullable', 'integer', Rule::exists('medical_institutions', 'id')->where('status', 'active')],
+            'institution_id' => ['required', 'integer', Rule::exists('medical_institutions', 'id')->where('status', 'active')],
         ], ['institution_id.exists' => 'Instituția aleasă nu mai este disponibilă.']);
 
-        $first = ! $user->doctorProfile->institution_chosen_at;
-        $user->doctorProfile->forceFill([
-            'requested_institution_id' => $validated['institution_id'] ?? null,
-            'institution_chosen_at' => now(),
-        ])->save();
+        $changed = DB::transaction(function () use ($user, $validated): bool {
+            $locked = User::lockForUpdate()->findOrFail($user->id);
+            abort_unless($locked->status === 'pending', 422, 'Contul nu mai este în așteptare.');
+            $profile = $locked->doctorProfile()->lockForUpdate()->firstOrFail();
+            $changed = (int) $profile->requested_institution_id !== (int) $validated['institution_id'];
+            $profile->forceFill(['requested_institution_id' => $validated['institution_id'], 'institution_chosen_at' => now()])->save();
 
-        if ($first) {
-            $institution = $user->doctorProfile->requestedInstitution()->first();
-            $admins = User::whereHas('roles', fn ($query) => $query->where('name', 'admin'))->get();
-            Notification::send($admins, new AppEventNotification(
-                'Medic gata de aprobare',
-                $user->name.($institution ? ' vrea să lucreze la '.$institution->name.'.' : ' lucrează independent.').' Verifică și aprobă din panoul de administrare.',
-                '/admin/registrations',
-                'info',
+            return $changed;
+        });
+        if ($changed) {
+            $institution = MedicalInstitution::findOrFail($validated['institution_id']);
+            Notification::send($institution->managers()->get(), new AppEventNotification(
+                'Medic în așteptarea aprobării',
+                $user->name.' a ales instituția '.$institution->name.'. Verifică cererea în panoul instituției.',
+                '/institution/doctors',
             ));
         }
 

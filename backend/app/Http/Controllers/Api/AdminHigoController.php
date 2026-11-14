@@ -13,10 +13,10 @@ use App\Services\Higo\ExamMapping;
 use App\Services\Higo\HigoExamIngestor;
 use App\Services\Higo\HigoProvisioner;
 use App\Services\ObjectiveDataSchema;
+use App\Services\PatientRecordAccess;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\Rule;
 
 class AdminHigoController extends Controller
@@ -377,11 +377,7 @@ class AdminHigoController extends Controller
                 'size_bytes' => $media->size_bytes,
                 'error' => $media->error,
                 'url' => $media->isStored()
-                    ? URL::temporarySignedRoute(
-                        'exam-media.show',
-                        now()->addMinutes((int) config('higo.media.link_minutes', 60)),
-                        ['media' => $media->id],
-                    )
+                    ? app(PatientRecordAccess::class)->fileUrl('exam-media.show', ['media' => $media->id])
                     : null,
             ])
             ->values()

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\HigoExamMedia;
+use App\Services\PatientRecordAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -24,6 +25,8 @@ class ExamMediaController extends Controller
 {
     public function show(Request $request, HigoExamMedia $media): Response
     {
+        $viewer = app(PatientRecordAccess::class)->signedViewer($request);
+        abort_unless($viewer && ($viewer->hasRole('admin') || ($media->consultationRequest && app(PatientRecordAccess::class)->canReadRequest($viewer, $media->consultationRequest))), 403, 'Accesul la examinare a expirat.');
         abort_unless($media->isStored(), 404, 'Fișierul examinării nu a fost descărcat.');
 
         $disk = Storage::disk($media->disk ?: (string) config('higo.media.disk', 'local'));
@@ -50,7 +53,7 @@ class ExamMediaController extends Controller
         // prin API, nu ca antet brut — antetul brut e recalculat de Symfony
         // când se adaugă `Last-Modified`, și ajungea „public”.
         $response->setPrivate();
-        $response->setMaxAge(3600);
+        $response->headers->set('Cache-Control', 'private, no-store');
 
         return $response;
     }

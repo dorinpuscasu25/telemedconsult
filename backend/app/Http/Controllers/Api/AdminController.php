@@ -79,7 +79,7 @@ class AdminController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber],
+            'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber(unique: true)],
             'telegram_chat_id' => ['nullable', 'string', 'max:100'],
             'password' => ['nullable', 'string', 'min:8'],
             'roles' => ['required', 'array', 'min:1'],
@@ -155,7 +155,7 @@ class AdminController extends Controller
         $validated = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'email' => ['sometimes', 'required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user)],
-            'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber],
+            'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber(unique: true, ignoreUserId: $user->id)],
             'telegram_chat_id' => ['nullable', 'string', 'max:100'],
             'password' => ['nullable', 'string', 'min:8'],
             'status' => ['sometimes', Rule::in(['active', 'suspended'])],

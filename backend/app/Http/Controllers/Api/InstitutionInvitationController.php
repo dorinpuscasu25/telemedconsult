@@ -63,7 +63,7 @@ class InstitutionInvitationController extends Controller
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber],
+            'phone' => ['required', 'string', 'max:50', new ValidPhoneNumber(unique: true)],
             'password' => ['required', 'confirmed', Password::min(8)],
             'specialty_id' => [Rule::requiredIf(! $invitation->specialty_id), 'nullable', Rule::exists('specialties', 'id')],
             'license_number' => ['nullable', 'string', 'max:255'],

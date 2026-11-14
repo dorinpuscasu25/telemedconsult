@@ -2,6 +2,7 @@
 
 namespace App\Rules;
 
+use App\Models\User;
 use App\Services\Higo\HigoResourceBuilder;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -16,6 +17,8 @@ use Illuminate\Translation\PotentiallyTranslatedString;
  */
 class ValidPhoneNumber implements ValidationRule
 {
+    public function __construct(private readonly bool $unique = false, private readonly ?int $ignoreUserId = null) {}
+
     /**
      * @param  Closure(string, ?string=): PotentiallyTranslatedString  $fail
      */
@@ -25,8 +28,11 @@ class ValidPhoneNumber implements ValidationRule
             return;
         }
 
-        if (app(HigoResourceBuilder::class)->normalizePhone((string) $value) === null) {
+        $normalized = app(HigoResourceBuilder::class)->normalizePhone((string) $value);
+        if ($normalized === null) {
             $fail('Introduceți un număr valid, de exemplu 069123456 sau +37369123456.');
+        } elseif ($this->unique && User::where('normalized_phone', $normalized)->when($this->ignoreUserId, fn ($query) => $query->whereKeyNot($this->ignoreUserId))->exists()) {
+            $fail('Există deja un cont cu acest număr de telefon. Autentifică-te sau recuperează contul.');
         }
     }
 }

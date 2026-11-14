@@ -9,7 +9,8 @@ import { todayDate } from '../../../lib/medical-record';
 
 export type RecordDocument = { id: number; title: string; type: string; performed_at?: string | null; created_at: string; url?: string | null; mime_type?: string | null; notes?: string | null };
 
-const TYPES: Array<[string, string]> = [['analysis', 'Analize de laborator'], ['imaging', 'Imagistică'], ['functional', 'Funcționale'], ['investigation', 'Altele']];
+const TYPES: Array<[string, string]> = [['analysis', 'Analize de laborator'], ['functional', 'Investigații funcționale'], ['imaging', 'Investigații imagistice']];
+const EXAMPLES: Record<string, string> = { analysis: 'De exemplu: hemoleucogramă, biochimie, hormoni.', functional: 'De exemplu: ECG, EEG, spirometrie.', imaging: 'De exemplu: radiografie, ecografie, RMN, tomografie.' };
 const ACCEPT = '.jpg,.jpeg,.png,.webp,.pdf,.doc,.docx';
 const MAX_BYTES = 20 * 1024 * 1024;
 
@@ -28,6 +29,18 @@ export function DocumentsPanel({ profileId, documents, onChanged }: { profileId:
   const [saving, setSaving] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState('');
+  const [classifying, setClassifying] = useState<number | null>(null);
+
+  const classify = async (item: RecordDocument, category: string) => {
+    if (!category || classifying !== null) return;
+    setClassifying(item.id);
+    setError('');
+    try {
+      await apiRequest(`/patient/profiles/${profileId}/investigations/${item.id}/category`, { method: 'PATCH', body: JSON.stringify({ type: category }) });
+      onChanged();
+    } catch (err) { setError(err instanceof Error ? err.message : 'Nu am putut schimba categoria.'); }
+    finally { setClassifying(null); }
+  };
 
   const pick = (picked?: File | null) => {
     if (!picked) return;
@@ -81,7 +94,8 @@ export function DocumentsPanel({ profileId, documents, onChanged }: { profileId:
     pick(event.dataTransfer.files?.[0]);
   };
 
-  const groups = TYPES.map(([key, label]) => [label, documents.filter((item) => item.type === key)] as const).filter(([, items]) => items.length > 0);
+  const legacy = documents.filter((item) => item.type === 'investigation');
+  const groups = [...TYPES, ...(legacy.length > 0 ? [['investigation', 'Documente de încadrat']] as Array<[string, string]> : [])].map(([key, label]) => [key, label, documents.filter((item) => item.type === key)] as const);
   const countLabel = (count: number) => `${count} ${count === 1 ? 'document' : 'documente'}`;
   const preview = useMemo(() => (file && file.type.startsWith('image/') ? URL.createObjectURL(file) : null), [file]);
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
@@ -105,14 +119,16 @@ export function DocumentsPanel({ profileId, documents, onChanged }: { profileId:
         <button type="button" onClick={() => fileInput.current?.click()} className="ml-3 h-10 rounded-[10px] border border-blue-200 bg-white px-4 text-sm font-medium text-blue-700 hover:bg-blue-50">Alege fișier</button>
       </div>
 
-      {groups.length === 0 ? <p className="py-6 text-center text-sm text-slate-500">Nu sunt documente încă.</p> : (
+      {
         <div className="flex flex-col gap-4 lg:grid lg:grid-cols-3 lg:items-start">
-          {groups.map(([label, items]) => (
+          {groups.map(([key, label, items]) => (
             <section key={label} className="flex flex-col gap-2 lg:gap-2.5">
               <div className="flex justify-between px-1 lg:px-0">
                 <span className="text-[13px] font-semibold text-slate-600">{label}<span className="hidden lg:inline"> · {countLabel(items.length)}</span></span>
                 <span className="text-xs text-slate-400 lg:hidden">{countLabel(items.length)}</span>
               </div>
+              {EXAMPLES[key] && <p className="px-1 text-xs leading-5 text-slate-500">{EXAMPLES[key]}</p>}
+              {items.length === 0 && <p className="rounded-xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">Nu sunt documente în această categorie.</p>}
               <ul className="overflow-hidden rounded-2xl border border-slate-200 bg-white lg:contents">
                 {items.map((item, index) => {
                   const kind = kindOf(item);
@@ -129,6 +145,7 @@ export function DocumentsPanel({ profileId, documents, onChanged }: { profileId:
                         <span className={cn('grid h-[52px] w-11 shrink-0 place-items-center rounded-lg text-[10px] font-bold', thumb)}>{kind}</span>
                         {body}
                       </a>
+                      {key === 'investigation' && <div className="px-3 pb-3"><select aria-label={`Categoria pentru ${item.title}`} value="" disabled={classifying !== null} onChange={(event) => void classify(item, event.target.value)} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm"><option value="">Alege categoria</option>{TYPES.map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></div>}
                       <a href={item.url ?? undefined} target="_blank" rel="noreferrer" className="hidden lg:block">
                         <span className={cn('grid h-[110px] place-items-center font-mono text-xs font-semibold', thumb)}>{kind}</span>
                         <span className="flex items-center gap-2 px-3 py-2.5">{body}</span>
@@ -140,7 +157,7 @@ export function DocumentsPanel({ profileId, documents, onChanged }: { profileId:
             </section>
           ))}
         </div>
-      )}
+      }
 
       {/* D5b: după alegerea fișierului, o foaie de jos (pe desktop, o fereastră). */}
       {file && (

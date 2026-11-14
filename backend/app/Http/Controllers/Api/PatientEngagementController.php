@@ -146,6 +146,8 @@ class PatientEngagementController extends Controller
         ]);
 
         $review = DB::transaction(function () use ($consultationRequest, $user, $validated) {
+            $consultationRequest = ConsultationRequest::lockForUpdate()->findOrFail($consultationRequest->id);
+            abort_unless($consultationRequest->status === 'completed', 422);
             $review = null;
             $providerType = $validated['provider_type'] ?? 'both';
 
