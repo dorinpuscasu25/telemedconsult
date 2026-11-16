@@ -11,6 +11,7 @@ import { apiRequest } from '../../lib/api';
 import { agoLabel, ageLabel, hm, initialsOf, mdl, needsDoctor, stageOf, whenLabel, type Proposal, type RequestService, type Stage } from '../../lib/doctor';
 import { usePageTitle } from '../../lib/use-page-title';
 import { useNow } from '../../lib/use-now';
+import { CurrentTimeCard } from '../../components/app/CurrentTimeCard';
 
 interface DashboardData {
   summary: {
@@ -162,6 +163,7 @@ export function DoctorHome() {
           <NotificationBell bare />
         </div>
         <div className="flex flex-col gap-3.5 px-4 pb-4 pt-1.5">
+          <CurrentTimeCard />
           {error && <ErrorNote error={error} onRetry={() => void load()} />}
           <section className="overflow-hidden rounded-2xl border border-amber-200 bg-white">
             <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-[15px] font-semibold text-slate-950">Așteaptă răspunsul tău · {pending.length}</div>
@@ -270,6 +272,7 @@ export function DoctorHome() {
         </div>
 
         <aside className="flex flex-col gap-4">
+          <CurrentTimeCard />
           <section className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5">
             <div className="flex items-center justify-between"><span className="text-base font-semibold text-slate-950">{MONTHS[new Date().getMonth()]}</span><Link to="/doctor/stats" className="text-[13px] font-medium text-blue-600 hover:underline">Statistici</Link></div>
             <div className="flex flex-col gap-0.5">

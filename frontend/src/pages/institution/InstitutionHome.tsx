@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowRight, Banknote, Building2, ClipboardList, HandCoin
 import { Button } from '../../components/ui/button';
 import { ListSkeleton } from '../../components/ui/skeleton';
 import { PageHeader, SectionHeader } from '../../components/app/PageHeader';
+import { CurrentTimeCard } from '../../components/app/CurrentTimeCard';
 import { StatCard } from '../../components/app/StatCard';
 import { EmptyState } from '../../components/app/EmptyState';
 import { apiRequest } from '../../lib/api';
@@ -47,13 +48,16 @@ export function InstitutionHome() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow="Instituție medicală"
-        title={data?.institution.name ?? 'Panoul instituției'}
-        documentTitle="Acasă"
-        description="Medicii tăi, consultațiile lor și banii care trec prin instituție."
-        actions={<Button asChild><Link to="/institution/doctors?add=invite"><UserPlus className="h-4 w-4" />Invită un medic</Link></Button>}
-      />
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <PageHeader
+          eyebrow="Instituție medicală"
+          title={data?.institution.name ?? 'Panoul instituției'}
+          documentTitle="Acasă"
+          description="Medicii tăi, consultațiile lor și banii care trec prin instituție."
+          actions={<Button asChild><Link to="/institution/doctors?add=invite"><UserPlus className="h-4 w-4" />Invită un medic</Link></Button>}
+        />
+        <CurrentTimeCard />
+      </div>
 
       {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</p>}
 

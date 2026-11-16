@@ -12,6 +12,7 @@ import { hm } from '../../lib/doctor';
 import { relativeDay, timeUntil } from '../../lib/format';
 import { usePageTitle } from '../../lib/use-page-title';
 import { useNow } from '../../lib/use-now';
+import { CurrentTimeCard } from '../../components/app/CurrentTimeCard';
 import { addressOf, mapsUrl, operatorStageOf, patientNameOf, type RequestItem } from '../../lib/operator-visits';
 import { Avatar } from '../doctor/DoctorHome';
 import { ReferralLinkBox, loadOperatorReferrals, type OperatorReferrals } from './OperatorReferralsPage';
@@ -124,6 +125,7 @@ export function OperatorHome() {
           <NotificationBell bare />
         </div>
         <div className="flex flex-col gap-3.5 px-4 pb-4 pt-1.5">
+          <CurrentTimeCard />
           {error && <ErrorNote error={error} onRetry={load} />}
           <section className="overflow-hidden rounded-2xl border border-amber-200 bg-white">
             <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-[15px] font-semibold text-slate-950">Cereri noi · {pending.length}</div>
@@ -237,6 +239,7 @@ export function OperatorHome() {
         </div>
 
         <aside className="flex flex-col gap-4">
+          <CurrentTimeCard />
           <section className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5">
             <span className="text-base font-semibold text-slate-950">Azi</span>
             <div className="grid grid-cols-2 gap-3">

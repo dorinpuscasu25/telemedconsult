@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { CalendarClock, Check, ChevronDown, Clock, CreditCard, FileText, Plus, Star, UserPlus, Video, X } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import { CurrentTimeCard } from '../../components/app/CurrentTimeCard';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Textarea } from '../../components/ui/textarea';
 import { cn } from '../../components/ui/utils';
@@ -150,6 +151,7 @@ export function PatientHome() {
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex min-w-0 flex-col gap-6">
           <h1 className="text-[26px] font-bold tracking-tight text-slate-950 lg:text-[28px]">Bună, {firstName}</h1>
+          <CurrentTimeCard className="lg:hidden" />
 
           {proposals.map((request) => <ProposalResponse key={request.id} request={request} onChanged={load} />)}
 
@@ -190,6 +192,7 @@ export function PatientHome() {
 
         {/* Desktop: portofelul și consultațiile în coloana din dreapta. */}
         <aside className="hidden flex-col gap-4 lg:flex lg:pt-[58px]">
+          <CurrentTimeCard />
           {paymentsEnabled && (
             <section className="flex flex-col gap-3.5 rounded-2xl border border-slate-200 bg-white p-[18px]">
               <span className="text-[13px] text-slate-500">Portofel</span>

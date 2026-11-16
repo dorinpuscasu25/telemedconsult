@@ -3,6 +3,7 @@ import { ClipboardCheck, UserCheck, Users } from 'lucide-react';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
+import { CurrentTimeCard } from '../../components/app/CurrentTimeCard';
 import { Textarea } from '../../components/ui/textarea';
 import {
   Select,
@@ -106,9 +107,12 @@ export function CoordinatorDashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Coordonare solicitări</h1>
-        <p className="mt-1 text-sm text-slate-500">Preia, urmărește și alocă solicitările active către medici sau operatori.</p>
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Coordonare solicitări</h1>
+          <p className="mt-1 text-sm text-slate-500">Preia, urmărește și alocă solicitările active către medici sau operatori.</p>
+        </div>
+        <CurrentTimeCard />
       </div>
 
       {(message || error) && (

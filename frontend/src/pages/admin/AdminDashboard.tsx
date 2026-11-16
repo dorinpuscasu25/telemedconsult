@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Activity, ShieldCheck, Stethoscope, UserCog, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
+import { CurrentTimeCard } from '../../components/app/CurrentTimeCard';
 import { apiRequest } from '../../lib/api';
 
 interface Summary {
@@ -38,13 +39,16 @@ export function AdminDashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">
-          Dashboard General
-        </h1>
-        <p className="text-slate-500">
-          Date operaționale din backend: autentificare, roluri, utilizatori și pregătire e-Health.
-        </p>
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">
+            Dashboard General
+          </h1>
+          <p className="text-slate-500">
+            Date operaționale din backend: autentificare, roluri, utilizatori și pregătire e-Health.
+          </p>
+        </div>
+        <CurrentTimeCard />
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
