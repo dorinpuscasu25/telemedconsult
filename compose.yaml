@@ -78,6 +78,7 @@ services:
       - /bin/sh
       - -lc
       - |
+        set -e
         php artisan migrate --force
         php artisan patients:repair-contexts --no-interaction
         php artisan db:seed --class='Database\Seeders\RolesSeeder' --force
