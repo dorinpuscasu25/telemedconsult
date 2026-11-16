@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreInstitutionManagerUserRequest;
 use App\Models\InstitutionTransfer;
 use App\Models\MedicalInstitution;
 use App\Models\Role;
@@ -16,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Instituțiile medicale le adaugă doar adminul, împreună cu contul managerului.
@@ -118,6 +120,30 @@ class AdminInstitutionController extends Controller
     public function storeManager(Request $request, MedicalInstitution $institution): JsonResponse
     {
         $this->authorizeAdmin($request);
+        if ($request->has('user_id')) {
+            $validated = $request->validate([
+                'user_id' => ['required', 'integer', Rule::exists('users', 'id')->where('status', 'active')],
+            ]);
+            DB::transaction(function () use ($institution, $validated): void {
+                $institution = MedicalInstitution::whereKey($institution->id)->lockForUpdate()->firstOrFail();
+                $user = User::whereKey($validated['user_id'])->lockForUpdate()->firstOrFail();
+                if ($user->status !== 'active') {
+                    throw ValidationException::withMessages(['user_id' => 'Alege un utilizator activ.']);
+                }
+                if ($user->medicalInstitutions()->whereKeyNot($institution->id)->exists()) {
+                    throw ValidationException::withMessages(['user_id' => 'Utilizatorul este deja managerul altei instituții.']);
+                }
+                $role = Role::firstOrCreate(['name' => 'institution'], ['label' => 'Instituție medicală']);
+                $user->roles()->syncWithoutDetaching([$role->id]);
+                $institution->managers()->syncWithoutDetaching([$user->id]);
+            }, attempts: 3);
+
+            return response()->json([
+                'message' => 'Managerul a fost adăugat.',
+                'institution' => $this->serialize($institution->load('managers')->loadCount('doctorProfiles')),
+                'generated_password' => null,
+            ], 201);
+        }
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
@@ -132,6 +158,19 @@ class AdminInstitutionController extends Controller
         return response()->json([
             'message' => 'Managerul a fost adăugat.',
             'institution' => $this->serialize($institution->load('managers')->loadCount('doctorProfiles')),
+            'generated_password' => $generatedPassword,
+        ], 201);
+    }
+
+    public function storeManagerUser(StoreInstitutionManagerUserRequest $request): JsonResponse
+    {
+        $validated = $request->validated();
+        $generatedPassword = empty($validated['password']) ? Str::password(12, symbols: false) : null;
+        $user = DB::transaction(fn () => $this->createManagerAccount([...$validated, 'password' => $validated['password'] ?? $generatedPassword]));
+
+        return response()->json([
+            'message' => 'Utilizatorul a fost creat. Îl poți selecta ca manager.',
+            'user' => $user->only(['id', 'name', 'email', 'status']),
             'generated_password' => $generatedPassword,
         ], 201);
     }
@@ -160,6 +199,17 @@ class AdminInstitutionController extends Controller
      */
     private function createManager(MedicalInstitution $institution, array $data): User
     {
+        $user = $this->createManagerAccount($data);
+        $institution->managers()->attach($user->id);
+
+        return $user;
+    }
+
+    /**
+     * @param  array{name: string, email: string, phone?: string|null, password: string}  $data
+     */
+    private function createManagerAccount(array $data): User
+    {
         $role = Role::firstOrCreate(['name' => 'institution'], ['label' => 'Instituție medicală']);
         $user = User::create([
             'name' => $data['name'],
@@ -171,7 +221,6 @@ class AdminInstitutionController extends Controller
         ]);
         $user->forceFill(['email_verified_at' => now()])->save();
         $user->roles()->sync([$role->id]);
-        $institution->managers()->attach($user->id);
 
         return $user;
     }

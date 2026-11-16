@@ -75,6 +75,123 @@ class MedicalInstitutionTest extends TestCase
             ->assertJsonPath('errors.manager_email.0', 'Există deja un cont cu acest email. Alege alt email pentru manager.');
     }
 
+    public function test_admin_assigns_existing_user_as_manager_without_changing_their_account(): void
+    {
+        [$institution] = $this->institution();
+        $user = $this->userWithRole('patient');
+        $originalAttributes = $user->only(['name', 'email', 'phone', 'password', 'active_role_id', 'status', 'email_verified_at']);
+        $userCount = User::count();
+        Sanctum::actingAs($this->userWithRole('admin'));
+
+        $this->postJson('/api/v1/admin/institutions/'.$institution->id.'/managers', ['user_id' => $user->id])
+            ->assertCreated()
+            ->assertJsonPath('generated_password', null)
+            ->assertJsonFragment(['id' => $user->id, 'name' => $user->name, 'email' => $user->email]);
+
+        $this->assertSame($userCount + 1, User::count());
+        $this->assertEquals($originalAttributes, $user->fresh()->only(array_keys($originalAttributes)));
+        $this->assertTrue($user->fresh()->hasRole('patient'));
+        $this->assertTrue($user->fresh()->hasRole('institution'));
+        $this->assertSame($institution->id, $user->fresh()->managedInstitution()?->id);
+
+        Sanctum::actingAs($user->fresh());
+        $this->getJson('/api/v1/institution/dashboard')->assertOk()->assertJsonPath('institution.id', $institution->id);
+    }
+
+    public function test_assigning_the_same_manager_twice_does_not_duplicate_the_membership(): void
+    {
+        [$institution, $manager] = $this->institution();
+        Sanctum::actingAs($this->userWithRole('admin'));
+
+        $this->postJson('/api/v1/admin/institutions/'.$institution->id.'/managers', ['user_id' => $manager->id])->assertCreated();
+        $this->postJson('/api/v1/admin/institutions/'.$institution->id.'/managers', ['user_id' => $manager->id])->assertCreated();
+
+        $this->assertSame(1, $institution->managers()->count());
+        $this->assertSame(1, $manager->roles()->where('name', 'institution')->count());
+    }
+
+    public function test_manager_of_another_institution_cannot_be_assigned(): void
+    {
+        [$institution, $manager] = $this->institution();
+        [$other] = $this->institution('Altă clinică');
+        Sanctum::actingAs($this->userWithRole('admin'));
+
+        $this->postJson('/api/v1/admin/institutions/'.$other->id.'/managers', ['user_id' => $manager->id])
+            ->assertUnprocessable()->assertJsonValidationErrors('user_id');
+
+        $this->assertSame($institution->id, $manager->managedInstitution()?->id);
+        $this->assertSame(1, $other->managers()->count());
+    }
+
+    public function test_manager_assignment_requires_an_active_existing_user(): void
+    {
+        [$institution] = $this->institution();
+        $blocked = $this->userWithRole('patient');
+        $blocked->update(['status' => 'blocked']);
+        Sanctum::actingAs($this->userWithRole('admin'));
+
+        foreach ([$blocked->id, 999999, null, 'invalid'] as $userId) {
+            $this->postJson('/api/v1/admin/institutions/'.$institution->id.'/managers', ['user_id' => $userId])
+                ->assertUnprocessable()->assertJsonValidationErrors('user_id');
+        }
+        $this->assertFalse($blocked->fresh()->hasRole('institution'));
+    }
+
+    public function test_admin_creates_a_manager_user_before_choosing_their_institution(): void
+    {
+        [$institution] = $this->institution();
+        Sanctum::actingAs($this->userWithRole('admin'));
+
+        $response = $this->postJson('/api/v1/admin/institution-manager-users', [
+            'name' => 'Utilizator nou', 'email' => 'new-manager@example.test',
+        ])->assertCreated();
+        $user = User::findOrFail($response->json('user.id'));
+        $this->assertTrue($user->hasRole('institution'));
+        $this->assertTrue(\Hash::check($response->json('generated_password'), $user->password));
+        $this->assertNull($user->managedInstitution());
+        $this->assertNotNull($user->email_verified_at);
+        $this->assertSame('active', $user->status);
+        $response->assertJsonMissingPath('user.password');
+
+        $this->postJson('/api/v1/admin/institutions/'.$institution->id.'/managers', ['user_id' => $user->id])->assertCreated();
+        $this->assertSame($institution->id, $user->fresh()->managedInstitution()?->id);
+    }
+
+    public function test_manager_user_creation_accepts_a_password_and_rejects_duplicate_email(): void
+    {
+        Sanctum::actingAs($this->userWithRole('admin'));
+        $payload = ['name' => 'Utilizator nou', 'email' => 'chosen-password@example.test', 'password' => 'Parola-sigura-123'];
+        $this->postJson('/api/v1/admin/institution-manager-users', $payload)
+            ->assertCreated()->assertJsonPath('generated_password', null);
+        $user = User::where('email', $payload['email'])->firstOrFail();
+        $this->assertTrue(\Hash::check($payload['password'], $user->password));
+        $this->postJson('/api/v1/admin/institution-manager-users', $payload)
+            ->assertUnprocessable()->assertJsonValidationErrors('email');
+    }
+
+    public function test_only_admins_can_create_manager_users_or_assign_managers(): void
+    {
+        [$institution, $manager] = $this->institution();
+        foreach ([$manager, $this->userWithRole('patient')] as $actor) {
+            Sanctum::actingAs($actor);
+            $this->postJson('/api/v1/admin/institution-manager-users', ['name' => 'Manager', 'email' => 'forbidden@example.test'])->assertForbidden();
+            $this->postJson('/api/v1/admin/institutions/'.$institution->id.'/managers', ['user_id' => $actor->id])->assertForbidden();
+        }
+    }
+
+    public function test_legacy_manager_creation_still_creates_and_assigns_an_account(): void
+    {
+        [$institution] = $this->institution();
+        Sanctum::actingAs($this->userWithRole('admin'));
+
+        $response = $this->postJson('/api/v1/admin/institutions/'.$institution->id.'/managers', [
+            'name' => 'Manager', 'email' => 'legacy-manager@example.test',
+        ])->assertCreated();
+        $user = User::where('email', 'legacy-manager@example.test')->firstOrFail();
+        $this->assertSame($institution->id, $user->managedInstitution()?->id);
+        $this->assertTrue(\Hash::check($response->json('generated_password'), $user->password));
+    }
+
     public function test_invitation_index_name_fits_mysql_limits(): void
     {
         $this->assertTrue(Schema::hasIndex('medical_institution_invitations', 'institution_invitations_status_index'));

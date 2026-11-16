@@ -302,6 +302,7 @@ Route::prefix('v1')->group(function () {
         Route::put('/admin/institutions/{institution}', [AdminInstitutionController::class, 'update']);
         Route::delete('/admin/institutions/{institution}', [AdminInstitutionController::class, 'destroy']);
         Route::post('/admin/institutions/{institution}/managers', [AdminInstitutionController::class, 'storeManager']);
+        Route::post('/admin/institution-manager-users', [AdminInstitutionController::class, 'storeManagerUser']);
 
         Route::get('/doctor/institution-transfers', [InstitutionTransferController::class, 'doctorIndex']);
         Route::post('/doctor/institution-transfers', [InstitutionTransferController::class, 'store'])->middleware('throttle:5,1');

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Building2, Check, Copy, Pencil, Plus, Trash2, UserPlus } from 'lucide-react';
+import { Building2, Check, Copy, Pencil, Plus, Search, Trash2, UserPlus } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
@@ -41,6 +41,7 @@ const EMPTY = {
 };
 
 type Form = typeof EMPTY;
+type ManagerUser = { id: string | number; name: string; email: string; status: string };
 
 /**
  * Instituțiile medicale partenere. Adminul le creează împreună cu contul
@@ -55,6 +56,15 @@ export function AdminInstitutionsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [credentials, setCredentials] = useState<{ email: string; password: string } | null>(null);
+  const [managerUsers, setManagerUsers] = useState<ManagerUser[]>([]);
+  const [managerSearch, setManagerSearch] = useState('');
+  const [managerPage, setManagerPage] = useState(1);
+  const [managerLastPage, setManagerLastPage] = useState(1);
+  const [managerLoading, setManagerLoading] = useState(false);
+  const [managerLoadError, setManagerLoadError] = useState('');
+  const [selectedManager, setSelectedManager] = useState<ManagerUser | null>(null);
+  const [creatingManagerUser, setCreatingManagerUser] = useState(false);
+  const [newUserCredentials, setNewUserCredentials] = useState<{ email: string; password: string } | null>(null);
 
   const load = useCallback(() => {
     apiRequest<{ data: AdminInstitution[] }>('/admin/institutions')
@@ -63,6 +73,25 @@ export function AdminInstitutionsPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!managerFor || creatingManagerUser) return;
+    let cancelled = false;
+    setManagerLoading(true);
+    setManagerLoadError('');
+    const timeout = window.setTimeout(() => {
+      const params = new URLSearchParams({ search: managerSearch.trim(), page: String(managerPage) });
+      apiRequest<{ data: ManagerUser[]; meta: { last_page: number } }>(`/admin/users?${params}`)
+        .then((response) => {
+          if (cancelled) return;
+          setManagerUsers(response.data ?? []);
+          setManagerLastPage(response.meta.last_page);
+        })
+        .catch((err) => { if (!cancelled) setManagerLoadError(err instanceof Error ? err.message : 'Nu am putut încărca utilizatorii.'); })
+        .finally(() => { if (!cancelled) setManagerLoading(false); });
+    }, 250);
+    return () => { cancelled = true; window.clearTimeout(timeout); };
+  }, [managerFor, managerSearch, managerPage, creatingManagerUser]);
 
   const open = (target: AdminInstitution | 'new') => {
     setError('');
@@ -76,6 +105,12 @@ export function AdminInstitutionsPage() {
   const openManager = (institution: AdminInstitution) => {
     setError('');
     setForm(EMPTY);
+    setManagerSearch('');
+    setManagerPage(1);
+    setManagerUsers([]);
+    setSelectedManager(null);
+    setCreatingManagerUser(false);
+    setNewUserCredentials(null);
     setManagerFor(institution);
   };
 
@@ -112,20 +147,42 @@ export function AdminInstitutionsPage() {
 
   const saveManager = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!managerFor) return;
+    if (!managerFor || !selectedManager) return;
     setSaving(true);
     setError('');
     try {
-      const response = await apiRequest<{ message: string; generated_password: string | null }>(`/admin/institutions/${managerFor.id}/managers`, {
+      const response = await apiRequest<{ message: string }>(`/admin/institutions/${managerFor.id}/managers`, {
         method: 'POST',
-        body: JSON.stringify({ name: form.manager_name, email: form.manager_email, phone: nullable(form.manager_phone), password: nullable(form.manager_password) })
+        body: JSON.stringify({ user_id: Number(selectedManager.id) })
       });
       toast.success(response.message);
-      setCredentials({ email: form.manager_email, password: response.generated_password ?? form.manager_password });
       setManagerFor(null);
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nu am putut adăuga managerul.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const createManagerUser = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      const response = await apiRequest<{ message: string; user: ManagerUser; generated_password: string | null }>('/admin/institution-manager-users', {
+        method: 'POST',
+        body: JSON.stringify({ name: form.manager_name, email: form.manager_email, phone: nullable(form.manager_phone), password: nullable(form.manager_password) })
+      });
+      setSelectedManager(response.user);
+      setNewUserCredentials({ email: response.user.email, password: response.generated_password ?? form.manager_password });
+      setManagerSearch(response.user.email);
+      setManagerPage(1);
+      setCreatingManagerUser(false);
+      setForm(EMPTY);
+      toast.success(response.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nu am putut crea utilizatorul.');
     } finally {
       setSaving(false);
     }
@@ -148,6 +205,8 @@ export function AdminInstitutionsPage() {
   };
 
   const set = (key: keyof Form) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const assignedManagerIds = new Set(items?.flatMap((institution) => institution.managers.map((manager) => String(manager.id))) ?? []);
+  const availableManagerUsers = managerUsers.filter((user) => user.status === 'active' && !assignedManagerIds.has(String(user.id)));
 
   return (
     <div className="space-y-6">
@@ -230,16 +289,51 @@ export function AdminInstitutionsPage() {
 
       <Dialog open={Boolean(managerFor)} onOpenChange={(value) => { if (!value && !saving) setManagerFor(null); }}>
         <DialogContent className="sm:max-w-lg">
-          <form onSubmit={saveManager} className="grid gap-5">
+          <form onSubmit={creatingManagerUser ? createManagerUser : saveManager} className="grid gap-5">
             <DialogHeader>
-              <DialogTitle>Manager nou pentru {managerFor?.name}</DialogTitle>
-              <DialogDescription>Managerul vede medicii, banii și plățile instituției.</DialogDescription>
+              <DialogTitle>{creatingManagerUser ? 'Adaugă utilizator' : `Alege managerul pentru ${managerFor?.name}`}</DialogTitle>
+              <DialogDescription>{creatingManagerUser ? 'După creare, utilizatorul va fi preselectat. Confirmă apoi adăugarea lui ca manager.' : 'Alege un utilizator existent sau adaugă unul nou. Managerul vede medicii, banii și plățile instituției.'}</DialogDescription>
             </DialogHeader>
             {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-            <ManagerFields form={form} set={set} />
+            {creatingManagerUser ? <ManagerFields form={form} set={set} /> : (
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="manager-search">Caută utilizator</Label>
+                  <div className="relative">
+                    <Search aria-hidden="true" className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
+                    <Input id="manager-search" className="pl-9" placeholder="Nume sau email" value={managerSearch} onChange={(event) => { setManagerSearch(event.target.value); setManagerPage(1); }} />
+                  </div>
+                </div>
+                <fieldset className="max-h-64 space-y-1 overflow-y-auto rounded-xl border border-slate-200 p-2" disabled={saving}>
+                  <legend className="sr-only">Utilizatori disponibili</legend>
+                  {managerLoading ? <p role="status" className="p-4 text-center text-sm text-slate-500">Se încarcă utilizatorii…</p> : managerLoadError ? (
+                    <p role="alert" className="p-3 text-sm text-red-700">{managerLoadError}</p>
+                  ) : availableManagerUsers.length === 0 ? (
+                    <p className="p-4 text-center text-sm text-slate-500">Niciun utilizator disponibil pe această pagină. Caută după nume sau email ori adaugă un utilizator.</p>
+                  ) : availableManagerUsers.map((user) => (
+                    <label key={user.id} className={`flex cursor-pointer items-center gap-3 rounded-lg p-3 ${String(selectedManager?.id) === String(user.id) ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
+                      <input type="radio" name="manager-user" value={user.id} checked={String(selectedManager?.id) === String(user.id)} onChange={() => { setSelectedManager(user); setError(''); }} className="h-4 w-4 shrink-0 accent-blue-600" />
+                      <span className="min-w-0"><span className="block break-words text-sm font-medium text-slate-950">{user.name}</span><span className="block break-all text-xs text-slate-500">{user.email}</span></span>
+                    </label>
+                  ))}
+                </fieldset>
+                {managerLastPage > 1 && <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+                  <Button type="button" size="sm" variant="outline" disabled={managerLoading || managerPage <= 1} onClick={() => setManagerPage((page) => page - 1)}>Înapoi</Button>
+                  <span>Pagina {managerPage} din {managerLastPage}</span>
+                  <Button type="button" size="sm" variant="outline" disabled={managerLoading || managerPage >= managerLastPage} onClick={() => setManagerPage((page) => page + 1)}>Înainte</Button>
+                </div>}
+                {selectedManager && <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">Selectat: <strong>{selectedManager.name}</strong><span className="block break-all text-xs">{selectedManager.email}</span></p>}
+                {newUserCredentials && <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                  <p className="text-sm font-medium text-emerald-900">Utilizator creat. Copiază datele de acces înainte de a închide fereastra.</p>
+                  <CopyRow label="Email" value={newUserCredentials.email} />
+                  <CopyRow label="Parolă" value={newUserCredentials.password} mono />
+                </div>}
+                <Button type="button" variant="outline" className="w-full" disabled={saving} onClick={() => { setCreatingManagerUser(true); setForm(EMPTY); setError(''); }}><UserPlus className="h-4 w-4" />Adaugă utilizator</Button>
+              </div>
+            )}
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setManagerFor(null)} disabled={saving}>Renunță</Button>
-              <Button type="submit" disabled={saving}>{saving ? 'Se salvează…' : 'Adaugă managerul'}</Button>
+              <Button type="button" variant="outline" onClick={() => { if (creatingManagerUser) { setCreatingManagerUser(false); setError(''); } else setManagerFor(null); }} disabled={saving}>{creatingManagerUser ? 'Înapoi la utilizatori' : 'Renunță'}</Button>
+              <Button type="submit" disabled={saving || (!creatingManagerUser && !selectedManager)}>{saving ? 'Se salvează…' : creatingManagerUser ? 'Creează utilizatorul' : 'Adaugă managerul'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
