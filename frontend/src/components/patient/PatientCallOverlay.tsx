@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { LiveKitRoom, RoomAudioRenderer, StartAudio, VideoTrack, isTrackReference, useConnectionQualityIndicator, useConnectionState, useLocalParticipant, useRemoteParticipants, useRoomContext, useTrackToggle, useTracks } from '@livekit/components-react';
 import { ConnectionQuality, ConnectionState, MediaDeviceFailure, Track } from 'livekit-client';
@@ -6,6 +7,7 @@ import { Camera, CameraOff, Maximize2, MessageSquare, Mic, MicOff, Minimize2, Ph
 import { apiRequest } from '../../lib/api';
 import { cn } from '../ui/utils';
 import type { PatientCallSession, PatientCallSummary } from '../../contexts/PatientCallContext';
+import '@livekit/components-styles';
 
 type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 
@@ -24,12 +26,25 @@ export default function PatientCallOverlay({ session, summary, expanded, onExpan
   const startedAt = useRef<number | null>(null);
   const finished = useRef(false);
   const activeToken = useRef<string | null>(null);
-  activeToken.current = session?.connection.participant_token ?? null;
+  const participantToken = session?.connection.participant_token ?? null;
+  activeToken.current = participantToken;
   const [corner, setCorner] = useState<Corner>('bottom-right');
   const [deviceError, setDeviceError] = useState('');
-  useEffect(() => { if (session) { startedAt.current = null; finished.current = false; setDeviceError(''); } }, [session?.connection.participant_token]);
+  const fullScreen = Boolean(summary || (session && expanded));
+  useEffect(() => { if (participantToken) { startedAt.current = null; finished.current = false; setDeviceError(''); } }, [participantToken]);
+  useEffect(() => {
+    if (!fullScreen) return;
+    const bodyOverflow = document.body.style.overflow;
+    const pageOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = bodyOverflow;
+      document.documentElement.style.overflow = pageOverflow;
+    };
+  }, [fullScreen]);
 
-  if (!session) return summary ? <CallSummary summary={summary} onClose={onCloseSummary} /> : null;
+  if (!session) return summary ? createPortal(<CallSummary summary={summary} onClose={onCloseSummary} />, document.body) : null;
 
   const finish = (reason: PatientCallSummary['reason'] = 'ended') => {
     if (finished.current || activeToken.current !== session.connection.participant_token) return;
@@ -39,23 +54,30 @@ export default function PatientCallOverlay({ session, summary, expanded, onExpan
     onFinish({ requestId: session.requestId, minutes, doctorName: session.doctorName, reason });
   };
 
-  return (
-    <LiveKitRoom
-      key={session.connection.participant_token}
-      serverUrl={session.connection.server_url}
-      token={session.connection.participant_token}
-      connect
-      audio={session.connection.choices.audioEnabled ? { deviceId: session.connection.choices.audioDeviceId } : false}
-      video={session.connection.choices.videoEnabled ? { deviceId: session.connection.choices.videoDeviceId } : false}
-      onDisconnected={() => finish()}
-      onError={(error) => { if (MediaDeviceFailure.getFailure(error)) setDeviceError('Camera sau microfonul nu pot fi pornite. Poți continua apelul cu ele oprite.'); else finish('connection_error'); }}
-      onMediaDeviceFailure={() => setDeviceError('Camera sau microfonul nu pot fi pornite. Poți continua apelul cu ele oprite.')}
-      className={cn('fixed z-[70] overflow-hidden bg-slate-900 text-white', expanded ? 'inset-0' : cn('rounded-[14px] shadow-2xl ring-1 ring-white/10 max-sm:inset-x-3 max-sm:bottom-[calc(84px+env(safe-area-inset-bottom))] max-sm:h-[76px] sm:h-[180px] sm:w-[320px]', cornerClass(corner)))}
+  return createPortal(
+    <div
+      role={expanded ? 'dialog' : 'region'}
+      aria-modal={expanded || undefined}
       aria-label="Apel video"
+      className={cn('fixed z-[70] overflow-hidden bg-slate-900 text-white', expanded ? 'inset-0' : cn('rounded-[14px] shadow-2xl ring-1 ring-white/10 max-sm:inset-x-3 max-sm:bottom-[calc(84px+env(safe-area-inset-bottom))] max-sm:h-[76px] sm:h-[180px] sm:w-[320px]', cornerClass(corner)))}
     >
-      <CallSurface session={session} expanded={expanded} onExpandedChange={onExpandedChange} onConnected={() => { startedAt.current ??= session.startedAt ?? Date.now(); }} startedAt={startedAt} onCornerChange={setCorner} deviceError={deviceError} />
-      <RoomAudioRenderer />
-    </LiveKitRoom>
+      <LiveKitRoom
+        key={session.connection.participant_token}
+        serverUrl={session.connection.server_url}
+        token={session.connection.participant_token}
+        connect
+        audio={session.connection.choices.audioEnabled ? { deviceId: session.connection.choices.audioDeviceId } : false}
+        video={session.connection.choices.videoEnabled ? { deviceId: session.connection.choices.videoDeviceId } : false}
+        onDisconnected={() => finish()}
+        onError={(error) => { if (MediaDeviceFailure.getFailure(error)) setDeviceError('Camera sau microfonul nu pot fi pornite. Poți continua apelul cu ele oprite.'); else finish('connection_error'); }}
+        onMediaDeviceFailure={() => setDeviceError('Camera sau microfonul nu pot fi pornite. Poți continua apelul cu ele oprite.')}
+        className="h-full min-h-0 w-full"
+      >
+        <CallSurface session={session} expanded={expanded} onExpandedChange={onExpandedChange} onConnected={() => { startedAt.current ??= session.startedAt ?? Date.now(); }} startedAt={startedAt} onCornerChange={setCorner} deviceError={deviceError} />
+        <RoomAudioRenderer />
+      </LiveKitRoom>
+    </div>,
+    document.body
   );
 }
 
@@ -173,8 +195,8 @@ function CallSurface({ session, expanded, onExpandedChange, onConnected, started
   }
 
   return (
-    <div className="flex h-full w-full">
-      <div className="relative h-full min-w-0 flex-1 bg-slate-800">
+    <div className="flex h-full min-h-0 w-full overflow-hidden">
+      <div className="relative h-full min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-800">
         {/* Video-ul medicului; V6b când camera lui e oprită. */}
         {remoteVideoOn && remoteTrack && isTrackReference(remoteTrack)
           ? <VideoTrack trackRef={remoteTrack} className="h-full w-full object-cover" />
@@ -276,7 +298,7 @@ function CallChatPanel({ requestId, patientName, onClose }: { requestId: string;
   const [conversation, setConversation] = useState<CallConversation | null>(null);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
-  const end = useRef<HTMLDivElement>(null);
+  const messages = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -285,7 +307,9 @@ function CallChatPanel({ requestId, patientName, onClose }: { requestId: string;
     } catch { /* păstrăm ce avem */ }
   }, [requestId]);
   useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 5000); return () => window.clearInterval(timer); }, [load]);
-  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [conversation?.messages.length]);
+  useEffect(() => {
+    if (messages.current) messages.current.scrollTop = messages.current.scrollHeight;
+  }, [conversation?.messages.length]);
 
   const send = async (event: FormEvent) => {
     event.preventDefault();
@@ -296,12 +320,12 @@ function CallChatPanel({ requestId, patientName, onClose }: { requestId: string;
   };
 
   return (
-    <aside className="flex w-[360px] shrink-0 flex-col bg-white text-slate-900">
-      <div className="flex items-start justify-between gap-2 border-b border-slate-200 px-4 py-3">
+    <aside className="flex h-full min-h-0 w-[min(360px,40vw)] shrink-0 flex-col overflow-hidden bg-white text-slate-900">
+      <div className="flex shrink-0 items-start justify-between gap-2 border-b border-slate-200 px-4 py-3">
         <div><p className="text-sm font-semibold">Chat{patientName ? ` · ${patientName}` : ''}</p><p className="text-xs text-slate-500">Mesajele rămân în conversația consultației</p></div>
         <button type="button" onClick={onClose} aria-label="Închide chatul" className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-3 py-3">
+      <div ref={messages} className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-slate-50 px-3 py-3">
         {conversation?.messages.map((message) => {
           const mine = message.sender_id === conversation.patient_id;
           if (message.type === 'system') return <p key={message.id} className="mx-auto my-2 w-fit rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] text-slate-600">{message.body}</p>;
@@ -314,9 +338,8 @@ function CallChatPanel({ requestId, patientName, onClose }: { requestId: string;
             </div>
           );
         })}
-        <div ref={end} />
       </div>
-      <form onSubmit={send} className="flex gap-2 border-t border-slate-200 p-3">
+      <form onSubmit={send} className="flex shrink-0 gap-2 border-t border-slate-200 p-3">
         <input value={text} onChange={(event) => setText(event.target.value)} placeholder="Scrie medicului…" aria-label="Mesaj" className="h-9 min-w-0 flex-1 rounded-[10px] border border-slate-200 px-3 text-sm outline-none focus-visible:border-blue-600" />
         <button type="submit" disabled={sending || !text.trim() || !conversation} aria-label="Trimite mesajul" className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-blue-600 text-white disabled:opacity-50"><Send className="h-4 w-4" /></button>
       </form>
