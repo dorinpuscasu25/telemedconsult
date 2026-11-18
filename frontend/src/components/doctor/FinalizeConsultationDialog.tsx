@@ -222,7 +222,7 @@ export function FinalizeConsultationDialog({
                       <Paperclip className="h-4 w-4" />Atașează rețeta (PDF, JPG sau PNG, max. 10 MB)
                     </button>
                   )}
-                  {prescription && <p className="rounded-xl bg-blue-50 p-3 text-xs leading-5 text-blue-900">Pacientul primește automat mesajul: „Spuneți-ne din ce rețea de farmacii ați luat medicamentul pe rețetă, pentru a transmite rețeta originală în rețeaua respectivă.”</p>}
+                  {prescription && <p className="rounded-xl bg-blue-50 p-3 text-xs leading-5 text-blue-900">Pacientul poate deschide rețeta separat, o poate descărca și imprima folosind Ctrl+P sau opțiunea Imprimare din browser.</p>}
                 </div>
               </FormSection>
 

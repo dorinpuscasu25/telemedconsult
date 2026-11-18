@@ -3,12 +3,13 @@
 namespace App\Models;
 
 use App\Models\Concerns\StoresDatesInAppTimezone;
+use App\Services\PatientGeography;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['pseudonymized', 'residential_environment', 'address_details', 'medical_record', 'user_id', 'higo_patient_id', 'first_name', 'last_name', 'birth_date', 'gender', 'country', 'region', 'region_id', 'locality', 'locality_id', 'address', 'emergency_contact', 'medical_summary', 'life_history', 'status', 'active_until'])]
+#[Fillable(['pseudonymized', 'residential_environment', 'address_details', 'medical_record', 'user_id', 'higo_patient_id', 'first_name', 'last_name', 'birth_date', 'gender', 'country', 'country_code', 'city', 'region', 'region_id', 'locality', 'locality_id', 'address', 'emergency_contact', 'medical_summary', 'life_history', 'status', 'active_until'])]
 class PatientProfile extends Model
 {
     use StoresDatesInAppTimezone;
@@ -53,7 +54,8 @@ class PatientProfile extends Model
 
     public function hasCompleteAddress(): bool
     {
-        return $this->region_id !== null
+        return ($this->country_code ?? app(PatientGeography::class)->countryCode($this->country)) === 'MD'
+            && $this->region_id !== null
             && $this->locality_id !== null
             && filled($this->address);
     }
@@ -79,7 +81,7 @@ class PatientProfile extends Model
 
     public function isActiveForNewConsultations(): bool
     {
-        return $this->status === 'active' && ($this->active_until === null || $this->active_until->isFuture());
+        return $this->status === 'active' && ($this->is_free || $this->active_until === null || $this->active_until->isFuture());
     }
 
     protected $hidden = ['identity_number'];

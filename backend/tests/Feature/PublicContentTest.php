@@ -45,6 +45,30 @@ class PublicContentTest extends TestCase
         $this->getJson('/api/v1/catalog/blog/ciorna')->assertNotFound();
     }
 
+    public function test_uploaded_news_covers_use_current_storage_origin_without_rewriting_saved_content(): void
+    {
+        Storage::fake('public', ['url' => 'https://assets.example.test/storage']);
+        $old = 'http://localhost:8000/storage/blog/coperta.png';
+        $post = BlogPost::create(['title' => 'Articol cu imagine', 'slug' => 'articol-imagine', 'body' => 'Text păstrat la deploy', 'cover_image_url' => $old, 'audience' => 'all', 'is_published' => true, 'published_at' => now()]);
+        $expected = 'https://assets.example.test/storage/blog/coperta.png';
+        $this->getJson('/api/v1/catalog/blog')->assertOk()->assertJsonPath('data.0.cover_image_url', $expected);
+        $this->getJson('/api/v1/catalog/blog?audience=doctors')->assertOk()->assertJsonPath('data.0.cover_image_url', $expected);
+        $this->getJson('/api/v1/catalog/blog/articol-imagine')->assertOk()->assertJsonPath('data.cover_image_url', $expected)->assertJsonPath('data.body', 'Text păstrat la deploy');
+        $this->assertSame($old, $post->fresh()->getRawOriginal('cover_image_url'));
+        $this->actingAsAdmin();
+        $this->getJson('/api/v1/admin/blog-posts')->assertOk()->assertJsonPath('data.0.cover_image_url', $expected);
+    }
+
+    public function test_news_cover_normalization_preserves_external_images_and_supports_relative_upload_paths(): void
+    {
+        Storage::fake('public', ['url' => 'https://assets.example.test/storage']);
+        $external = 'https://images.example.test/storage/extern.png';
+        $post = BlogPost::create(['title' => 'Imagine externă', 'slug' => 'imagine-externa', 'body' => 'Text', 'cover_image_url' => $external, 'is_published' => true, 'published_at' => now()]);
+        $this->getJson('/api/v1/catalog/blog/imagine-externa')->assertOk()->assertJsonPath('data.cover_image_url', $external);
+        $post->update(['cover_image_url' => '/storage/blog/relativa.png']);
+        $this->getJson('/api/v1/catalog/blog/imagine-externa')->assertOk()->assertJsonPath('data.cover_image_url', 'https://assets.example.test/storage/blog/relativa.png');
+    }
+
     public function test_public_partners_returns_only_active_ordered(): void
     {
         Partner::create(['name' => 'Al doilea', 'sort_order' => 2, 'is_active' => true]);

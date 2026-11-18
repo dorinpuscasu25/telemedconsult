@@ -119,7 +119,7 @@ function ChooseInstitution({ initial, onSaved, onCancel }: { initial: number | n
           </>
         )}
       </div>
-      <p className="text-xs text-slate-500">Nu-ți găsești instituția? Contactează administratorul platformei pentru adăugarea ei.</p>
+      <p className="text-xs text-slate-500">Instituția ta nu este în listă? Solicită de la Clinica Pediatru un contract pentru a oferi consultații prin platformă. Afilierea se confirmă după încheierea contractului.</p>
       {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       <div className="flex flex-col gap-2 sm:flex-row-reverse">
         <button type="button" onClick={() => setConfirming(true)} disabled={picked === null} className="h-12 flex-1 rounded-[10px] bg-blue-600 text-[15px] font-semibold text-white hover:bg-blue-700 disabled:bg-blue-300">Continuă</button>

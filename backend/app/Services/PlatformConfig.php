@@ -19,7 +19,7 @@ class PlatformConfig
         'rate.operator_subscription_admin' => ['value' => 1.5, 'group' => 'commissions', 'type' => 'number'],
         'rate.operator_subscription_bank_guarantee' => ['value' => 5.5, 'group' => 'commissions', 'type' => 'number'],
         'rate.operator_subscription_bank_transaction' => ['value' => 3.2, 'group' => 'commissions', 'type' => 'number'],
-        'rate.affiliate_doctor_topup' => ['value' => 3, 'group' => 'affiliate', 'type' => 'number'],
+        'rate.affiliate_doctor_topup' => ['value' => 10, 'group' => 'affiliate', 'type' => 'number'],
         'rate.affiliate_operator' => ['value' => 3, 'group' => 'affiliate', 'type' => 'number'],
         // Procentul pe care îl primește invitatorul din PRIMA alimentare efectivă de
         // portofel făcută de utilizatorul pe care l-a invitat.
@@ -29,7 +29,7 @@ class PlatformConfig
         // true = comision doar la prima alimentare; false = la fiecare alimentare.
         'affiliate.patient_topup_first_only' => ['value' => true, 'group' => 'affiliate', 'type' => 'boolean'],
         'affiliate.patient_registration_rules' => [
-            'value' => 'Invită o persoană folosind linkul tău personal. La prima alimentare efectivă confirmată a persoanei invitate, primești procentul afișat din suma rămasă după cumpărarea pachetului. Pacientul invitator primește puncte, operatorul bani. Comisionul se acordă doar pentru plăți confirmate, nu la simpla înregistrare. Conturile proprii, duplicate sau frauduloase nu sunt eligibile. Comisionul este credit de platformă și poate fi folosit pentru serviciile disponibile pe telemedconsult.md.',
+            'value' => 'Invită o persoană folosind linkul tău personal. La prima alimentare efectivă confirmată a persoanei invitate, primești procentul afișat din suma rămasă după cumpărarea pachetului. Pacientul și medicul invitator primesc puncte, operatorul bani. Medicul primește 10% în puncte; acestea contribuie la performanță numai când sunt consumate pentru promovare. Comisionul se acordă doar pentru plăți confirmate, nu la simpla înregistrare. Conturile proprii, duplicate sau frauduloase nu sunt eligibile. Comisionul este credit de platformă și poate fi folosit pentru serviciile disponibile pe telemedconsult.md.',
             'group' => 'affiliate',
             'type' => 'string',
         ],
@@ -40,7 +40,7 @@ class PlatformConfig
         'wallet.first_topup_promo_doctor_ids' => ['value' => [], 'group' => 'wallet', 'type' => 'json'],
         'wallet.first_topup_promo_max_grants' => ['value' => 0, 'group' => 'wallet', 'type' => 'number'],
         'consultations.addendum_days' => ['value' => 10, 'group' => 'consultations', 'type' => 'number'],
-        'prescription.instructions' => ['value' => 'Comunicați medicului rețeaua de farmacii din care veți ridica medicamentul pentru transmiterea rețetei originale.', 'group' => 'consultations', 'type' => 'string'],
+        'prescription.instructions' => ['value' => MedicalDocumentPublisher::PRESCRIPTION_INSTRUCTIONS, 'group' => 'consultations', 'type' => 'string'],
         'wallet.registration_bonus_enabled' => ['value' => false, 'group' => 'wallet', 'type' => 'boolean'],
         'wallet.registration_bonus' => ['value' => 0, 'group' => 'wallet', 'type' => 'number'],
         'wallet.max_points_payment_percent' => ['value' => 40, 'group' => 'wallet', 'type' => 'number'],
@@ -51,7 +51,7 @@ class PlatformConfig
         'chat.reactivation_price' => ['value' => 50, 'group' => 'chat', 'type' => 'number'],
         'chat.reactivation_hours' => ['value' => 24, 'group' => 'chat', 'type' => 'number'],
         'chat.total_days' => ['value' => 10, 'group' => 'chat', 'type' => 'number'],
-        'video.default_price' => ['value' => 500, 'group' => 'video', 'type' => 'number'],
+        'video.default_price' => ['value' => 600, 'group' => 'video', 'type' => 'number'],
         'video.default_duration_minutes' => ['value' => 10, 'group' => 'video', 'type' => 'number'],
         'payout.request_day_start' => ['value' => 1, 'group' => 'payout', 'type' => 'number'],
         'payout.request_day_end' => ['value' => 10, 'group' => 'payout', 'type' => 'number'],

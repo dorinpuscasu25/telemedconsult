@@ -78,7 +78,7 @@ class PatientMedicalRecordTest extends TestCase
     public static function invalidSections(): array
     {
         return [
-            ['birth', ['gestational_weeks' => 23]], ['birth', ['gestational_weeks' => 44]],
+            ['birth', ['gestational_weeks' => 23]], ['birth', ['gestational_weeks' => 43]], ['birth', ['gestational_weeks' => 44]],
             ['birth', ['apgar' => 11]], ['birth', ['blood_group' => 'invalid']],
             ['birth', ['diagnosis' => 'Nu este un câmp pentru pacient']],
             ['vaccinations', ['refusal' => 'invalid', 'items' => []]],
@@ -89,14 +89,14 @@ class PatientMedicalRecordTest extends TestCase
         ];
     }
 
-    public function test_life_history_supports_birth_at_43_weeks_and_preserves_separate_history_sections(): void
+    public function test_life_history_supports_birth_at_42_weeks_and_preserves_separate_history_sections(): void
     {
         [$patient, $profile] = $this->patient();
         Sanctum::actingAs($patient);
         foreach (['natural', 'cesarean', 'forceps', 'vacuum'] as $method) {
             foreach (['natural', 'artificial', 'mixed'] as $feeding) {
                 $this->patchJson($this->url($profile), ['section' => 'birth', 'data' => [
-                    'birth_method' => $method, 'gestational_weeks' => 43, 'feeding' => $feeding,
+                    'birth_method' => $method, 'gestational_weeks' => 42, 'feeding' => $feeding,
                 ]])->assertOk();
                 $this->assertSame($method, $profile->fresh()->medical_record['birth']['birth_method']);
                 $this->assertSame($feeding, $profile->fresh()->medical_record['birth']['feeding']);
@@ -116,8 +116,33 @@ class PatientMedicalRecordTest extends TestCase
             $this->patchJson($this->url($profile), ['section' => $section, 'data' => $data])->assertOk();
             $this->assertSame($data, $profile->fresh()->medical_record[$section]);
         }
-        $this->assertSame(43, $profile->fresh()->medical_record['birth']['gestational_weeks']);
+        $this->assertSame(42, $profile->fresh()->medical_record['birth']['gestational_weeks']);
         $this->assertCount(4, $profile->fresh()->medical_record['family_history']);
+    }
+
+    public function test_birth_details_preserve_feeding_periods_development_milestones_and_paired_apgar(): void
+    {
+        [$patient, $profile] = $this->patient();
+        Sanctum::actingAs($patient);
+        $birth = [
+            'birth_method' => 'other', 'birth_method_details' => 'Detalii declarate', 'gestational_weeks' => 42, 'apgar' => '8/9',
+            'feeding_natural_period' => '0–3 luni', 'feeding_artificial_period' => 'primele 3 zile', 'feeding_mixed_period' => '3–6 luni',
+            'development_6_months' => 'Ședea', 'development_1_year' => 'Mergea', 'development_2_years' => 'Comunica', 'development_3_years' => 'Observații',
+        ];
+        $this->patchJson($this->url($profile), ['section' => 'birth', 'data' => $birth])->assertOk();
+        $this->assertSame($birth, $profile->fresh()->medical_record['birth']);
+        $this->patchJson($this->url($profile), ['section' => 'birth', 'data' => [...$birth, 'apgar' => '9-10']])->assertOk();
+        $this->getJson($this->url($profile))->assertOk()->assertJsonPath('medical_record.birth.apgar', '9-10');
+    }
+
+    public function test_existing_exceptional_gestational_value_can_be_preserved_but_not_introduced_for_another_profile(): void
+    {
+        [$patient, $profile] = $this->patient();
+        $profile->update(['medical_record' => ['birth' => ['gestational_weeks' => 43]]]);
+        Sanctum::actingAs($patient);
+        $this->patchJson($this->url($profile), ['section' => 'birth', 'data' => ['gestational_weeks' => 43, 'apgar' => '9/9']])->assertOk();
+        $this->patchJson($this->url($profile), ['section' => 'birth', 'data' => ['gestational_weeks' => 44]])->assertUnprocessable();
+        $this->assertSame(43, $profile->fresh()->medical_record['birth']['gestational_weeks']);
     }
 
     public function test_all_history_sections_and_vaccination_refusal_are_saved(): void

@@ -23,6 +23,10 @@ type CardPackage = {
   bonus_points: number;
   validity_days: number;
   is_active: boolean;
+  purchases_count?: number;
+  profiles_purchased?: number;
+  profiles_activated?: number;
+  revenue?: number;
 };
 
 const emptyPackage: CardPackage = {
@@ -41,14 +45,15 @@ const emptyPackage: CardPackage = {
  */
 export function PatientCardPackagesPage() {
   const [packages, setPackages] = useState<CardPackage[] | null>(null);
+  const [freeProfile, setFreeProfile] = useState<{ claims_count: number; profiles_count: number } | null>(null);
   const [editing, setEditing] = useState<CardPackage | null>(null);
   const [deactivating, setDeactivating] = useState<CardPackage | null>(null);
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   const loadPackages = useCallback(() => {
-    apiRequest<{ data: CardPackage[] }>('/admin/patient-card-packages')
-      .then((response) => setPackages(response.data ?? []))
+    apiRequest<{ data: CardPackage[]; free_profile: { claims_count: number; profiles_count: number } }>('/admin/patient-card-packages')
+      .then((response) => { setPackages(response.data ?? []); setFreeProfile(response.free_profile); })
       .catch((err) => { setPackages([]); toast.error(err instanceof Error ? err.message : 'Nu am putut încărca pachetele.'); });
   }, []);
 
@@ -98,6 +103,12 @@ export function PatientCardPackagesPage() {
     <div className="space-y-6">
       <PageHeader title="Pachete / Cartele" description="Abonamentele care deblochează profiluri de pacient. Prețul și descrierea apar pe cardurile din contul pacientului." actions={addButton} />
 
+      {freeProfile && <section className="rounded-2xl border border-blue-200 bg-blue-50 p-5" aria-label="Profil gratuit permanent">
+        <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold text-slate-950">Profil gratuit · 0 MDL</h2><ToneBadge tone="success">Permanent</ToneBadge></div>
+        <p className="mt-1 text-sm text-slate-600">Un profil pentru o persoană aleasă de titular, o singură dată per cont. Consultațiile se achită separat.</p>
+        <dl className="mt-3 flex flex-wrap gap-x-8 gap-y-2 text-sm"><div><dt className="text-slate-500">Conturi care au folosit gratuitatea</dt><dd className="font-semibold">{freeProfile.claims_count}</dd></div><div><dt className="text-slate-500">Profiluri gratuite păstrate</dt><dd className="font-semibold">{freeProfile.profiles_count}</dd></div></dl>
+      </section>}
+
       {!packages ? <ListSkeleton rows={3} /> : packages.length === 0 ? (
         <EmptyState icon={CreditCard} title="Niciun pachet încă" description="Adaugă primul pachet pe care pacienții îl pot cumpăra." action={addButton} />
       ) : (
@@ -117,6 +128,7 @@ export function PatientCardPackagesPage() {
                 <button type="button" className="min-w-0 text-left" onClick={() => openForm(pack)}>
                   <span className="block truncate font-medium text-slate-950">{pack.name || 'Pachet fără nume'}</span>
                   <span className="block truncate text-sm text-slate-500">{pack.description || 'Fără descriere'}</span>
+                  <span className="mt-1 block text-xs text-slate-500">{pack.purchases_count ?? 0} pachete cumpărate · {pack.profiles_purchased ?? 0} locuri cumpărate · {pack.profiles_activated ?? 0} locuri utilizate · încasări {mdl(pack.revenue ?? 0)}</span>
                   <span className="mt-1 block text-sm text-slate-600 md:hidden">
                     {mdl(pack.price)} · {pack.profile_slots} {pack.profile_slots === 1 ? 'profil' : 'profiluri'} · {pack.validity_days} zile{pack.bonus_points > 0 && ` · +${pack.bonus_points} puncte`}
                   </span>

@@ -168,14 +168,18 @@ class AuthController extends Controller
 
     private function notifyAdminsOfApplication(User $user, string $accountType): void
     {
+        if ($accountType === 'doctor' && ! app(PlatformConfig::class)->bool('notify_new_doctors', true)) {
+            return;
+        }
         $label = $accountType === 'doctor' ? 'medic' : 'operator';
-        $admins = User::whereHas('roles', fn ($query) => $query->where('name', 'admin'))->get();
+        $admins = User::where('status', 'active')->whereHas('roles', fn ($query) => $query->where('name', 'admin'))->get();
 
         Notification::send($admins, new AppEventNotification(
             'Cerere nouă de înregistrare ('.$label.')',
             $user->name.' a solicitat un cont de '.$label.'. Verifică și aprobă din panoul de administrare.',
             '/admin/registrations',
             'info',
+            category: 'requests',
         ));
     }
 

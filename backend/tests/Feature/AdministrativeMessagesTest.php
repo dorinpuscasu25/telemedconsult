@@ -78,6 +78,39 @@ class AdministrativeMessagesTest extends TestCase
         $this->assertSame(1, AdministrativeConversation::count());
     }
 
+    public function test_doctor_operator_and_manager_receive_real_database_notifications_and_can_reply(): void
+    {
+        config(['services.telegram.bot_token' => null]);
+        $admin = $this->user('admin');
+        foreach (['doctor', 'operator', 'institution'] as $role) {
+            $target = $this->user($role);
+            Sanctum::actingAs($admin);
+            $id = $this->postJson('/api/v1/administrative-conversations', ['target_id' => $target->id])->assertCreated()->json('id');
+            $this->postJson('/api/v1/administrative-conversations/'.$id.'/messages', ['body' => 'Mesaj de test'])->assertCreated();
+            $notification = $target->notifications()->firstOrFail();
+            $this->assertSame('Mesaj administrativ nou', $notification->data['title']);
+            $this->assertSame('/'.$role.'/admin-messages?conversation='.$id, $notification->data['url']);
+            Sanctum::actingAs($target);
+            $this->getJson('/api/v1/administrative-conversations')->assertOk()->assertHeader('Cache-Control', 'no-store, private')->assertJsonPath('data.0.unread_count', 1);
+            $this->getJson('/api/v1/administrative-conversations/'.$id)->assertOk()->assertHeader('Cache-Control', 'no-store, private')->assertJsonPath('messages.data.0.body', 'Mesaj de test');
+            $this->getJson('/api/v1/administrative-conversations')->assertJsonPath('data.0.unread_count', 0);
+            $this->postJson('/api/v1/administrative-conversations/'.$id.'/messages', ['body' => 'Răspuns de test'])->assertCreated();
+        }
+        $this->assertSame(3, $admin->notifications()->count());
+        $this->assertSame(0, Conversation::count());
+        $this->assertSame(0, ConsultationRequest::count());
+    }
+
+    public function test_suspended_admin_cannot_create_an_administrative_conversation(): void
+    {
+        $admin = $this->user('admin');
+        $admin->update(['status' => 'suspended']);
+        $target = $this->user('doctor');
+        Sanctum::actingAs($admin);
+        $this->postJson('/api/v1/administrative-conversations', ['target_id' => $target->id])->assertForbidden();
+        $this->assertSame(0, AdministrativeConversation::count());
+    }
+
     private function user(string $name): User
     {
         $role = Role::firstOrCreate(['name' => $name], ['label' => $name]);

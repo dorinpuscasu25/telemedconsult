@@ -49,7 +49,7 @@ const ROLE_LABELS: Record<RoleName, string> = {
   doctor: 'Medic',
   operator: 'Operator',
   coordinator: 'Coordonator',
-  institution: 'Instituție medicală'
+  institution: 'Manager instituție medicală'
 };
 
 const roleHome = (role: RoleName) => role === 'admin' ? '/admin' : `/${role}`;

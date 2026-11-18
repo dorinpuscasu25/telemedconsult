@@ -65,6 +65,7 @@ Route::prefix('v1')->group(function () {
     Route::get('/catalog/operators', [CatalogController::class, 'operators']);
     Route::get('/catalog/pricing', [CatalogController::class, 'pricing']);
     Route::get('/catalog/regions', [CatalogController::class, 'regions']);
+    Route::get('/catalog/countries', [CatalogController::class, 'countries']);
     Route::get('/catalog/investigations', [CatalogController::class, 'investigations']);
     Route::get('/catalog/objective-fields', [CatalogController::class, 'objectiveFields']);
     Route::get('/catalog/features', [CatalogController::class, 'features']);
@@ -153,6 +154,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/admin/referral-stats', [ReferralController::class, 'adminStats']);
         Route::get('/admin/referral-stats/{user}', [ReferralController::class, 'adminReferrer']);
         Route::get('/admin/operators/{user}', [AdminOperatorController::class, 'show']);
+        Route::put('/admin/operators/{user}/contract', [AdminOperatorController::class, 'updateContract']);
         Route::put('/admin/withdrawals/{withdrawalRequest}', [AdminOperationsController::class, 'updateWithdrawal']);
         Route::get('/admin/complaints', [AdminOperationsController::class, 'complaints']);
         Route::put('/admin/complaints/{complaint}/resolve', [AdminOperationsController::class, 'resolveComplaint']);
@@ -172,6 +174,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/admin/regions', [AdminOperationsController::class, 'regions']);
         Route::put('/admin/regions', [AdminOperationsController::class, 'updateRegions']);
         Route::get('/admin/geo/regions', [AdminRegionController::class, 'index']);
+        Route::get('/admin/geo/patients', [AdminRegionController::class, 'patients']);
         Route::post('/admin/geo/regions', [AdminRegionController::class, 'store']);
         Route::put('/admin/geo/regions/{region}', [AdminRegionController::class, 'update']);
         Route::post('/admin/geo/regions/{region}/localities', [AdminRegionController::class, 'storeLocality']);

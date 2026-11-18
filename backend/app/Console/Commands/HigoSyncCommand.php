@@ -23,7 +23,7 @@ class HigoSyncCommand extends Command
 
     public function handle(HigoProvisioner $provisioner): int
     {
-        if (! $provisioner->enabled()) {
+        if (! $provisioner->enabled() && ! $provisioner->enabled('operator')) {
             $this->error('Sincronizarea HIGO este oprită: verifică HIGO_BASE_URL, HIGO_SYNC_ENABLED și flagul „higo_devices”.');
 
             return self::FAILURE;
@@ -39,6 +39,12 @@ class HigoSyncCommand extends Command
                 $this->error("Tip necunoscut: {$kind}");
 
                 return self::FAILURE;
+            }
+
+            if (! $provisioner->enabled($kind)) {
+                $this->line("{$kind}: afișarea modulului este oprită; sincronizarea operatorilor rămâne disponibilă.");
+
+                continue;
             }
 
             $query = $model::query()->with('user');

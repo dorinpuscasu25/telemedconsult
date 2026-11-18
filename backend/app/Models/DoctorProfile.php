@@ -18,14 +18,14 @@ class DoctorProfile extends Model
     protected static function booted(): void
     {
         static::creating(function (DoctorProfile $profile) {
-            $profile->video_price = $profile->getAttributes()['video_price'] ?? (int) app(PlatformConfig::class)->number('video.default_price', 500);
+            $profile->video_price = $profile->getAttributes()['video_price'] ?? (int) app(PlatformConfig::class)->number('video.default_price', 600);
             $profile->video_duration_minutes = $profile->getAttributes()['video_duration_minutes'] ?? (int) app(PlatformConfig::class)->number('video.default_duration_minutes', 10);
         });
     }
 
     protected function videoPrice(): Attribute
     {
-        return Attribute::make(get: fn (mixed $value): int => $value !== null ? (int) $value : (int) app(PlatformConfig::class)->number('video.default_price', 500));
+        return Attribute::make(get: fn (mixed $value): int => $value !== null ? (int) $value : (int) app(PlatformConfig::class)->number('video.default_price', 600));
     }
 
     protected function videoDurationMinutes(): Attribute

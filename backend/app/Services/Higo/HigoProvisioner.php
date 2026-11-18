@@ -39,11 +39,11 @@ class HigoProvisioner
      * Sincronizarea e activă doar dacă avem credențiale, flagul de modul e pornit
      * și nu a fost oprită explicit din configurare.
      */
-    public function enabled(): bool
+    public function enabled(?string $kind = null): bool
     {
         return (bool) config('higo.sync.enabled')
             && (bool) config('higo.base_url')
-            && $this->features->enabled('higo_devices');
+            && ($kind === 'operator' || $this->features->enabled('higo_devices'));
     }
 
     /**
@@ -71,7 +71,7 @@ class HigoProvisioner
      */
     public function sync(Model $entity): bool
     {
-        if (! $this->enabled()) {
+        if (! $this->enabled($entity instanceof OperatorProfile ? 'operator' : null)) {
             return false;
         }
 

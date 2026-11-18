@@ -75,6 +75,7 @@ class AdminHigoController extends Controller
             'data' => $entities,
             'summary' => [
                 'enabled' => $this->provisioner->enabled(),
+                'operator_sync_enabled' => $this->provisioner->enabled('operator'),
                 'base_url_configured' => (bool) config('higo.base_url'),
                 'credentials_configured' => (bool) config('higo.client_id') && (bool) config('higo.username'),
                 'synced' => $entities->where('status', HigoProvisioner::STATUS_SYNCED)->count(),
@@ -266,7 +267,7 @@ class AdminHigoController extends Controller
 
         $validated = validator(['kind' => $kind], ['kind' => ['required', Rule::in(array_keys(self::MODELS))]])->validate();
 
-        if (! $this->provisioner->enabled()) {
+        if (! $this->provisioner->enabled($kind)) {
             return response()->json([
                 'message' => 'Sincronizarea HIGO este oprită. Verifică HIGO_BASE_URL, HIGO_SYNC_ENABLED și modulul „Aparate & integrare HIGO”.',
             ], 422);

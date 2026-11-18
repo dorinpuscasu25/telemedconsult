@@ -4,23 +4,24 @@ namespace Tests\Feature;
 
 use App\Models\ConsultationRequest;
 use App\Models\DoctorProfile;
+use App\Models\MedicalDocument;
 use App\Models\PatientProfile;
 use App\Models\Role;
 use App\Models\Specialty;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\ConsultationPdf;
 use App\Services\ConsultationSettlement;
 use App\Services\PlatformConfig;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 /**
- * Banii consultației rămân rezervați până la închidere: recenzia pacientului
- * (sau termenul automat) plătește medicul; consultația care nu are loc își
- * returnează banii.
+ * Publicarea decontează consultația, iar consultația neefectuată își returnează banii.
  */
 class ConsultationSettlementTest extends TestCase
 {
@@ -35,7 +36,7 @@ class ConsultationSettlementTest extends TestCase
         $this->specialty = Specialty::create(['name' => 'Medicină de familie', 'slug' => 'medicina-de-familie']);
     }
 
-    public function test_conclusion_keeps_money_held_and_patient_review_pays_the_doctor(): void
+    public function test_publication_pays_doctor_immediately_and_optional_review_does_not_pay_again(): void
     {
         [$patient, $doctor, $request] = $this->acceptedConsultation();
 
@@ -44,10 +45,11 @@ class ConsultationSettlementTest extends TestCase
 
         $request->refresh();
         $this->assertSame('completed', $request->status);
-        $this->assertSame('held', $request->payment_status);
-        $this->assertNull($request->closed_at);
-        $this->assertSame(0, $this->balance($doctor));
-        $this->assertEquals(0, $this->getJson('/api/v1/doctor/stats')->assertOk()->json('summary.available_balance'), 'Banii rezervați nu se pot retrage.');
+        $this->assertSame('captured', $request->payment_status);
+        $this->assertNotNull($request->closed_at);
+        $this->assertSame((int) $request->provider_amount_minor, $this->balance($doctor));
+        $this->assertEquals($request->provider_amount_minor / 100, $this->getJson('/api/v1/doctor/stats')->assertOk()->json('summary.available_balance'));
+        $this->assertStringContainsString('234,50 MDL au intrat în balanța ta', $doctor->notifications()->latest()->first()->data['body']);
 
         Sanctum::actingAs($patient);
         $listed = collect($this->getJson('/api/v1/requests')->assertOk()->json('data'))->firstWhere('id', (string) $request->id);
@@ -59,9 +61,6 @@ class ConsultationSettlementTest extends TestCase
         $this->assertNotNull($request->closed_at);
         $this->assertSame((int) $request->provider_amount_minor, $this->balance($doctor));
 
-        $this->assertStringContainsString('234,50 MDL au intrat în balanța ta', $doctor->notifications()->latest()->first()->data['body']);
-
-        // Soldul de retras al medicului: doar partea lui, abia după închidere.
         Sanctum::actingAs($doctor);
         $this->assertEquals($request->provider_amount_minor / 100, $this->getJson('/api/v1/doctor/stats')->assertOk()->json('summary.available_balance'));
         Sanctum::actingAs($patient);
@@ -71,7 +70,7 @@ class ConsultationSettlementTest extends TestCase
         $this->assertSame((int) $request->provider_amount_minor, $this->balance($doctor));
     }
 
-    public function test_completed_consultation_without_review_stays_held_after_the_former_auto_close_window(): void
+    public function test_completed_consultation_without_review_stays_paid_and_scheduler_does_not_pay_twice(): void
     {
         app(PlatformConfig::class)->upsert(ConsultationSettlement::AUTO_CLOSE_DAYS, 2);
         [, $doctor, $request] = $this->acceptedConsultation();
@@ -80,14 +79,45 @@ class ConsultationSettlementTest extends TestCase
 
         $this->travel(47)->hours();
         $this->artisan('consultations:settle')->assertSuccessful();
-        $this->assertSame('held', $request->fresh()->payment_status);
+        $this->assertSame('captured', $request->fresh()->payment_status);
 
         $this->travel(2)->hours();
         $this->artisan('consultations:settle')->assertSuccessful();
         $request->refresh();
-        $this->assertSame('held', $request->payment_status);
-        $this->assertNull($request->closed_at);
+        $this->assertSame('captured', $request->payment_status);
+        $this->assertNotNull($request->closed_at);
+        $this->assertSame((int) $request->provider_amount_minor, $this->balance($doctor));
+    }
+
+    public function test_failed_pdf_publication_does_not_capture_payment_or_complete_request(): void
+    {
+        [, $doctor, $request] = $this->acceptedConsultation();
+        $this->mock(ConsultationPdf::class)->shouldReceive('render')->once()->andThrow(new \RuntimeException('Publicare eșuată'));
+        Sanctum::actingAs($doctor);
+        $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['higo_status' => 'not_performed', 'diagnosis' => 'Test'])->assertStatus(500);
+        $this->assertSame('accepted', $request->fresh()->status);
+        $this->assertSame('held', $request->fresh()->payment_status);
+        $this->assertNull($request->fresh()->closed_at);
         $this->assertSame(0, $this->balance($doctor));
+        $this->assertSame(0, MedicalDocument::count());
+    }
+
+    public function test_failed_prescription_storage_keeps_payment_held_and_request_unpublished(): void
+    {
+        [, $doctor, $request] = $this->acceptedConsultation();
+        $disk = Storage::disk('local');
+        $failingDisk = \Mockery::mock($disk)->makePartial();
+        $failingDisk->shouldReceive('putFileAs')->once()->andReturn(false);
+        Storage::shouldReceive('disk')->with('local')->andReturn($failingDisk);
+        Sanctum::actingAs($doctor);
+        $this->post('/api/v1/requests/'.$request->id.'/complete', [
+            'higo_status' => 'not_performed', 'diagnosis' => 'Test', 'prescription' => UploadedFile::fake()->image('reteta.png'),
+        ], ['Accept' => 'application/json'])->assertStatus(500);
+        $this->assertSame('accepted', $request->fresh()->status);
+        $this->assertSame('held', $request->fresh()->payment_status);
+        $this->assertNull($request->fresh()->closed_at);
+        $this->assertSame(0, $this->balance($doctor));
+        $this->assertSame(0, MedicalDocument::count());
     }
 
     public function test_consultation_that_did_not_take_place_refunds_the_patient_after_the_admin_window(): void

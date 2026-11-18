@@ -9,6 +9,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use App\Services\DoctorPerformance;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -24,12 +25,14 @@ class DoctorPromotionsTest extends TestCase
         Sanctum::actingAs($doctor);
         $id = $this->postJson('/api/v1/doctor/promotions', ['points' => 3, 'days' => 30])->assertCreated()->json('data.id');
         $this->assertSame(700, $this->balance($doctor));
+        $this->assertEquals(0, app(DoctorPerformance::class)->forDoctor($doctor->doctorProfile)['components']['promotion']);
         Sanctum::actingAs($patient);
         $row = $this->getJson('/api/v1/patient/doctor-catalog')->assertOk()->json('data.0');
         $this->assertTrue($row['promoted']);
         $this->assertSame(0, DoctorPromotionImpression::count());
         $this->postJson('/api/v1/patient/promotion-impression', ['token' => $row['promotion_token']])->assertOk()->assertJsonPath('counted', true);
         $this->postJson('/api/v1/patient/promotion-impression', ['token' => $row['promotion_token']])->assertOk()->assertJsonPath('counted', false);
+        $this->assertEquals(0.1, app(DoctorPerformance::class)->forDoctor($doctor->doctorProfile)['components']['promotion']);
         $row = $this->getJson('/api/v1/patient/doctor-catalog')->json('data.0');
         $this->postJson('/api/v1/patient/promotion-impression', ['token' => $row['promotion_token']])->assertOk()->assertJsonPath('counted', false);
         $this->assertSame(200, DoctorPromotion::find($id)->remaining_minor);
@@ -42,6 +45,7 @@ class DoctorPromotionsTest extends TestCase
         $this->deleteJson('/api/v1/doctor/promotions/'.$id)->assertOk();
         $this->assertSame(800, $this->balance($doctor));
         $this->assertSame(1, WalletTransaction::where('type', 'promotion_budget_refund')->count());
+        $this->assertEquals(0.2, app(DoctorPerformance::class)->forDoctor($doctor->doctorProfile)['components']['promotion']);
     }
 
     public function test_delivery_tokens_are_bound_to_viewer_and_expiry_and_public_catalog_is_not_charged(): void

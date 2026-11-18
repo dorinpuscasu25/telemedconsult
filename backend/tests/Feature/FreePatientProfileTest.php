@@ -25,14 +25,14 @@ class FreePatientProfileTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_owner_can_choose_another_person_and_create_one_year_profile_without_payment_or_bonus(): void
+    public function test_owner_can_choose_another_person_and_create_permanent_profile_without_payment_or_bonus(): void
     {
         $owner = $this->owner();
-        $this->getJson('/api/v1/patient/profile')->assertOk()->assertJsonPath('free_profile.available', true)->assertJsonPath('free_profile.validity_years', 1)->assertJsonPath('can_add_patient', true);
+        $this->getJson('/api/v1/patient/profile')->assertOk()->assertJsonPath('free_profile.available', true)->assertJsonPath('free_profile.validity_years', null)->assertJsonPath('free_profile.permanent', true)->assertJsonPath('can_add_patient', true);
         $id = $this->postJson('/api/v1/patient/profiles', $this->payload())->assertCreated()->assertJsonPath('patient_profile.is_free', true)->assertJsonPath('patient_profile.first_name', 'Ana')->json('patient_profile.id');
         $profile = PatientProfile::findOrFail($id);
         $this->assertSame($owner->id, $profile->user_id);
-        $this->assertTrue($profile->active_until->equalTo(now()->addYearNoOverflow()));
+        $this->assertNull($profile->active_until);
         $this->assertTrue($owner->fresh()->free_patient_profile_claimed_at->equalTo(now()));
         $this->getJson('/api/v1/patient/profile')->assertOk()->assertJsonPath('free_profile.available', false)->assertJsonPath('can_add_patient', false)->assertJsonPath('patient_profiles.0.can_request_consultation', true);
         foreach ([Wallet::class, WalletTransaction::class, Payment::class, PatientCardPurchase::class] as $model) {
@@ -76,13 +76,15 @@ class FreePatientProfileTest extends TestCase
         $this->assertSame(0, PatientProfile::count());
     }
 
-    public function test_expiry_blocks_new_consultation_at_exact_deadline_and_does_not_restore_grant(): void
+    public function test_free_profile_stays_active_after_thirty_years_while_paid_profile_expires_at_exact_deadline(): void
     {
         $this->owner();
         $id = $this->postJson('/api/v1/patient/profiles', $this->payload())->assertCreated()->json('patient_profile.id');
-        $this->travelTo(PatientProfile::findOrFail($id)->active_until);
-        $this->getJson('/api/v1/patient/profile')->assertJsonPath('patient_profiles.0.can_request_consultation', false)->assertJsonPath('free_profile.available', false);
-        $this->postJson('/api/v1/requests', ['type' => 'doctor', 'patient_profile_id' => $id, 'symptoms' => 'Descriere', 'scheduled_at' => now()->addDay()->toDateTimeString()])->assertUnprocessable()->assertJsonPath('message', 'Cartela profilului de pacient a expirat. Reînnoiește cartela înainte de o consultație nouă.');
+        $this->travel(30)->years();
+        $this->getJson('/api/v1/patient/profile')->assertJsonPath('patient_profiles.0.can_request_consultation', true)->assertJsonPath('free_profile.available', false);
+        $free = PatientProfile::findOrFail($id);
+        $paid = PatientProfile::create(['user_id' => $free->user_id, 'first_name' => 'Ion', 'last_name' => 'Exemplu', 'status' => 'active', 'active_until' => now()]);
+        $this->postJson('/api/v1/requests', ['type' => 'doctor', 'patient_profile_id' => $paid->id, 'symptoms' => 'Descriere', 'scheduled_at' => now()->addDay()->toDateTimeString()])->assertUnprocessable()->assertJsonPath('message', 'Cartela profilului de pacient a expirat. Reînnoiește cartela înainte de o consultație nouă.');
         $this->postJson('/api/v1/patient/profiles', $this->payload())->assertUnprocessable()->assertJsonPath('code', 'free_profile_already_claimed');
     }
 
@@ -110,15 +112,53 @@ class FreePatientProfileTest extends TestCase
         $this->assertSame(0, PatientProfile::count());
         $id = $this->postJson('/api/v1/patient/profiles', $this->payload())->assertCreated()->json('patient_profile.id');
         $this->putJson('/api/v1/patient/profiles/'.$id, ['use_free_profile' => true, 'is_free' => false, 'active_until' => now()->addYears(10)->toDateTimeString()])->assertUnprocessable()->assertJsonValidationErrors(['use_free_profile', 'is_free', 'active_until']);
-        $this->assertTrue(PatientProfile::findOrFail($id)->active_until->equalTo(now()->addYearNoOverflow()));
+        $this->assertNull(PatientProfile::findOrFail($id)->active_until);
     }
 
-    public function test_calendar_year_from_leap_day_ends_on_february_twenty_eight(): void
+    public function test_free_profile_created_on_leap_day_has_no_expiration(): void
     {
         $this->owner();
         $this->travelTo(Carbon::create(2028, 2, 29, 12, 0, 0));
         $id = $this->postJson('/api/v1/patient/profiles', $this->payload())->assertCreated()->json('patient_profile.id');
-        $this->assertSame('2029-02-28', PatientProfile::findOrFail($id)->active_until->toDateString());
+        $this->assertNull(PatientProfile::findOrFail($id)->active_until);
+    }
+
+    public function test_migration_permanentizes_existing_free_profiles_without_restoring_grants_or_changing_paid_dates(): void
+    {
+        $owner = $this->owner();
+        $id = $this->postJson('/api/v1/patient/profiles', $this->payload())->assertCreated()->json('patient_profile.id');
+        PatientProfile::findOrFail($id)->update(['active_until' => now()->subDay()]);
+        $paid = PatientProfile::create(['user_id' => $owner->id, 'first_name' => 'Ion', 'last_name' => 'Test', 'status' => 'active', 'active_until' => now()->addDays(20)]);
+        $paidDate = $paid->active_until->toISOString();
+        $migration = require database_path('migrations/2026_11_17_200525_make_existing_free_patient_profiles_permanent.php');
+        $migration->up();
+        $migration->up();
+        $this->assertNull(PatientProfile::findOrFail($id)->active_until);
+        $this->assertSame($paidDate, $paid->fresh()->active_until->toISOString());
+        $this->assertNotNull($owner->fresh()->free_patient_profile_claimed_at);
+        $this->postJson('/api/v1/patient/profiles', $this->payload())->assertUnprocessable()->assertJsonPath('code', 'free_profile_already_claimed');
+    }
+
+    public function test_admin_statistics_distinguish_free_grants_package_purchases_capacity_and_used_slots(): void
+    {
+        $owner = $this->owner();
+        $id = $this->postJson('/api/v1/patient/profiles', $this->payload())->assertCreated()->json('patient_profile.id');
+        $package = PatientCardPackage::create(['name' => 'Familie', 'profile_slots' => 2, 'price_minor' => 45000, 'validity_days' => 365, 'is_active' => true]);
+        foreach ([1, 2] as $used) {
+            PatientCardPurchase::create(['user_id' => $owner->id, 'patient_card_package_id' => $package->id, 'profile_slots' => 2, 'used_slots' => $used, 'amount_minor' => 45000, 'validity_days' => 365, 'expires_at' => now()->addYear()]);
+        }
+        Sanctum::actingAs($this->user('admin'));
+        $response = $this->getJson('/api/v1/admin/patient-card-packages')->assertOk()
+            ->assertJsonPath('free_profile.claims_count', 1)->assertJsonPath('free_profile.profiles_count', 1)->assertJsonPath('free_profile.permanent', true);
+        $stats = collect($response->json('data'))->firstWhere('id', $package->id);
+        $this->assertSame(2, $stats['purchases_count']);
+        $this->assertSame(4, $stats['profiles_purchased']);
+        $this->assertSame(3, $stats['profiles_activated']);
+        $this->assertEquals(900, $stats['revenue']);
+        Sanctum::actingAs($owner);
+        $this->deleteJson('/api/v1/patient/profiles/'.$id)->assertOk();
+        Sanctum::actingAs($this->user('admin'));
+        $this->getJson('/api/v1/admin/patient-card-packages')->assertOk()->assertJsonPath('free_profile.claims_count', 1)->assertJsonPath('free_profile.profiles_count', 0);
     }
 
     public function test_provider_without_patient_role_cannot_claim_profile(): void

@@ -186,9 +186,20 @@ class SiteContent
             ],
         ],
 
+        'patient_record' => [
+            'label' => 'Fișa pacientului · date paraclinice',
+            'description' => 'Exemple de documente afișate lângă încărcare. Sunt texte de ajutor, nu un catalog obligatoriu.',
+            'preview' => 'patient-record',
+            'fields' => [
+                'patient_record.analysis_examples' => ['label' => 'Analize de laborator · exemple', 'type' => self::TYPE_TEXTAREA, 'value' => 'De exemplu: hemoleucogramă, biochimie, hormoni.', 'max' => 500],
+                'patient_record.functional_examples' => ['label' => 'Investigații funcționale · exemple', 'type' => self::TYPE_TEXTAREA, 'value' => 'De exemplu: ECG, EEG, spirometrie.', 'max' => 500],
+                'patient_record.imaging_examples' => ['label' => 'Investigații imagistice · exemple', 'type' => self::TYPE_TEXTAREA, 'value' => 'De exemplu: radiografie, ecografie, RMN, tomografie, gastroscopie, colonoscopie.', 'max' => 500],
+            ],
+        ],
+
         'partners' => [
             'label' => 'Pagina Parteneri',
-            'description' => 'Antetul paginii de parteneri și panoul partenerului ales.',
+            'description' => 'Antetul paginii de parteneri și cardurile cu prezentare și link direct.',
             'preview' => 'partners',
             'fields' => [
                 'partners.title' => ['label' => 'Titlu pagină', 'type' => self::TYPE_TEXT, 'value' => 'Partenerii noștri', 'max' => 120],

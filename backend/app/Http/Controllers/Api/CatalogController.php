@@ -22,6 +22,7 @@ use App\Services\DoctorSchedule;
 use App\Services\DoctorServiceCatalog;
 use App\Services\FeatureFlags;
 use App\Services\ObjectiveDataSchema;
+use App\Services\PatientGeography;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -255,6 +256,11 @@ class CatalogController extends Controller
         ]);
     }
 
+    public function countries(): JsonResponse
+    {
+        return response()->json(['data' => collect(app(PatientGeography::class)->countries())->map(fn ($name, $code) => ['code' => $code, 'name' => $name])->values()]);
+    }
+
     public function partners(): JsonResponse
     {
         $partners = Partner::where('is_active', true)
@@ -304,8 +310,13 @@ class CatalogController extends Controller
     public function doctorSlots(Request $request, User $doctor): JsonResponse
     {
         abort_unless($doctor->doctorProfile()->where('is_approved', true)->exists(), 404);
+        $validated = $request->validate(['service_id' => ['nullable', 'integer']]);
+        $service = isset($validated['service_id']) ? $doctor->doctorServices()->where('is_active', true)->find($validated['service_id']) : null;
+        abort_if(isset($validated['service_id']) && ! $service, 422, 'Serviciul ales nu mai este disponibil. Alege alt serviciu.');
         $days = min(14, max(1, $request->integer('days', 7)));
 
-        return response()->json(app(DoctorSchedule::class)->freeSlots($doctor, $days));
+        $schedule = app(DoctorSchedule::class);
+
+        return response()->json($schedule->freeSlots($doctor, $days, durationMinutes: $schedule->durationMinutes($service?->snapshot())));
     }
 }

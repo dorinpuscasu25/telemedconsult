@@ -8,27 +8,20 @@ h1 { text-align:center; font-size: 17px; margin: 12px 0 4px; } h2 { font-size: 1
 .meta { padding: 12px; background: #ffffff; margin-bottom: 15px; } .text { white-space: pre-wrap; overflow-wrap: break-word; word-wrap: break-word; }
 .signature { margin-top: 25px; page-break-inside: avoid; } .signature img { max-height: 95px; max-width: 220px; }
 .footer { position: fixed; bottom: -30px; font-size: 8px; color: #64748b; } .label { font-weight: bold; }
+.decision { page-break-before: always; } .part-title { font-size: 15px; text-align: center; }
 </style></head><body>
 
 <div class="header">@if(!empty($record['clinic_logo_image']))<img class="clinic-logo" src="{{ $record['clinic_logo_image'] }}" alt="Sigla clinicii"><br>@endif<div class="brand">{{ $record['clinic'] ?? 'telemedconsult.md' }}</div><div class="text">{{ $record['clinic_details'] ?? '' }}</div></div>
-@if(!empty($record['consents']))
-<p><strong>Proces-verbal nr. {{ $record['protocol_number'] }}</strong> · Decizie medicală nr. {{ $record['decision_number'] }}</p>
-@endif
-<h1>{{ $record['title'] }}</h1>
+<h1>{{ !empty($record['parts']) ? 'Proces-verbal nr. '.$record['protocol_number'] : $record['title'] }}</h1>
 <div class="document-date"><span class="label">Data consultației:</span> {{ $record['published_at'] }} · Nr. {{ $record['consultation_id'] }}</div>
 <div class="doctor-header"><strong>Medic {{ $record['specialty'] ?? '' }}<br>{{ $record['doctor_name'] }}</strong>@if(!empty($record['doctor_phone']))<br>Telefon: {{ $record['doctor_phone'] }}@endif @if(!empty($record['doctor_contacts']))<br>{{ $record['doctor_contacts'] }}@endif</div>
 <div class="meta"><span class="label">Pacient:</span> {{ $record['patient_name'] }} · Cod {{ $record['patient_code'] }}<br>
 <span class="label">Data nașterii:</span> {{ $record['birth_date'] ?? '-' }} · <span class="label">Localitate:</span> {{ $record['locality'] ?? '-' }}<br>
 
 @if(!empty($record['parent_document_id']))<br>Completare la documentul #{{ $record['parent_document_id'] }}@endif</div>
-@foreach($record['sections'] as $title => $content)
+@foreach(($record['parts']['protocol'] ?? $record['sections']) as $title => $content)
 @if(filled($content))<h2>{{ $title }}</h2><div class="text">{{ $content }}</div>@endif
 @endforeach
-@if(!empty($record['has_prescription']))<h2>Rețetă scanată atașată</h2><div class="text">{{ $record['prescription_instructions'] }}</div>@endif
-<div class="signature"><div class="label">{{ $record['doctor_name'] }}</div>
-@if(!empty($record['signature_image']))<table style="width:100%;border-collapse:collapse"><tr><td style="width:230px"><img src="{{ $record['signature_image'] }}" alt="Parafă și semnătură"></td><td><span class="label">Parafă și semnătură aplicate la</span><br>{{ $record['published_at'] }}</td></tr></table>@endif
-</div>
-
 @if(!empty($record['consents']))
 <h2>Acceptarea consimțămintelor</h2>
 @foreach($record['consents'] as $consent)
@@ -36,4 +29,24 @@ h1 { text-align:center; font-size: 17px; margin: 12px 0 4px; } h2 { font-size: 1
 @if($consent['capacity'] === 'representative')<br>Reprezentant: {{ $consent['representative_name'] }} · {{ $consent['representative_relationship'] }}@endif</p>
 @endforeach
 @endif
+
+@if(!empty($record['parts']))
+<div class="decision">
+<div class="header"><div class="brand">{{ $record['clinic'] ?? 'telemedconsult.md' }}</div></div>
+<h1>Decizie medicală nr. {{ $record['decision_number'] }}</h1>
+<div class="document-date"><span class="label">Data consultației:</span> {{ $record['published_at'] }} · Nr. {{ $record['consultation_id'] }}</div>
+<div class="meta"><span class="label">Pacient:</span> {{ $record['patient_name'] }} · Cod {{ $record['patient_code'] }}<br><span class="label">Data nașterii:</span> {{ $record['birth_date'] ?? '-' }}<br><span class="label">Medic:</span> {{ $record['doctor_name'] }} · {{ $record['specialty'] ?? '' }}</div>
+@foreach($record['parts']['decision'] as $title => $content)
+@if(filled($content))<h2>{{ $title }}</h2><div class="text">{{ $content }}</div>@endif
+@endforeach
+@if(!empty($record['has_prescription']))
+<h2>Anexa nr. 1 la decizie</h2>
+<p>Rețeta atașată continuă pe {{ $record['prescription_page_count'] }} {{ $record['prescription_page_count'] === 1 ? 'pagină' : 'pagini' }} după decizia medicală.</p>
+<div class="text">{{ $record['prescription_instructions'] }}</div>
+@endif
+</div>
+@endif
+<div class="signature"><div class="label">{{ $record['doctor_name'] }}</div>
+@if(!empty($record['signature_image']))<table style="width:100%;border-collapse:collapse"><tr><td style="width:230px"><img src="{{ $record['signature_image'] }}" alt="Parafă și semnătură"></td><td><span class="label">Parafă și semnătură aplicate la</span><br>{{ $record['published_at'] }}</td></tr></table>@endif
+</div>
 </body></html>

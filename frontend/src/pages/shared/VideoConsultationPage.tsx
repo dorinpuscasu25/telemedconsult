@@ -13,6 +13,7 @@ import type { VideoStatus, VideoConnection } from '../../lib/consultation-video'
 import { ConclusionPanel, type ConclusionRequest } from '../../components/doctor/ConclusionEditor';
 import { toast } from 'sonner';
 import { NextPatientDelayNotice } from '../../components/NextPatientDelayNotice';
+import { consultationClock } from '../../lib/consultation-clock';
 
 const VideoCallPanel = lazy(() => import('../../components/VideoCallPanel'));
 
@@ -187,11 +188,9 @@ export function VideoConsultationPage() {
     const consultation = status.consultation;
     const owner = consultation.participants.find((person) => person.role === 'patient');
     const startedAt = consultation.doctor_started_at ? new Date(consultation.doctor_started_at).getTime() : null;
-    const elapsed = startedAt ? Math.max(0, Math.floor((tick - startedAt) / 1000)) : 0;
     const duration = consultation.duration_minutes ?? 10;
-    const remaining = duration * 60 - elapsed;
-    const overtime = remaining < 0;
-    const clock = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+    const clock = consultationClock(startedAt, duration, tick);
+    const overtime = clock.overtime;
     const service = (conclusionRequest as (ConclusionRequest & { service?: { name: string; duration: number | null; type: string } }) | null)?.service;
     const patientName = consultation.patient_profile?.display_name ?? owner?.name ?? 'Pacient';
     return (
@@ -203,7 +202,7 @@ export function VideoConsultationPage() {
               {owner && owner.name !== patientName && <span className="text-xs text-slate-400">cu {owner.name}</span>}
             </div>
             <div className="flex items-center gap-2">
-              {startedAt && (conclusionOpen ? <span className="rounded-lg bg-white/10 px-2.5 py-1.5 font-mono text-sm">{clock(elapsed)} / {clock(duration * 60)}</span> : <span className={`flex h-10 items-center gap-2.5 rounded-full px-4 sm:absolute sm:left-1/2 sm:top-4 sm:-translate-x-1/2 ${overtime ? 'bg-orange-600' : 'bg-black/40'}`}><span className={`h-2 w-2 rounded-full ${overtime ? 'bg-white' : 'bg-green-400'}`} /><span className="font-mono text-[17px] font-semibold">{overtime ? '−' : ''}{clock(Math.abs(remaining))}</span><span className="text-xs text-white/70 max-sm:hidden">{overtime ? 'peste durată' : 'rămase'}</span></span>)}
+              {startedAt && (conclusionOpen ? <span className="rounded-lg bg-white/10 px-2.5 py-1.5 font-mono text-sm">{clock.elapsed} / {clock.limit}</span> : <span className={`flex h-10 items-center gap-2.5 rounded-full px-4 sm:absolute sm:left-1/2 sm:top-4 sm:-translate-x-1/2 ${overtime ? 'bg-orange-600' : 'bg-black/40'}`}><span className={`h-2 w-2 rounded-full ${overtime ? 'bg-white' : 'bg-green-400'}`} /><span aria-label={`${clock.label}: ${clock.display}`} className="font-mono text-[17px] font-semibold">{clock.display}</span><span className="text-xs text-white/70 max-sm:hidden">{overtime ? 'peste durată' : 'rămase'}</span></span>)}
               <Link to={returnTo} className="rounded-lg px-2.5 py-1.5 text-sm text-slate-300 hover:bg-white/10">Înapoi</Link>
             </div>
           </div>

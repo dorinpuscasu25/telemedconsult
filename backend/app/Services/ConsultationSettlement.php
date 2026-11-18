@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Consultation;
 use App\Models\ConsultationRequest;
 use App\Models\Conversation;
+use App\Models\MedicalDocument;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
@@ -16,9 +17,8 @@ use Illuminate\Support\Facades\DB;
  * Banii unei consultații: rămân rezervați din portofelul pacientului până când
  * consultația se închide.
  *
- * - Concluzia medicului NU ia banii. Pacientul închide consultația lăsând
- *   recenzia și abia atunci plata ajunge la prestator (și la instituția lui).
- * - Fără recenzie, rezultatul rămâne blocat și plata rămâne rezervată.
+ * - Publicarea concluziei închide și decontează consultația.
+ * - Recenzia este opțională și nu condiționează rezultatul sau plata.
  * - Dacă la `consultations.no_show_refund_hours` ore după ora programată nu
  *   există concluzie, consultația nu a avut loc: banii revin pacientului.
  *   Excepție: examinarea la domiciliu deja făcută rămâne pentru decizia adminului.
@@ -41,7 +41,7 @@ class ConsultationSettlement
         return max(1, (int) $this->config->number(self::NO_SHOW_REFUND_HOURS, 24));
     }
 
-    /** Păstrează compatibilitatea răspunsurilor API; închiderea necesită recenzie. */
+    /** Publicarea închide imediat; nu există un termen separat de închidere. */
     public function autoCloseAt(ConsultationRequest $request): ?CarbonInterface
     {
         return null;
@@ -63,7 +63,7 @@ class ConsultationSettlement
     {
         DB::transaction(function () use ($request) {
             $locked = ConsultationRequest::lockForUpdate()->findOrFail($request->id);
-            if ($locked->status !== 'completed' || ! app(ConsultationResultAccess::class)->reviewsComplete($locked)) {
+            if ($locked->status !== 'completed') {
                 return;
             }
             if (! $locked->closed_at) {
@@ -196,7 +196,7 @@ class ConsultationSettlement
     }
 
     /**
-     * Returnează banii consultațiilor care nu au avut loc. Nu plătește fără recenzie.
+     * Recuperează decontările documentelor publicate și restituie consultațiile neefectuate.
      *
      * @return array{closed: int, refunded: int}
      */
@@ -204,6 +204,15 @@ class ConsultationSettlement
     {
         $closed = 0;
         $refunded = 0;
+
+        ConsultationRequest::where('status', 'completed')->where('payment_status', 'held')
+            ->whereIn('id', MedicalDocument::query()->select('consultation_request_id')->where('status', 'published')->whereNotNull('pdf_path'))
+            ->orderBy('id')->limit($limit)->get()->each(function (ConsultationRequest $item) use (&$closed): void {
+                $this->close($item);
+                if ($item->fresh()->payment_status === 'captured') {
+                    $closed++;
+                }
+            });
 
         $hours = $this->noShowRefundHours();
         ConsultationRequest::where('status', 'accepted')

@@ -24,6 +24,7 @@ interface AdminInstitution {
   phone?: string | null;
   address?: string | null;
   doctor_share_percent: number;
+  revenue_share_percent: number;
   status: 'active' | 'suspended' | string;
   notes?: string | null;
   doctors_count: number;
@@ -36,7 +37,7 @@ interface AdminInstitution {
 }
 
 const EMPTY = {
-  name: '', legal_name: '', fiscal_code: '', iban: '', bank_name: '', email: '', phone: '', address: '', doctor_share_percent: '70', notes: '', status: 'active',
+  name: '', legal_name: '', fiscal_code: '', iban: '', bank_name: '', email: '', phone: '', address: '', doctor_share_percent: '30', revenue_share_percent: '80', notes: '', status: 'active',
   manager_name: '', manager_email: '', manager_phone: '', manager_password: ''
 };
 
@@ -75,7 +76,7 @@ export function AdminInstitutionsPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    if (!managerFor || creatingManagerUser) return;
+    if ((!managerFor && editing !== 'new') || creatingManagerUser) return;
     let cancelled = false;
     setManagerLoading(true);
     setManagerLoadError('');
@@ -91,10 +92,16 @@ export function AdminInstitutionsPage() {
         .finally(() => { if (!cancelled) setManagerLoading(false); });
     }, 250);
     return () => { cancelled = true; window.clearTimeout(timeout); };
-  }, [managerFor, managerSearch, managerPage, creatingManagerUser]);
+  }, [managerFor, editing, managerSearch, managerPage, creatingManagerUser]);
 
   const open = (target: AdminInstitution | 'new') => {
     setError('');
+    setManagerSearch('');
+    setManagerPage(1);
+    setManagerLastPage(1);
+    setSelectedManager(null);
+    setCreatingManagerUser(false);
+    setNewUserCredentials(null);
     setEditing(target);
     setForm(target === 'new' ? EMPTY : {
       ...EMPTY,
@@ -122,16 +129,18 @@ export function AdminInstitutionsPage() {
     setError('');
     const institutionPayload = {
       name: form.name, legal_name: nullable(form.legal_name), fiscal_code: nullable(form.fiscal_code), iban: nullable(form.iban), bank_name: nullable(form.bank_name),
-      email: nullable(form.email), phone: nullable(form.phone), address: nullable(form.address), doctor_share_percent: Number(form.doctor_share_percent), notes: nullable(form.notes)
+      email: nullable(form.email), phone: nullable(form.phone), address: nullable(form.address), doctor_share_percent: Number(form.doctor_share_percent), revenue_share_percent: Number(form.revenue_share_percent), notes: nullable(form.notes)
     };
     try {
       if (editing === 'new') {
         const response = await apiRequest<{ message: string; generated_password: string | null }>('/admin/institutions', {
           method: 'POST',
-          body: JSON.stringify({ ...institutionPayload, manager_name: form.manager_name, manager_email: form.manager_email, manager_phone: nullable(form.manager_phone), manager_password: nullable(form.manager_password) })
+          body: JSON.stringify({ ...institutionPayload, ...(creatingManagerUser ? {
+            manager_name: form.manager_name, manager_email: form.manager_email, manager_phone: nullable(form.manager_phone), manager_password: nullable(form.manager_password)
+          } : { manager_user_id: Number(selectedManager?.id) }) })
         });
         toast.success(response.message);
-        setCredentials({ email: form.manager_email, password: response.generated_password ?? form.manager_password });
+        if (creatingManagerUser) setCredentials({ email: form.manager_email, password: response.generated_password ?? form.manager_password });
       } else if (editing) {
         const response = await apiRequest<{ message: string }>(`/admin/institutions/${editing.id}`, { method: 'PUT', body: JSON.stringify({ ...institutionPayload, status: form.status }) });
         toast.success(response.message);
@@ -208,6 +217,43 @@ export function AdminInstitutionsPage() {
   const assignedManagerIds = new Set(items?.flatMap((institution) => institution.managers.map((manager) => String(manager.id))) ?? []);
   const availableManagerUsers = managerUsers.filter((user) => user.status === 'active' && !assignedManagerIds.has(String(user.id)));
 
+  const managerPicker = (
+    <div className="space-y-4">
+      <div className="space-y-1.5">
+        <Label htmlFor="manager-search">Caută utilizator</Label>
+        <div className="relative">
+          <Search aria-hidden="true" className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
+          <Input id="manager-search" className="pl-9" placeholder="Nume sau email" value={managerSearch} onChange={(event) => { setManagerSearch(event.target.value); setManagerPage(1); }} />
+        </div>
+      </div>
+      <fieldset className="max-h-64 space-y-1 overflow-y-auto rounded-xl border border-slate-200 p-2" disabled={saving}>
+        <legend className="sr-only">Utilizatori disponibili</legend>
+        {managerLoading ? <p role="status" className="p-4 text-center text-sm text-slate-500">Se încarcă utilizatorii…</p> : managerLoadError ? (
+          <p role="alert" className="p-3 text-sm text-red-700">{managerLoadError}</p>
+        ) : availableManagerUsers.length === 0 ? (
+          <p className="p-4 text-center text-sm text-slate-500">Niciun utilizator disponibil pe această pagină. Caută după nume sau email ori adaugă un utilizator.</p>
+        ) : availableManagerUsers.map((user) => (
+          <label key={user.id} className={`flex cursor-pointer items-center gap-3 rounded-lg p-3 ${String(selectedManager?.id) === String(user.id) ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
+            <input type="radio" name="manager-user" value={user.id} checked={String(selectedManager?.id) === String(user.id)} onChange={() => { setSelectedManager(user); setError(''); }} className="h-4 w-4 shrink-0 accent-blue-600" />
+            <span className="min-w-0"><span className="block break-words text-sm font-medium text-slate-950">{user.name}</span><span className="block break-all text-xs text-slate-500">{user.email}</span></span>
+          </label>
+        ))}
+      </fieldset>
+      {managerLastPage > 1 && <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+        <Button type="button" size="sm" variant="outline" disabled={managerLoading || managerPage <= 1} onClick={() => setManagerPage((page) => page - 1)}>Înapoi</Button>
+        <span>Pagina {managerPage} din {managerLastPage}</span>
+        <Button type="button" size="sm" variant="outline" disabled={managerLoading || managerPage >= managerLastPage} onClick={() => setManagerPage((page) => page + 1)}>Înainte</Button>
+      </div>}
+      {selectedManager && <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">Selectat: <strong>{selectedManager.name}</strong><span className="block break-all text-xs">{selectedManager.email}</span></p>}
+      {newUserCredentials && <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+        <p className="text-sm font-medium text-emerald-900">Utilizator creat. Copiază datele de acces înainte de a închide fereastra.</p>
+        <CopyRow label="Email" value={newUserCredentials.email} />
+        <CopyRow label="Parolă" value={newUserCredentials.password} mono />
+      </div>}
+      <Button type="button" variant="outline" className="w-full" disabled={saving} onClick={() => { setCreatingManagerUser(true); setError(''); }}><UserPlus className="h-4 w-4" />Adaugă utilizator</Button>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -236,7 +282,7 @@ export function AdminInstitutionsPage() {
               </div>
               <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                 <Metric label="Medici" value={String(institution.doctors_count)} />
-                <Metric label="Procent medic" value={`${institution.doctor_share_percent}%`} />
+                <Metric label="Procent instituție" value={`${institution.revenue_share_percent}%`} />
                 <Metric label="Câștigat total" value={`${money(institution.earned_total)}`} />
                 <Metric label="De transferat" value={`${money(institution.platform_balance)}`} highlight={institution.platform_balance > 0} />
               </dl>
@@ -255,7 +301,7 @@ export function AdminInstitutionsPage() {
           <form onSubmit={save} className="grid gap-5">
             <DialogHeader>
               <DialogTitle>{editing === 'new' ? 'Instituție nouă' : 'Editează instituția'}</DialogTitle>
-              <DialogDescription>{editing === 'new' ? 'Creezi instituția și contul managerului. Managerul își adaugă apoi singur medicii.' : 'Suspendarea blochează accesul managerilor; medicii rămân afiliați.'}</DialogDescription>
+              <DialogDescription>{editing === 'new' ? 'Completează instituția și alege managerul din utilizatorii existenți sau creează un cont nou.' : 'Suspendarea blochează accesul managerilor; medicii rămân afiliați.'}</DialogDescription>
             </DialogHeader>
             {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
             <div className="grid gap-4 sm:grid-cols-2">
@@ -267,7 +313,8 @@ export function AdminInstitutionsPage() {
               <Field label="Email" id="i-email"><Input id="i-email" type="email" value={form.email} onChange={set('email')} /></Field>
               <Field label="Telefon" id="i-phone"><Input id="i-phone" type="tel" value={form.phone} onChange={set('phone')} /></Field>
               <Field label="Adresa" id="i-address" className="sm:col-span-2"><Input id="i-address" value={form.address} onChange={set('address')} /></Field>
-              <Field label="Procent implicit pentru medici (%)" id="i-share" hint="Din suma rămasă după comisionul platformei. Instituția îl poate modifica."><Input id="i-share" type="number" min={0} max={100} step="0.5" required value={form.doctor_share_percent} onChange={set('doctor_share_percent')} /></Field>
+              <Field label="Procent pentru instituție (%)" id="i-revenue-share" hint={`Din banii achitați efectiv. Platformei îi revin ${100 - Number(form.revenue_share_percent || 0)}%.`}><Input id="i-revenue-share" type="number" min={0} max={100} step="0.01" required value={form.revenue_share_percent} onChange={set('revenue_share_percent')} /></Field>
+              <Field label="Procent implicit al medicilor (%)" id="i-share" hint="Din partea instituției. Managerul stabilește procentul medicilor săi."><Input id="i-share" type="number" min={0} max={100} step="0.5" required value={form.doctor_share_percent} onChange={set('doctor_share_percent')} /></Field>
               {editing !== 'new' && (
                 <Field label="Status" id="i-status">
                   <select id="i-status" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">
@@ -278,10 +325,10 @@ export function AdminInstitutionsPage() {
               )}
               <Field label="Note interne" id="i-notes" className="sm:col-span-2"><Textarea id="i-notes" value={form.notes} onChange={set('notes')} className="min-h-16" /></Field>
             </div>
-            {editing === 'new' && <ManagerFields form={form} set={set} />}
+            {editing === 'new' && (creatingManagerUser ? <div className="space-y-3"><ManagerFields form={form} set={set} /><Button type="button" variant="outline" onClick={() => { setCreatingManagerUser(false); setError(''); }} disabled={saving}>Alege un utilizator existent</Button></div> : managerPicker)}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setEditing(null)} disabled={saving}>Renunță</Button>
-              <Button type="submit" disabled={saving}>{saving ? 'Se salvează…' : editing === 'new' ? 'Creează instituția' : 'Salvează'}</Button>
+              <Button type="submit" disabled={saving || (editing === 'new' && !creatingManagerUser && !selectedManager)}>{saving ? 'Se salvează…' : editing === 'new' ? 'Creează instituția' : 'Salvează'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -295,42 +342,7 @@ export function AdminInstitutionsPage() {
               <DialogDescription>{creatingManagerUser ? 'După creare, utilizatorul va fi preselectat. Confirmă apoi adăugarea lui ca manager.' : 'Alege un utilizator existent sau adaugă unul nou. Managerul vede medicii, banii și plățile instituției.'}</DialogDescription>
             </DialogHeader>
             {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-            {creatingManagerUser ? <ManagerFields form={form} set={set} /> : (
-              <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="manager-search">Caută utilizator</Label>
-                  <div className="relative">
-                    <Search aria-hidden="true" className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
-                    <Input id="manager-search" className="pl-9" placeholder="Nume sau email" value={managerSearch} onChange={(event) => { setManagerSearch(event.target.value); setManagerPage(1); }} />
-                  </div>
-                </div>
-                <fieldset className="max-h-64 space-y-1 overflow-y-auto rounded-xl border border-slate-200 p-2" disabled={saving}>
-                  <legend className="sr-only">Utilizatori disponibili</legend>
-                  {managerLoading ? <p role="status" className="p-4 text-center text-sm text-slate-500">Se încarcă utilizatorii…</p> : managerLoadError ? (
-                    <p role="alert" className="p-3 text-sm text-red-700">{managerLoadError}</p>
-                  ) : availableManagerUsers.length === 0 ? (
-                    <p className="p-4 text-center text-sm text-slate-500">Niciun utilizator disponibil pe această pagină. Caută după nume sau email ori adaugă un utilizator.</p>
-                  ) : availableManagerUsers.map((user) => (
-                    <label key={user.id} className={`flex cursor-pointer items-center gap-3 rounded-lg p-3 ${String(selectedManager?.id) === String(user.id) ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
-                      <input type="radio" name="manager-user" value={user.id} checked={String(selectedManager?.id) === String(user.id)} onChange={() => { setSelectedManager(user); setError(''); }} className="h-4 w-4 shrink-0 accent-blue-600" />
-                      <span className="min-w-0"><span className="block break-words text-sm font-medium text-slate-950">{user.name}</span><span className="block break-all text-xs text-slate-500">{user.email}</span></span>
-                    </label>
-                  ))}
-                </fieldset>
-                {managerLastPage > 1 && <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
-                  <Button type="button" size="sm" variant="outline" disabled={managerLoading || managerPage <= 1} onClick={() => setManagerPage((page) => page - 1)}>Înapoi</Button>
-                  <span>Pagina {managerPage} din {managerLastPage}</span>
-                  <Button type="button" size="sm" variant="outline" disabled={managerLoading || managerPage >= managerLastPage} onClick={() => setManagerPage((page) => page + 1)}>Înainte</Button>
-                </div>}
-                {selectedManager && <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">Selectat: <strong>{selectedManager.name}</strong><span className="block break-all text-xs">{selectedManager.email}</span></p>}
-                {newUserCredentials && <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                  <p className="text-sm font-medium text-emerald-900">Utilizator creat. Copiază datele de acces înainte de a închide fereastra.</p>
-                  <CopyRow label="Email" value={newUserCredentials.email} />
-                  <CopyRow label="Parolă" value={newUserCredentials.password} mono />
-                </div>}
-                <Button type="button" variant="outline" className="w-full" disabled={saving} onClick={() => { setCreatingManagerUser(true); setForm(EMPTY); setError(''); }}><UserPlus className="h-4 w-4" />Adaugă utilizator</Button>
-              </div>
-            )}
+            {creatingManagerUser ? <ManagerFields form={form} set={set} /> : managerPicker}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => { if (creatingManagerUser) { setCreatingManagerUser(false); setError(''); } else setManagerFor(null); }} disabled={saving}>{creatingManagerUser ? 'Înapoi la utilizatori' : 'Renunță'}</Button>
               <Button type="submit" disabled={saving || (!creatingManagerUser && !selectedManager)}>{saving ? 'Se salvează…' : creatingManagerUser ? 'Creează utilizatorul' : 'Adaugă managerul'}</Button>

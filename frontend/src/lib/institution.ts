@@ -11,6 +11,7 @@ export interface Institution {
   phone?: string | null;
   address?: string | null;
   doctor_share_percent: number;
+  revenue_share_percent: number;
   status: string;
 }
 

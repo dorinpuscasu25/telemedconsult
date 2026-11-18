@@ -63,6 +63,17 @@ class SiteContentTest extends TestCase
         );
     }
 
+    public function test_paraclinical_examples_are_editable_from_admin_without_a_code_deploy(): void
+    {
+        $this->actingAsAdmin();
+        $values = ['patient_record.functional_examples' => 'Spirometrie și electrocardiogramă.', 'patient_record.imaging_examples' => 'Gastroscopie și colonoscopie.'];
+        $this->putJson('/api/v1/admin/site-content', ['values' => $values])->assertOk();
+        $response = $this->getJson('/api/v1/catalog/site-content')->assertOk();
+        foreach ($values as $key => $value) {
+            $this->assertSame($value, $response->json('data')[$key]);
+        }
+    }
+
     public function test_empty_or_default_value_removes_the_override(): void
     {
         $this->actingAsAdmin();

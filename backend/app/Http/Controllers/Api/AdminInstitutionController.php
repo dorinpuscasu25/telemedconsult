@@ -44,29 +44,35 @@ class AdminInstitutionController extends Controller
     public function store(Request $request): JsonResponse
     {
         $this->authorizeAdmin($request);
+        $existingManager = $request->filled('manager_user_id');
         $validated = $request->validate([
             ...$this->institutionRules(),
-            'manager_name' => ['required', 'string', 'max:255'],
-            'manager_email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
-            'manager_phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber(unique: true)],
-            'manager_password' => ['nullable', 'string', 'min:8', 'max:255'],
+            'manager_user_id' => ['nullable', 'integer', Rule::exists('users', 'id')->where('status', 'active')],
+            'manager_name' => [Rule::excludeIf($existingManager), 'required', 'string', 'max:255'],
+            'manager_email' => [Rule::excludeIf($existingManager), 'required', 'email', 'max:255', Rule::unique('users', 'email')],
+            'manager_phone' => [Rule::excludeIf($existingManager), 'nullable', 'string', 'max:50', new ValidPhoneNumber(unique: true)],
+            'manager_password' => [Rule::excludeIf($existingManager), 'nullable', 'string', 'min:8', 'max:255'],
         ], [
             'manager_email.unique' => 'Există deja un cont cu acest email. Alege alt email pentru manager.',
         ]);
 
-        $generatedPassword = empty($validated['manager_password']) ? Str::password(12, symbols: false) : null;
+        $generatedPassword = ! $existingManager && empty($validated['manager_password']) ? Str::password(12, symbols: false) : null;
 
         $institution = DB::transaction(function () use ($validated, $generatedPassword) {
             $institution = MedicalInstitution::create(collect($validated)->only(array_keys($this->institutionRules()))->all());
-            $this->createManager($institution, [
-                'name' => $validated['manager_name'],
-                'email' => $validated['manager_email'],
-                'phone' => $validated['manager_phone'] ?? null,
-                'password' => $validated['manager_password'] ?? $generatedPassword,
-            ]);
+            if (! empty($validated['manager_user_id'])) {
+                $this->assignManager($institution, $validated['manager_user_id'], 'manager_user_id');
+            } else {
+                $this->createManager($institution, [
+                    'name' => $validated['manager_name'],
+                    'email' => $validated['manager_email'],
+                    'phone' => $validated['manager_phone'] ?? null,
+                    'password' => $validated['manager_password'] ?? $generatedPassword,
+                ]);
+            }
 
             return $institution;
-        });
+        }, attempts: 3);
 
         return response()->json([
             'message' => 'Instituția a fost creată.',
@@ -126,16 +132,7 @@ class AdminInstitutionController extends Controller
             ]);
             DB::transaction(function () use ($institution, $validated): void {
                 $institution = MedicalInstitution::whereKey($institution->id)->lockForUpdate()->firstOrFail();
-                $user = User::whereKey($validated['user_id'])->lockForUpdate()->firstOrFail();
-                if ($user->status !== 'active') {
-                    throw ValidationException::withMessages(['user_id' => 'Alege un utilizator activ.']);
-                }
-                if ($user->medicalInstitutions()->whereKeyNot($institution->id)->exists()) {
-                    throw ValidationException::withMessages(['user_id' => 'Utilizatorul este deja managerul altei instituții.']);
-                }
-                $role = Role::firstOrCreate(['name' => 'institution'], ['label' => 'Instituție medicală']);
-                $user->roles()->syncWithoutDetaching([$role->id]);
-                $institution->managers()->syncWithoutDetaching([$user->id]);
+                $this->assignManager($institution, $validated['user_id']);
             }, attempts: 3);
 
             return response()->json([
@@ -160,6 +157,20 @@ class AdminInstitutionController extends Controller
             'institution' => $this->serialize($institution->load('managers')->loadCount('doctorProfiles')),
             'generated_password' => $generatedPassword,
         ], 201);
+    }
+
+    private function assignManager(MedicalInstitution $institution, int $userId, string $field = 'user_id'): void
+    {
+        $user = User::whereKey($userId)->lockForUpdate()->firstOrFail();
+        if ($user->status !== 'active') {
+            throw ValidationException::withMessages([$field => 'Alege un utilizator activ.']);
+        }
+        if ($user->medicalInstitutions()->whereKeyNot($institution->id)->exists()) {
+            throw ValidationException::withMessages([$field => 'Utilizatorul este deja managerul altei instituții.']);
+        }
+        $role = Role::firstOrCreate(['name' => 'institution'], ['label' => 'Manager instituție medicală']);
+        $user->roles()->syncWithoutDetaching([$role->id]);
+        $institution->managers()->syncWithoutDetaching([$user->id]);
     }
 
     public function storeManagerUser(StoreInstitutionManagerUserRequest $request): JsonResponse
@@ -190,6 +201,7 @@ class AdminInstitutionController extends Controller
             'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber],
             'address' => ['nullable', 'string', 'max:255'],
             'doctor_share_percent' => ['required', 'numeric', 'min:0', 'max:100'],
+            'revenue_share_percent' => ['sometimes', 'required', 'numeric', 'min:0', 'max:100'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ];
     }
@@ -241,6 +253,7 @@ class AdminInstitutionController extends Controller
             'phone' => $institution->phone,
             'address' => $institution->address,
             'doctor_share_percent' => $institution->doctor_share_percent,
+            'revenue_share_percent' => $institution->revenue_share_percent,
             'status' => $institution->status,
             'notes' => $institution->notes,
             'doctors_count' => (int) ($institution->doctor_profiles_count ?? 0),

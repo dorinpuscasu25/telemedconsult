@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\AdminFinancialReportRequest;
 use App\Http\Requests\ConfirmAdminWalletRequest;
 use App\Http\Requests\IssueAdminWalletConfirmationRequest;
 use App\Models\Complaint;
@@ -10,20 +11,24 @@ use App\Models\ConsultationRequest;
 use App\Models\ContractTemplate;
 use App\Models\DoctorProfileView;
 use App\Models\FirstTopupPromotionGrant;
-use App\Models\Payment;
+use App\Models\MedicalInstitution;
 use App\Models\PlatformSetting;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Models\WithdrawalRequest;
 use App\Notifications\AppEventNotification;
+use App\Services\AdminFinancialReport;
 use App\Services\AdminWalletConfirmationService;
+use App\Services\BonusCirculationReport;
 use App\Services\DoctorPerformance;
+use App\Services\FinancialReportScope;
 use App\Services\FirstTopupPromotion;
 use App\Services\InstitutionLedger;
 use App\Services\PlatformConfig;
 use App\Services\WalletAdjustment;
 use App\Services\WalletLedger;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -34,29 +39,29 @@ use Illuminate\Validation\ValidationException;
 
 class AdminOperationsController extends Controller
 {
-    public function financial(Request $request): JsonResponse
+    public function financial(AdminFinancialReportRequest $request): JsonResponse
     {
         $this->authorizeAdmin($request);
+        $scope = new FinancialReportScope($request->validated());
+        $report = new AdminFinancialReport($scope);
 
-        $transactions = WalletTransaction::with('wallet.user')
-            ->latest()
-            ->limit(200)
-            ->get()
-            ->map(fn (WalletTransaction $transaction) => [
-                'id' => $transaction->id,
-                'date' => $transaction->created_at,
-                'user' => $transaction->wallet?->user?->name ?? 'Utilizator',
-                'type' => $this->displayTransactionDescription($transaction->description),
-                'amount' => $transaction->amount_minor / 100,
-                'fee' => $this->platformFeeFor($transaction) / 100,
-                'status' => $transaction->status,
-                'currency' => $transaction->currency,
-                'wallet_type' => $transaction->wallet_type ?? $transaction->wallet?->type ?? 'real',
-            ]);
+        $transactionPage = $scope->transactions()->with('wallet.user')
+            ->latest()->orderByDesc('id')
+            ->paginate(200, ['*'], 'transactions_page');
+        $transactions = $transactionPage->getCollection()->map(fn (WalletTransaction $transaction) => [
+            'id' => $transaction->id,
+            'date' => $transaction->created_at,
+            'user' => $transaction->wallet?->user?->name ?? 'Utilizator',
+            'type' => $this->displayTransactionDescription($transaction->description),
+            'amount' => $transaction->amount_minor / 100,
+            'fee' => $this->platformFeeFor($transaction) / 100,
+            'status' => $transaction->status,
+            'currency' => $transaction->currency,
+            'wallet_type' => $transaction->wallet?->type ?? $transaction->wallet_type ?? 'real',
+        ]);
 
         // Cererile medicilor afiliați le procesează instituția, nu adminul.
-        $withdrawals = WithdrawalRequest::with(['user', 'processor', 'institution'])
-            ->where('payer', InstitutionLedger::PAYER_PLATFORM)
+        $withdrawals = $scope->withdrawals()->with(['user', 'processor', 'institution'])
             ->latest()
             ->get()
             ->map(fn (WithdrawalRequest $withdrawal) => [
@@ -66,7 +71,7 @@ class AdminOperationsController extends Controller
                 'requested_by' => $withdrawal->user?->name,
                 'institution_iban' => $withdrawal->institution?->iban,
                 'amount' => $withdrawal->amount_minor / 100,
-                'approved_amount' => $withdrawal->approved_amount_minor ? $withdrawal->approved_amount_minor / 100 : null,
+                'approved_amount' => $withdrawal->approved_amount_minor !== null ? $withdrawal->approved_amount_minor / 100 : null,
                 'currency' => $withdrawal->currency,
                 'date' => $withdrawal->created_at,
                 'status' => $withdrawal->status,
@@ -82,14 +87,15 @@ class AdminOperationsController extends Controller
             ]);
 
         return response()->json([
-            'summary' => [
-                'wallets_balance' => Wallet::where('type', 'real')->sum('balance_minor') / 100,
-                'points_balance' => Wallet::where('type', 'points')->sum('balance_minor') / 100,
-                'top_ups' => Payment::where('purpose', 'wallet_top_up')->whereIn('status', ['paid', 'pending'])->sum('amount_minor') / 100,
-                'platform_fees' => $transactions->sum('fee'),
-                'pending_withdrawals' => WithdrawalRequest::where('payer', InstitutionLedger::PAYER_PLATFORM)->where('status', 'pending')->sum('amount_minor') / 100,
-            ],
-            'bonus_report' => $this->bonusReport(),
+            'filters' => ['from' => $request->validated('from'), 'to' => $request->validated('to'), 'institution_id' => $scope->institutionId()],
+            'timezone' => 'Europe/Chisinau',
+            'institutions' => MedicalInstitution::orderBy('name')->get(['id', 'name', 'status']),
+            'summary' => $report->summary(),
+            'by_service' => $report->byService(),
+            'by_institution' => $report->byInstitution(),
+            'transaction_count' => $transactionPage->total(),
+            'transaction_pagination' => ['current_page' => $transactionPage->currentPage(), 'last_page' => $transactionPage->lastPage()],
+            'bonus_report' => $this->bonusReport($scope),
             'transactions' => $transactions,
             'withdrawals' => $withdrawals,
         ]);
@@ -101,8 +107,9 @@ class AdminOperationsController extends Controller
         'registration_bonus' => 'Bonus de înregistrare',
         'topup_bonus' => 'Bonus la alimentare',
         'patient_card_bonus' => 'Bonus la pachetul de cartele',
-        'referral_topup_commission' => 'Referral 3% (link personal)',
-        'affiliate_bonus' => 'Referral 3% (cod medic / operator)',
+        'review_bonus' => 'Bonus pentru recenzii',
+        'referral_topup_commission' => 'Afiliere din alimentare (link personal)',
+        'affiliate_bonus' => 'Afiliere din alimentare (cod medic / operator)',
         WalletAdjustment::TYPE_CREDIT => 'Compensări admin',
     ];
 
@@ -112,25 +119,26 @@ class AdminOperationsController extends Controller
      *
      * @return array<string, mixed>
      */
-    private function bonusReport(): array
+    private function bonusReport(FinancialReportScope $scope): array
     {
-        $captured = ConsultationRequest::where('payment_status', 'captured');
+        $captured = $scope->consultations();
         $sum = fn (string $column) => (int) (clone $captured)->sum($column);
         $realMinor = $sum('real_amount_minor');
         $pointsMinor = $sum('points_amount_minor');
         $promoMinor = $sum('promo_amount_minor');
         $providerMinor = $sum('provider_amount_minor');
 
-        $issued = WalletTransaction::whereIn('wallet_type', [WalletLedger::POINTS, WalletLedger::PROMO])
+        $issued = $scope->transactions()->where('status', 'completed')->whereHas('wallet', fn ($query) => $query->whereIn('type', [WalletLedger::POINTS, WalletLedger::PROMO]))
             ->where('amount_minor', '>', 0)
             ->whereIn('type', array_keys(self::BONUS_SOURCES))
             ->selectRaw('type, sum(amount_minor) as total, count(*) as count')
             ->groupBy('type')
             ->get()
             ->keyBy('type');
-        $adminDebitMinor = (int) WalletTransaction::where('wallet_type', WalletLedger::POINTS)->where('type', WalletAdjustment::TYPE_DEBIT)->sum('amount_minor');
+        $adminDebitMinor = (int) $scope->transactions()->where('status', 'completed')->whereHas('wallet', fn ($query) => $query->where('type', WalletLedger::POINTS))->where('type', WalletAdjustment::TYPE_DEBIT)->sum('amount_minor');
 
         return [
+            'institution_scoped' => $scope->institutionId() !== null,
             'consultations' => [
                 'count' => (clone $captured)->count(),
                 'total' => ($realMinor + $pointsMinor + $promoMinor) / 100,
@@ -147,19 +155,20 @@ class AdminOperationsController extends Controller
                 'count' => (int) ($issued[$type]->count ?? 0),
             ])->values(),
             'issued_total' => (int) $issued->sum('total') / 100,
+            'circulation_report' => app(BonusCirculationReport::class)->build($scope, array_keys(self::BONUS_SOURCES)),
             'admin_debits' => abs($adminDebitMinor) / 100,
             'in_circulation' => [
                 'points' => (int) Wallet::where('type', WalletLedger::POINTS)->sum('balance_minor') / 100,
                 'promo' => (int) Wallet::where('type', WalletLedger::PROMO)->sum('balance_minor') / 100,
             ],
             'promotion' => [
-                'automatic_grants' => FirstTopupPromotionGrant::whereNull('granted_by_admin_id')->count(),
-                'manual_grants' => FirstTopupPromotionGrant::whereNotNull('granted_by_admin_id')->count(),
+                'automatic_grants' => $scope->institutionId() ? null : $scope->period(FirstTopupPromotionGrant::whereNull('granted_by_admin_id'), 'created_at')->count(),
+                'manual_grants' => $scope->institutionId() ? null : $scope->period(FirstTopupPromotionGrant::whereNotNull('granted_by_admin_id'), 'created_at')->count(),
                 'max_grants' => app(FirstTopupPromotion::class)->maxGrants(),
             ],
-            'recent' => (clone $captured)->with(['patient:id,name', 'doctor:id,name', 'operator:id,name'])->latest('id')->limit(100)->get()->map(fn (ConsultationRequest $item) => [
+            'recent' => (clone $captured)->select('consultation_requests.*')->selectRaw(FinancialReportScope::RECOGNIZED_AT.' as recognized_at')->with(['patient:id,name', 'doctor:id,name', 'operator:id,name'])->orderByRaw(FinancialReportScope::RECOGNIZED_AT.' DESC')->orderByDesc('id')->limit(100)->get()->map(fn (ConsultationRequest $item) => [
                 'id' => $item->id,
-                'date' => $item->updated_at,
+                'date' => CarbonImmutable::parse($item->recognized_at, config('app.timezone', 'UTC'))->toIso8601String(),
                 'patient' => $item->patient?->name,
                 'provider' => $item->doctor?->name ?? $item->operator?->name,
                 'total' => ($item->real_amount_minor + $item->points_amount_minor + $item->promo_amount_minor) / 100,
@@ -490,6 +499,9 @@ class AdminOperationsController extends Controller
             if ($key === 'consultations.addendum_days' && (! is_numeric($value) || (int) $value != $value || $value != 10)) {
                 throw ValidationException::withMessages(['settings' => ['Fereastra completărilor trebuie să fie egală cu 10 zile.']]);
             }
+            if (in_array($key, ['payout.request_day_start', 'payout.request_day_end'], true) && (! is_numeric($value) || (int) $value != $value || $value < 1 || $value > 31)) {
+                throw ValidationException::withMessages(['settings' => ['Zilele pentru cereri de plată trebuie să fie numere întregi între 1 și 31.']]);
+            }
 
             if ($key === 'affiliate.patient_topup_first_only' && ! in_array($value, [true, 1, '1', 'true'], true)) {
                 throw ValidationException::withMessages(['settings' => ['Referalul se acordă numai la prima alimentare efectivă.']]);
@@ -531,6 +543,14 @@ class AdminOperationsController extends Controller
         });
 
         $promotionChanges = collect($validated['settings'] ?? [])->pluck('value', 'key');
+        if ($promotionChanges->has('payout.request_day_start') || $promotionChanges->has('payout.request_day_end')) {
+            $config = app(PlatformConfig::class);
+            $start = (int) $promotionChanges->get('payout.request_day_start', $config->number('payout.request_day_start', 1));
+            $end = (int) $promotionChanges->get('payout.request_day_end', $config->number('payout.request_day_end', 10));
+            if ($start > $end) {
+                throw ValidationException::withMessages(['settings' => ['Ziua de început a cererilor de plată nu poate fi după ziua de sfârșit.']]);
+            }
+        }
         foreach (['wallet.first_topup_promo_enabled', 'wallet.first_topup_promo_doctor_ids'] as $promotionKey) {
             if (! $promotionChanges->has($promotionKey)) {
                 continue;
@@ -622,7 +642,7 @@ class AdminOperationsController extends Controller
 
     private function platformFeeFor(WalletTransaction $transaction): int
     {
-        if ($transaction->type === 'institution_consultation_income') {
+        if (in_array($transaction->type, ['institution_consultation_income', 'operator_add_on_income'], true) && $transaction->amount_minor >= 0) {
             return (int) ($transaction->metadata['platform_fee_minor'] ?? 0);
         }
         if ($transaction->amount_minor <= 0) {

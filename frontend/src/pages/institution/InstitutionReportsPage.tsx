@@ -53,7 +53,7 @@ export function InstitutionReportsPage() {
       <div className="space-y-1.5"><Label htmlFor="report-status">Starea programării</Label><select id="report-status" value={status} onChange={(event) => setStatus(event.target.value)} className={selectClass}><option value="">Toate stările</option>{Object.entries(STATUSES).map(([key, text]) => <option value={key} key={key}>{text}</option>)}</select></div>
       <div className="flex items-end gap-2"><Button type="submit" disabled={loading}>Aplică</Button><Button type="button" variant="outline" onClick={() => { setFrom(''); setTo(''); setDoctor(''); setStatus(''); setParams({ mode }); }}>Resetează</Button></div>
     </form>
-    <p className="text-xs text-slate-500">Perioada filtrează programările după data programată (sau data creării, când ora nu este stabilită) și decontările după data înregistrării lor. Orele și perioadele sunt în fusul Republicii Moldova. Sumele decontate apar după închiderea consultației prin recenzie.</p>
+    <p className="text-xs text-slate-500">Perioada filtrează programările după data programată (sau data creării, când ora nu este stabilită) și decontările după data înregistrării lor. Orele și perioadele sunt în fusul Republicii Moldova. Sumele sunt decontate la publicarea rezultatului; recenzia este opțională.</p>
     {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{error}</p>}
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4" aria-busy={loading}>{[
       ['Programări în selecție', summary?.appointments ?? 0], ['Consultații decontate', summary?.settled_consultations ?? 0], ['Partea medicilor', `${money(summary?.doctor_total)} MDL`], ['Partea instituției', `${money(summary?.institution_total)} MDL`],

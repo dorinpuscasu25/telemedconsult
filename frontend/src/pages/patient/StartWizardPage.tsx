@@ -211,7 +211,7 @@ export function StartWizardPage() {
             <section className="flex flex-1 flex-col gap-5 lg:gap-7">
               <div className="flex flex-col gap-2">
                 <h1 className="text-2xl font-bold leading-[1.2] tracking-tight text-slate-950 lg:text-[30px]">Alege pachetul</h1>
-                <p className="text-sm leading-[1.5] text-slate-500 lg:text-[15px]">Un profil este o persoană din familie, cu fișa ei medicală, activ un an.</p>
+                <p className="text-sm leading-[1.5] text-slate-500 lg:text-[15px]">Un profil este o persoană din familie, cu fișa ei medicală și valabilitatea indicată în opțiunea aleasă.</p>
               </div>
               <div role="radiogroup" aria-label="Pachet" className="flex flex-col gap-2.5 lg:grid lg:grid-cols-3 lg:gap-3.5">
                 {freeAvailable && <FreeProfileChoice className="lg:col-span-3" selected={usingFree} onSelect={() => setFreeSelected(true)} disabled={busy} />}
@@ -266,7 +266,7 @@ export function StartWizardPage() {
           /* 4a / 4b */
           <form onSubmit={savePatient} className="flex flex-col gap-[22px] lg:gap-6">
             <h1 className="text-2xl font-bold leading-[1.2] tracking-tight text-slate-950 lg:text-[30px]">Pentru cine e consultația?</h1>
-            {usingFree && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950"><p className="font-semibold">Profil gratuit · valabil un an</p><p className="mt-1 text-[13px] leading-5">Alege persoana pentru care folosești profilul gratuit. Consultațiile se achită separat.</p>{availableSlots > 0 ? <button type="button" onClick={() => setFreeSelected(false)} className="mt-2 text-[13px] font-semibold underline">Folosește în schimb un loc din pachet</button> : <button type="button" onClick={() => setFreeConfirmed(false)} className="mt-2 text-[13px] font-semibold underline">Schimbă opțiunea</button>}</div>}
+            {usingFree && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950"><p className="font-semibold">Profil gratuit · permanent</p><p className="mt-1 text-[13px] leading-5">Alege persoana pentru care folosești profilul gratuit. Consultațiile se achită separat.</p>{availableSlots > 0 ? <button type="button" onClick={() => setFreeSelected(false)} className="mt-2 text-[13px] font-semibold underline">Folosește în schimb un loc din pachet</button> : <button type="button" onClick={() => setFreeConfirmed(false)} className="mt-2 text-[13px] font-semibold underline">Schimbă opțiunea</button>}</div>}
             {!usingFree && freeAvailable && packagesRequired && availableSlots > 0 && <button type="button" onClick={() => setFreeSelected(true)} className="self-start text-sm font-semibold text-blue-600 underline">Folosește profilul gratuit fără a consuma un loc din pachet</button>}
             <div className="flex flex-col gap-[22px] lg:gap-5 lg:rounded-2xl lg:border lg:border-slate-200 lg:bg-white lg:p-6">
               <div role="radiogroup" className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 lg:w-[360px]">

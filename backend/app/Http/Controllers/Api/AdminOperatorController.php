@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ConsultationRequest;
+use App\Models\OperatorProfile;
 use App\Models\User;
 use App\Models\WalletTransaction;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * Pagina unui operator în admin: contul, zona, vizitele și câștigurile, pe o
@@ -17,6 +19,21 @@ class AdminOperatorController extends Controller
 {
     /** Veniturile operatorului din vizite, în portofelul real. */
     private const INCOME_TYPES = ['operator_exam_income', 'operator_add_on_income', 'operator_travel_income'];
+
+    public function updateContract(Request $request, User $user): JsonResponse
+    {
+        abort_unless($request->user()?->loadMissing('roles')->hasRole('admin'), 403);
+        abort_unless($user->loadMissing('roles')->hasRole('operator'), 422, 'Utilizatorul nu are rol de operator.');
+        $validated = $request->validate([
+            'person_type' => ['present', 'nullable', Rule::in(OperatorProfile::PERSON_TYPES)],
+            'contract_type' => ['present', 'nullable', Rule::in(OperatorProfile::CONTRACT_TYPES)],
+            'contract_number' => ['present', 'nullable', 'string', 'max:100'],
+        ]);
+        $profile = $user->operatorProfile()->firstOrFail();
+        $profile->update($validated);
+
+        return $this->show($request, $user->unsetRelation('operatorProfile'));
+    }
 
     public function show(Request $request, User $user): JsonResponse
     {
@@ -48,6 +65,8 @@ class AdminOperatorController extends Controller
                 'is_approved' => (bool) $profile->is_approved,
                 'is_available' => (bool) $profile->is_available,
                 'contract_number' => $profile->contract_number,
+                'person_type' => $profile->person_type,
+                'contract_type' => $profile->contract_type,
                 'has_device_subscription' => (bool) $profile->has_device_subscription,
                 'served_areas' => $profile->served_areas ?? [],
             ] : null,

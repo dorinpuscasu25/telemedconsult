@@ -404,7 +404,7 @@ class PatientReferralProgramTest extends TestCase
         $this->assertSame(1, ReferralCommission::count());
     }
 
-    public function test_disabled_or_zero_rate_first_deposit_consumes_eligibility_and_doctor_gets_no_commission(): void
+    public function test_disabled_or_zero_rate_first_deposit_consumes_patient_eligibility(): void
     {
         $this->setRate(0);
         $referrer = $this->patient('no-retro@example.test');
@@ -413,10 +413,26 @@ class PatientReferralProgramTest extends TestCase
         $this->setRate(3);
         $this->completeTopUp($patient, 500);
         $this->assertSame(0, ReferralCommission::count());
-        $referrer->roles()->attach(Role::where('name', 'doctor')->value('id'));
-        $other = $this->registerAndVerifyPatient('doctor-no-reward@example.test', app(ReferralProgram::class)->ensureCode($referrer));
-        $this->completeTopUp($other, 500);
-        $this->assertSame(0, ReferralCommission::count());
+    }
+
+    public function test_doctor_receives_ten_percent_in_points_only_on_first_actual_topup_and_repeated_callback_is_safe(): void
+    {
+        $this->setRate(3);
+        $doctor = $this->patient('doctor-inviter@example.test');
+        $doctor->roles()->attach(Role::where('name', 'doctor')->value('id'));
+        $invited = $this->registerAndVerifyPatient('doctor-invited@example.test', app(ReferralProgram::class)->ensureCode($doctor));
+        $payment = $this->pendingPayment($invited, 1000);
+        $this->confirmPayment($payment);
+        $this->confirmPayment($payment);
+        $this->completeTopUp($invited, 1000);
+        $this->assertSame(10000, Wallet::where('user_id', $doctor->id)->where('type', 'points')->value('balance_minor'));
+        $this->assertSame(0, (int) Wallet::where('user_id', $doctor->id)->where('type', 'real')->value('balance_minor'));
+        $this->assertSame(1, ReferralCommission::where('referrer_id', $doctor->id)->count());
+        $this->assertEquals(10, ReferralCommission::firstOrFail()->rate_percent);
+        $transaction = WalletTransaction::where('user_id', $doctor->id)->where('type', 'referral_topup_commission')->firstOrFail();
+        $this->assertEquals(10, $transaction->rate_snapshot[ReferralProgram::DOCTOR_RATE_SETTING]);
+        Sanctum::actingAs($doctor->fresh());
+        $this->getJson('/api/v1/referrals')->assertOk()->assertJsonPath('commission_rate', 10)->assertJsonPath('reward_wallet_type', 'points')->assertJsonPath('stats.earned_total', 100);
     }
 
     // --- helpers ---------------------------------------------------------

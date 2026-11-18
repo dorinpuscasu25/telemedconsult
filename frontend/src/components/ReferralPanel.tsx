@@ -48,8 +48,9 @@ export type ReferralResponse = {
  * Panoul programului de afiliere: linkul personal, statistici, invitați și
  * comisioane. Folosit de pacienți și de operatori (același mecanism de 3%).
  */
-export function ReferralPanel({ data: referralData, audience = 'patient' }: { data: ReferralResponse; audience?: 'patient' | 'operator' }) {
-  const rewardLabel = referralData.reward_wallet_type === 'real' ? 'bani în soldul de remunerare' : 'puncte pentru servicii';
+export function ReferralPanel({ data: referralData, audience = 'patient' }: { data: ReferralResponse; audience?: 'patient' | 'operator' | 'doctor' }) {
+  const rewardLabel = referralData.reward_wallet_type === 'real' ? 'bani în soldul de remunerare' : audience === 'doctor' ? 'puncte pentru promovare' : 'puncte pentru servicii';
+  const rewardUnit = referralData.reward_wallet_type === 'real' ? referralData.currency : 'puncte';
   const [copiedReferral, setCopiedReferral] = useState(false);
   const [copyError, setCopyError] = useState('');
   const copyReferralLink = async () => {
@@ -82,7 +83,7 @@ export function ReferralPanel({ data: referralData, audience = 'patient' }: { da
                     </div>
                     <div className="rounded-xl bg-slate-50 px-4 py-3 sm:text-right">
                       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Câștig total</p>
-                      <p className="mt-1 text-xl font-bold text-slate-950">{money(referralData.stats.earned_total)} {referralData.currency}</p>
+                      <p className="mt-1 text-xl font-bold text-slate-950">{money(referralData.stats.earned_total)} {rewardUnit}</p>
                     </div>
                   </div>
 
@@ -162,7 +163,7 @@ export function ReferralPanel({ data: referralData, audience = 'patient' }: { da
                         </div>
                         <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${referral.status === 'earning' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                           {referral.status === 'earning'
-                            ? `+${money(referral.earned_total)} ${referralData.currency}`
+                            ? `+${money(referral.earned_total)} ${rewardUnit}`
                             : 'Nu a alimentat încă'}
                         </span>
                       </div>
@@ -191,7 +192,7 @@ export function ReferralPanel({ data: referralData, audience = 'patient' }: { da
                         </p>
                       </div>
                       <span className="w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-                        +{money(commission.commission_amount)} {commission.currency}
+                        +{money(commission.commission_amount)} {rewardUnit}
                       </span>
                     </div>
                   ))}

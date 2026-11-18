@@ -94,6 +94,7 @@ const emptyPatient = {
   gender: '',
   residential_environment: '',
   country: 'Republica Moldova',
+  country_code: 'MD', region: '', city: '', locality: '',
   region_id: '',
   locality_id: '',
   address: '',
@@ -295,7 +296,7 @@ function ProfilePageContent() {
     ? {
         step: 'Primul pas',
         title: 'Alege un pachet ca să adaugi pacienți',
-        description: 'Un profil este o persoană din familie, cu fișa ei medicală, activ un an. După plată adaugi pacientul și alegi medicul.',
+        description: 'Un profil este o persoană din familie, cu fișa ei medicală și valabilitatea indicată în opțiunea aleasă. După plată adaugi pacientul și alegi medicul.',
         action: 'Alege pachetul',
         onClick: () => changeTab('cards')
       }
@@ -613,7 +614,7 @@ function PatientCard({ profile }: { profile: PatientProfile }) {
           {ring}
         </Link>
         <div className="flex items-center justify-between gap-2.5"><span className="text-[13px] text-slate-500">Fișa: {progress.done} din {progress.total}</span><span className="[&>button]:h-[38px]">{button}</span></div>
-        {profile.is_free && <span className="text-xs text-blue-600">Profil gratuit{profile.active_until ? ` · valabil până la ${new Date(profile.active_until).toLocaleDateString('ro-RO', { timeZone: 'Europe/Chisinau' })}` : ''}</span>}
+        {profile.is_free && <span className="text-xs text-blue-600">Profil gratuit · permanent</span>}
       </div>
       {/* Desktop (D1b) */}
       <div className="hidden h-full flex-col gap-4 p-[18px] sm:flex">
@@ -621,7 +622,7 @@ function PatientCard({ profile }: { profile: PatientProfile }) {
         <Link to={`/patient/patients/${profile.id}`} className="flex flex-col gap-[3px]">
           <span className="text-base font-semibold text-slate-950">{name}</span>
           {age && <span className="text-[13px] text-slate-500">{age}</span>}
-          {profile.is_free && <span className="text-xs text-blue-600">Profil gratuit{profile.active_until ? ` · valabil până la ${new Date(profile.active_until).toLocaleDateString('ro-RO', { timeZone: 'Europe/Chisinau' })}` : ''}</span>}
+          {profile.is_free && <span className="text-xs text-blue-600">Profil gratuit · permanent</span>}
           {code && <span className="font-mono text-xs text-slate-400">{code}</span>}
           {!profile.can_request_consultation && profile.request_unavailable_reason && <span className="mt-1 text-xs font-medium text-amber-700">{profile.request_unavailable_reason}</span>}
         </Link>

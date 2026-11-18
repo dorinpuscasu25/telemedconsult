@@ -5,17 +5,20 @@ namespace Tests\Feature;
 use App\Models\ConsultationRequest;
 use App\Models\DoctorAvailability;
 use App\Models\DoctorProfile;
+use App\Models\DoctorService;
 use App\Models\DoctorVacation;
 use App\Models\PatientProfile;
 use App\Models\Payment;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\DoctorSchedule;
 use App\Services\MaibCheckout;
 use App\Services\PaymentVerification;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -81,6 +84,79 @@ class PatientBookingFlowTest extends TestCase
 
         $times = collect($this->getJson('/api/v1/catalog/doctors/'.$scenario['doctor']->id.'/slots')->json('days.1.slots'))->pluck('time')->all();
         $this->assertSame(['14:30'], $times);
+    }
+
+    public function test_saved_inactive_schedule_does_not_fall_back_to_default_open_hours(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-09 08:00', 'Europe/Chisinau')->utc());
+        $scenario = $this->scenario(balanceMinor: 500000);
+        DoctorAvailability::create(['doctor_id' => $scenario['doctor']->id, 'weekday' => Carbon::MONDAY, 'starts_at' => '09:00', 'ends_at' => '18:00', 'is_active' => false]);
+        $this->getJson('/api/v1/catalog/doctors/'.$scenario['doctor']->id.'/slots')->assertOk()
+            ->assertJsonPath('default_schedule', false)->assertJsonPath('days.0.slots', []);
+        $this->postJson('/api/v1/requests', $this->videoRequest($scenario, CarbonImmutable::parse('2026-11-09 10:00', 'Europe/Chisinau')->toISOString()))->assertUnprocessable();
+        $this->assertSame(0, ConsultationRequest::count());
+        $this->assertSame(500000, $scenario['patient']->user->wallet->fresh()->balance_minor);
+        $scenario['doctor']->doctorAvailabilities()->update(['is_active' => true]);
+        $this->getJson('/api/v1/catalog/doctors/'.$scenario['doctor']->id.'/slots')->assertOk()->assertJsonCount(18, 'days.0.slots');
+    }
+
+    public function test_a_legacy_completed_request_without_review_does_not_block_another_booking(): void
+    {
+        $scenario = $this->scenario(balanceMinor: 500000);
+        ConsultationRequest::create(['patient_id' => $scenario['patient']->user_id, 'patient_profile_id' => $scenario['patient']->id, 'doctor_id' => $scenario['doctor']->id, 'type' => 'video', 'status' => 'completed', 'completed_at' => now()->subDay(), 'payment_status' => 'held', 'symptoms' => 'Consultație anterioară']);
+        $this->postJson('/api/v1/requests', $this->videoRequest($scenario))->assertCreated();
+        $this->assertSame(2, ConsultationRequest::count());
+    }
+
+    public function test_slot_taken_after_precheck_is_rechecked_before_any_wallet_is_debited(): void
+    {
+        $scenario = $this->scenario(balanceMinor: 500000);
+        $scheduled = CarbonImmutable::now()->addDays(2)->startOfHour();
+        $level = DB::transactionLevel();
+        $inserted = false;
+        User::retrieved(function (User $user) use ($scenario, $scheduled, $level, &$inserted) {
+            if (! $inserted && $user->id === $scenario['doctor']->id && DB::transactionLevel() > $level) {
+                $inserted = true;
+                ConsultationRequest::create(['patient_id' => $scenario['patient']->user_id, 'patient_profile_id' => $scenario['patient']->id, 'doctor_id' => $user->id, 'type' => 'video', 'status' => 'accepted', 'scheduled_at' => $scheduled, 'symptoms' => 'Interval ocupat în timpul rezervării']);
+            }
+        });
+        $this->postJson('/api/v1/requests', $this->videoRequest($scenario, $scheduled->toISOString()))->assertUnprocessable()->assertJsonPath('message', 'Acest interval este deja ocupat.');
+        $this->assertTrue($inserted);
+        $this->assertSame(500000, $scenario['patient']->user->wallet->fresh()->balance_minor);
+        $this->assertSame(0, ConsultationRequest::where('status', 'new')->count());
+    }
+
+    public function test_selected_service_duration_fits_the_schedule_and_remains_reserved_after_service_edit(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-09 08:00', 'Europe/Chisinau')->utc());
+        $scenario = $this->scenario(balanceMinor: 500000);
+        $doctor = $scenario['doctor'];
+        $this->availability($doctor, Carbon::MONDAY, '09:00', '11:00');
+        $service = DoctorService::create(['doctor_id' => $doctor->id, 'name' => 'Consultație de o oră', 'type' => 'video', 'duration' => 60, 'price' => 300, 'is_active' => true]);
+        $response = $this->getJson('/api/v1/catalog/doctors/'.$doctor->id.'/slots?days=1&service_id='.$service->id)->assertOk();
+        $this->assertSame(['09:00', '09:30', '10:00'], collect($response->json('days.0.slots'))->pluck('time')->all());
+        $this->postJson('/api/v1/requests', [...$this->videoRequest($scenario, '2026-11-09T10:30:00+02:00'), 'service_id' => $service->id])->assertUnprocessable();
+        $id = $this->postJson('/api/v1/requests', [...$this->videoRequest($scenario, '2026-11-09T09:30:00+02:00'), 'service_id' => $service->id])->assertCreated()->json('request.id');
+        $service->update(['duration' => 5]);
+        $response = $this->getJson('/api/v1/catalog/doctors/'.$doctor->id.'/slots?days=1')->assertOk();
+        $this->assertSame(['09:00', '10:30'], collect($response->json('days.0.slots'))->pluck('time')->all());
+        $this->postJson('/api/v1/requests', $this->videoRequest($scenario, '2026-11-09T10:00:00+02:00'))->assertUnprocessable();
+        $this->postJson('/api/v1/requests', $this->videoRequest($scenario, '2026-11-09T09:15:00+02:00'))->assertUnprocessable();
+        Sanctum::actingAs($doctor);
+        $proposal = $this->getJson('/api/v1/doctor/slots?days=1&ignore='.$id)->assertOk();
+        $this->assertSame(['09:00', '09:30', '10:00'], collect($proposal->json('days.0.slots'))->pluck('time')->all());
+        $this->assertFalse($proposal->json('days.0.slots.1.taken'));
+    }
+
+    public function test_overlaps_are_checked_to_the_second_and_adjacent_intervals_are_allowed(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-09 08:00', 'Europe/Chisinau')->utc());
+        $scenario = $this->scenario(balanceMinor: 500000);
+        $this->availability($scenario['doctor'], Carbon::MONDAY, '09:00', '11:00');
+        $this->bookedAt($scenario, '2026-11-09 09:00:30');
+        $this->postJson('/api/v1/requests', $this->videoRequest($scenario, '2026-11-09T09:30:00+02:00'))->assertUnprocessable();
+        $this->postJson('/api/v1/requests', $this->videoRequest($scenario, '2026-11-09T09:30:30+02:00'))->assertCreated();
+        $this->assertSame(30, app(DoctorSchedule::class)->durationMinutes(['type' => 'chat', 'duration' => 24]));
     }
 
     public function test_preview_reports_balances_and_shortfall(): void

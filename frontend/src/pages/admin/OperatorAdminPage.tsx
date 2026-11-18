@@ -6,6 +6,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { apiRequest } from '../../lib/api';
 import { dateOnly, dateTime, money } from '../../lib/format';
 import { ReferralReferrerPage } from './ReferralReferrerPage';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { OPERATOR_PERSON_TYPES, OPERATOR_CONTRACT_TYPES, type OperatorContract } from '../../lib/operator-contracts';
 
 type Operator = {
   id: number;
@@ -16,7 +19,7 @@ type Operator = {
   created_at: string;
   telegram_linked: boolean;
   referral_code: string | null;
-  profile: { region: string | null; locality: string | null; is_approved: boolean; is_available: boolean; contract_number: string | null; has_device_subscription: boolean } | null;
+  profile: (OperatorContract & { region: string | null; locality: string | null; is_approved: boolean; is_available: boolean; has_device_subscription: boolean }) | null;
   visits: { total: number; in_progress: number; exams_done: number; completed: number; cancelled: number; last_at: string | null };
   earnings: { visits_total: number; this_month: number };
 };
@@ -44,12 +47,28 @@ export function OperatorAdminPage() {
   const [operator, setOperator] = useState<Operator | null>(null);
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [error, setError] = useState('');
+  const [contract, setContract] = useState({ person_type: '', contract_type: '', contract_number: '' });
+  const [savingContract, setSavingContract] = useState(false);
+  const [contractNotice, setContractNotice] = useState('');
 
   useEffect(() => {
     setError('');
-    apiRequest<{ data: Operator }>(`/admin/operators/${id}`).then((response) => setOperator(response.data)).catch((err) => setError(err instanceof Error ? err.message : 'Nu am putut încărca operatorul.'));
+    apiRequest<{ data: Operator }>(`/admin/operators/${id}`).then((response) => {
+      setOperator(response.data);
+      setContract({ person_type: response.data.profile?.person_type ?? '', contract_type: response.data.profile?.contract_type ?? '', contract_number: response.data.profile?.contract_number ?? '' });
+    }).catch((err) => setError(err instanceof Error ? err.message : 'Nu am putut încărca operatorul.'));
     apiRequest<{ data: Wallet }>(`/admin/users/${id}/wallet`).then((response) => setWallet(response.data)).catch(() => undefined);
   }, [id]);
+
+  const saveContract = async () => {
+    if (savingContract) return;
+    setSavingContract(true); setContractNotice(''); setError('');
+    try {
+      const response = await apiRequest<{ data: Operator }>(`/admin/operators/${id}/contract`, { method: 'PUT', body: JSON.stringify({ person_type: contract.person_type || null, contract_type: contract.contract_type || null, contract_number: contract.contract_number.trim() || null }) });
+      setOperator(response.data); setContractNotice('Datele contractuale au fost salvate.');
+    } catch (err) { setError(err instanceof Error ? err.message : 'Contractul nu a putut fi salvat.'); }
+    finally { setSavingContract(false); }
+  };
 
   const setTab = (next: Tab) => {
     const merged = new URLSearchParams(params);
@@ -75,6 +94,16 @@ export function OperatorAdminPage() {
       </div>
 
       {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {operator?.profile && <Card><CardContent className="p-5">
+        <h2 className="mb-2 text-lg font-semibold">Relația contractuală</h2><p className="mb-4 text-sm text-slate-500">Completează datele conform contractului operatorului. Tipul persoanei este separat de tipul contractului.</p>
+        <form onSubmit={(event) => { event.preventDefault(); void saveContract(); }} className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="space-y-1 text-sm">Tipul persoanei<select aria-label="Tipul persoanei" className="h-11 w-full rounded-xl border border-slate-200 px-3" value={contract.person_type} onChange={(event) => setContract({ ...contract, person_type: event.target.value })}><option value="">Nespecificat</option>{Object.entries(OPERATOR_PERSON_TYPES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+          <label className="space-y-1 text-sm">Tipul contractului<select aria-label="Tipul contractului" className="h-11 w-full rounded-xl border border-slate-200 px-3" value={contract.contract_type} onChange={(event) => setContract({ ...contract, contract_type: event.target.value })}><option value="">Nespecificat</option>{Object.entries(OPERATOR_CONTRACT_TYPES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+          <label className="space-y-1 text-sm">Numărul contractului<Input maxLength={100} value={contract.contract_number} onChange={(event) => setContract({ ...contract, contract_number: event.target.value })} /></label>
+          <Button disabled={savingContract}>{savingContract ? 'Se salvează…' : 'Salvează contractul'}</Button>
+        </form>
+        {contractNotice && <p role="status" className="mt-3 text-sm text-emerald-700">{contractNotice}</p>}
+      </CardContent></Card>}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Tile label="Sold în lei" value={wallet ? `${money(wallet.balance)} ${wallet.currency}` : null} />

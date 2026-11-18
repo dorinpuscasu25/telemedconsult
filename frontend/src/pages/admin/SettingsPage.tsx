@@ -32,9 +32,9 @@ const defaultSettings: SettingsMap = {
   'rate.admin_accounting': 0,
   'rate.bank_guarantee': 0,
   'rate.bank_transaction': 0,
-  'rate.affiliate_doctor_topup': 3,
   'rate.affiliate_operator': 3,
   'rate.affiliate_patient_topup': 3,
+  'rate.affiliate_doctor_topup': 10,
   'affiliate.patient_topup_min_amount': 0,
   'affiliate.patient_topup_first_only': true,
   'affiliate.patient_registration_rules': 'Invită o persoană folosind linkul tău personal. La prima alimentare efectivă confirmată a persoanei invitate, primești procentul afișat din suma rămasă după cumpărarea pachetului. Pacientul invitator primește puncte, operatorul bani. Comisionul se acordă doar pentru plăți confirmate, nu la simpla înregistrare. Conturile proprii, duplicate sau frauduloase nu sunt eligibile. Comisionul este credit de platformă și poate fi folosit pentru serviciile disponibile pe telemedconsult.md.',
@@ -53,7 +53,7 @@ const defaultSettings: SettingsMap = {
   'chat.reactivation_price': 50,
   'chat.reactivation_hours': 24,
   'chat.total_days': 10,
-  'video.default_price': 500,
+  'video.default_price': 600,
   'video.default_duration_minutes': 10,
   'payout.request_day_start': 1,
   'payout.request_day_end': 10,
@@ -87,8 +87,8 @@ const settingLabels: Record<string, string> = {
   'chat.total_days': 'Durată totală chat (zile)',
   'video.default_price': 'Preț video implicit',
   'video.default_duration_minutes': 'Durată video implicită (minute)',
-  'payout.request_day_start': 'Zi început cereri payout',
-  'payout.request_day_end': 'Zi sfârșit cereri payout',
+  'payout.request_day_start': 'Zi început cereri de plată către platformă',
+  'payout.request_day_end': 'Zi sfârșit cereri de plată către platformă',
   post_consultation_window_hours: 'Fereastră post-consultație (ore)',
   notify_new_doctors: 'Notifică adminii la medic nou',
   notify_complaints: 'Notifică adminii la reclamații',
@@ -335,6 +335,7 @@ export function SettingsPage() {
                   </div>
                   <p className="text-xs text-slate-500">Exemplu la 3%: 1.000 MDL → 30 MDL bonus pentru invitator; 500 MDL → 15 MDL. Alegerea se aplică după salvare.</p>
                   <NumberField label={settingLabel('rate.affiliate_patient_topup')} value={Number(settings['rate.affiliate_patient_topup'])} onChange={(value) => update('rate.affiliate_patient_topup', value)} />
+                  <NumberField label="Referal medic (%) în puncte pentru promovare — prima alimentare" value={Number(settings['rate.affiliate_doctor_topup'])} onChange={(value) => update('rate.affiliate_doctor_topup', value)} />
                   <NumberField label={settingLabel('affiliate.patient_topup_min_amount')} value={Number(settings['affiliate.patient_topup_min_amount'])} onChange={(value) => update('affiliate.patient_topup_min_amount', value)} />
 <p className="text-sm text-slate-600">Se acordă numai la prima alimentare efectivă. O alimentare sub prag consumă eligibilitatea; plățile eșuate și cumpărarea exclusivă a pachetului nu o consumă.</p>
                 </div>
@@ -354,17 +355,20 @@ export function SettingsPage() {
           </TabsContent>
 
           <TabsContent value="workflow">
-            <Section title="Chat, video și payout">
+            <Section title="Consultație și monitorizare">
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {workflowSettingKeys.map((key) => (
+                {workflowSettingKeys.filter((key) => !key.startsWith('payout.')).map((key) => (
                   <NumberField key={key} disabled={key === 'consultations.addendum_days'} label={settingLabel(key)} value={key === 'consultations.addendum_days' ? 10 : Number(settings[key])} onChange={(value) => update(key, value)} />
                 ))}
               </div>
             </Section>
+            <Section title="Cereri de plată către platformă" description="Zile calendaristice, inclusiv, după ora Chișinăului. Acest interval nu se aplică plăților pe care medicul le cere instituției sale.">
+              <div className="grid gap-4 md:grid-cols-2">{workflowSettingKeys.filter((key) => key.startsWith('payout.')).map((key) => <NumberField key={key} label={settingLabel(key)} value={Number(settings[key])} onChange={(value) => update(key, value)} />)}</div>
+            </Section>
           </TabsContent>
 
           <TabsContent value="notifications">
-            <Section title="Notificări pentru admini">
+            <Section title="Notificări pentru admini" description="Comutatoarele controlează notificările din platformă și pe Telegram. Cererile și reclamațiile rămân în listele lor chiar dacă notificările sunt oprite. Telegram respectă și preferințele fiecărui administrator.">
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {notificationSettingKeys.map((key) => (
                   <ToggleRow key={key} label={settingLabel(key)} checked={Boolean(settings[key])} onChange={(value) => update(key, value)} />
@@ -377,7 +381,7 @@ export function SettingsPage() {
             <Section title="Ponderi performanță" description="Scor comun pentru cabinet și clasament. Prima reacție este măsurată în intervale de 10 minute; lipsa datelor aduce 0 puncte."><div className="grid gap-4 sm:grid-cols-2">{Object.entries({current_consultation:['Consultație luna curentă',4],previous_consultation:['Consultație anterioară',1.5],current_rating:['Sumă note luna curentă',10],previous_rating:['Sumă note anterioare',5],response_max:['Puncte răspuns până la 10 minute',100],response_decrement:['Scădere la fiecare 10 minute',5]}).map(([key,[label,fallback]])=><NumberField key={key} label={String(label)} value={Number(settings[`performance.${key}`]??fallback)} onChange={value=>update(`performance.${key}`,value)}/>)}</div></Section>
             <AdminPromotionReport/>
             <PerformanceAwards admin/>
-            <Section title="Top medici" description="Scorul însumează consultațiile, notele recenziilor și prima reacție. Promovarea nu schimbă acest clasament.">
+            <Section title="Top medici" description="Scorul însumează consultațiile, notele recenziilor, prima reacție și consumul efectiv pentru promovare: 100 de puncte consumate aduc 10 puncte de performanță. Referalul se afișează separat.">
               <div className="grid gap-3">
                 {topDoctors.map((doctor, index) => (
                   <div key={doctor.doctor_id} className="grid gap-2 rounded-xl border border-slate-200 bg-white/70 p-4 md:grid-cols-[40px_1fr_repeat(4,auto)] md:items-center md:gap-6">

@@ -9,6 +9,8 @@ use App\Models\DoctorProfile;
 use App\Models\DoctorReview;
 use App\Models\Role;
 use App\Models\User;
+use App\Models\Wallet;
+use App\Models\WalletTransaction;
 use App\Services\DoctorPerformance;
 use App\Services\PlatformConfig;
 use Carbon\CarbonImmutable;
@@ -102,6 +104,19 @@ class DoctorPerformanceTest extends TestCase
         $this->assertSame(5, $score['current_rating_sum']);
         $this->assertSame(2, $score['previous_rating_sum']);
         $this->assertEquals(60, $score['components']['rating']);
+    }
+
+    public function test_referral_points_are_reported_separately_without_directly_increasing_performance(): void
+    {
+        $doctor = $this->user('doctor');
+        $profile = DoctorProfile::create(['user_id' => $doctor->id, 'is_approved' => true]);
+        $wallet = Wallet::create(['user_id' => $doctor->id, 'type' => 'points', 'balance_minor' => 10000, 'currency' => 'MDL']);
+        WalletTransaction::create(['wallet_id' => $wallet->id, 'user_id' => $doctor->id, 'wallet_type' => 'points', 'amount_minor' => 10000, 'type' => 'referral_topup_commission', 'status' => 'completed', 'currency' => 'MDL', 'description' => 'Puncte din referal']);
+        $score = app(DoctorPerformance::class)->forDoctor($profile);
+        $this->assertEquals(100, $score['referral_points_earned']);
+        $this->assertEquals(0, $score['score']);
+        Sanctum::actingAs($doctor);
+        $this->getJson('/api/v1/doctor/dashboard')->assertOk()->assertJsonPath('summary.ranking.position', 1)->assertJsonPath('summary.ranking.total', 1);
     }
 
     private function user(string $name): User

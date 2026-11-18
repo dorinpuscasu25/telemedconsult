@@ -8,6 +8,7 @@ use App\Models\MedicalInstitution;
 use App\Models\Role;
 use App\Models\User;
 use App\Notifications\AppEventNotification;
+use App\Services\ConsultationSettlement;
 use App\Services\FinancialBreakdown;
 use App\Services\InstitutionLedger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -89,6 +90,7 @@ class InstitutionApprovalFlowTest extends TestCase
         $patient = $this->user('patient');
         $request = ConsultationRequest::create(['patient_id' => $patient->id, 'doctor_id' => $doctor->id, 'type' => 'video', 'status' => 'completed', 'amount_minor' => 50000, 'platform_fee_minor' => 7500, 'provider_amount_minor' => 42500, 'payment_status' => 'held', 'pricing_snapshot' => $pricing]);
         $profile->update(['institution_share_percent' => 90]);
+        app(ConsultationSettlement::class)->close($request);
         Sanctum::actingAs($patient);
         $this->postJson('/api/v1/requests/'.$request->id.'/review', ['rating' => 2, 'comment' => 'Consultație efectuată'])->assertCreated();
         $this->assertSame('captured', $request->fresh()->payment_status);

@@ -8,11 +8,10 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 /**
- * Banii rezervați nu rămân blocați: consultațiile finalizate fără recenzie se
- * închid și se plătesc la termen, iar cele care nu au avut loc își returnează banii.
+ * Recuperează decontările documentelor publicate și restituie consultațiile neefectuate.
  */
 #[Signature('consultations:settle')]
-#[Description('Închide consultațiile fără recenzie la termen și returnează banii celor care nu au avut loc')]
+#[Description('Decontează rezultatele publicate și returnează banii consultațiilor neefectuate')]
 class SettleConsultations extends Command
 {
     public function handle(ConsultationSettlement $settlement): int

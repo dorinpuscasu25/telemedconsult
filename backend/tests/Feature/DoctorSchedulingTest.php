@@ -9,6 +9,8 @@ use App\Models\PatientProfile;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\DoctorSchedule;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Laravel\Sanctum\Sanctum;
@@ -81,6 +83,60 @@ class DoctorSchedulingTest extends TestCase
             'symptoms' => 'Tuse',
             'scheduled_at' => $this->nextMonday('10:00'),
         ])->assertStatus(422);
+    }
+
+    public function test_midnight_end_is_saved_and_offers_the_last_half_hour_of_the_local_day(): void
+    {
+        $scenario = $this->scenario();
+        $doctor = $scenario['doctor'];
+        Sanctum::actingAs($doctor);
+        $this->putJson('/api/v1/doctor/availability', ['slots' => [
+            ['weekday' => Carbon::MONDAY, 'starts_at' => '20:00', 'ends_at' => '00:00', 'is_active' => true],
+        ]])->assertOk()->assertJsonCount(1, 'availability');
+        $monday = CarbonImmutable::now('Europe/Chisinau')->next(Carbon::MONDAY)->startOfDay();
+        $schedule = app(DoctorSchedule::class);
+        $slots = $schedule->freeSlots($doctor, days: 1, now: $monday->addHour());
+        $this->assertSame('23:30', $slots['days'][0]['slots'][7]['time']);
+        $this->assertCount(8, $slots['days'][0]['slots']);
+        $this->assertNull($schedule->unavailableReason($doctor, $monday->setTime(23, 30)));
+        $this->assertNotNull($schedule->unavailableReason($doctor, $monday->setTime(23, 45)));
+        $this->assertNotNull($schedule->unavailableReason($doctor, $monday->addDay()));
+        Sanctum::actingAs($scenario['patient']->user);
+        $this->postJson('/api/v1/requests', [
+            'type' => 'video', 'consultation_kind' => 'video', 'patient_profile_id' => $scenario['patient']->id,
+            'doctor_id' => $doctor->id, 'symptoms' => 'Tuse', 'scheduled_at' => $monday->setTime(23, 30)->toISOString(),
+        ])->assertCreated();
+    }
+
+    public function test_invalid_interval_does_not_remove_previously_saved_schedule(): void
+    {
+        $scenario = $this->scenario();
+        $doctor = $scenario['doctor'];
+        DoctorAvailability::create(['doctor_id' => $doctor->id, 'weekday' => Carbon::MONDAY, 'starts_at' => '09:00', 'ends_at' => '18:00', 'is_active' => true]);
+        Sanctum::actingAs($doctor);
+        $this->putJson('/api/v1/doctor/availability', ['slots' => [
+            ['weekday' => Carbon::MONDAY, 'starts_at' => '20:00', 'ends_at' => '02:00'],
+            ['weekday' => Carbon::TUESDAY, 'starts_at' => '09:00', 'ends_at' => '18:00'],
+        ]])->assertUnprocessable()->assertJsonValidationErrors('slots.0.ends_at');
+        $this->assertSame(1, $doctor->doctorAvailabilities()->count());
+        $this->assertSame(Carbon::MONDAY, (int) $doctor->doctorAvailabilities()->first()->weekday);
+    }
+
+    public function test_full_day_window_and_normal_evening_boundary_use_the_same_rules_as_slot_list(): void
+    {
+        $scenario = $this->scenario();
+        $doctor = $scenario['doctor'];
+        Sanctum::actingAs($doctor);
+        $this->putJson('/api/v1/doctor/availability', ['slots' => [
+            ['weekday' => Carbon::MONDAY, 'starts_at' => '00:00', 'ends_at' => '00:00'],
+            ['weekday' => Carbon::TUESDAY, 'starts_at' => '09:00', 'ends_at' => '18:00'],
+        ]])->assertOk();
+        $monday = CarbonImmutable::now('Europe/Chisinau')->next(Carbon::MONDAY)->startOfDay();
+        $schedule = app(DoctorSchedule::class);
+        $this->assertNull($schedule->unavailableReason($doctor, $monday->setTime(0, 30)));
+        $this->assertNull($schedule->unavailableReason($doctor, $monday->setTime(23, 30)));
+        $this->assertNotNull($schedule->unavailableReason($doctor, $monday->addDay()->setTime(23, 45)));
+        $this->assertNotNull($schedule->unavailableReason($doctor, $monday->addDay()->setTime(17, 45)));
     }
 
     public function test_iso_request_checks_doctor_hours_on_the_local_day_across_midnight(): void

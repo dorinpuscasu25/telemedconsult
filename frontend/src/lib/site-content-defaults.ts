@@ -9,6 +9,9 @@
  * Când adaugi o cheie nouă în catalogul PHP, adaug-o și aici cu aceeași valoare.
  */
 export const SITE_CONTENT_DEFAULTS = {
+  'patient_record.analysis_examples': 'De exemplu: hemoleucogramă, biochimie, hormoni.',
+  'patient_record.functional_examples': 'De exemplu: ECG, EEG, spirometrie.',
+  'patient_record.imaging_examples': 'De exemplu: radiografie, ecografie, RMN, tomografie, gastroscopie, colonoscopie.',
   // Antet site
   'header.brand_name': 'telemedconsult',
   'header.brand_suffix': '.md',

@@ -30,14 +30,15 @@ class FinancialBreakdown
         $base = ['cash_base_minor' => $cashMinor, 'noncash_minor' => $grossMinor - $cashMinor, 'settlement_rule' => 'cash_received_v1'];
         $profile = $provider->doctorProfile;
         if ($profile?->medical_institution_id && $profile->medicalInstitution?->isActive()) {
-            $fee = (int) round($cashMinor * 0.15);
+            $platformRate = 100 - max(0, min(100, (float) $profile->medicalInstitution->revenue_share_percent));
+            $fee = (int) round($cashMinor * $platformRate / 100);
 
             return [...$base,
                 'amount_minor' => $grossMinor,
                 'platform_fee_minor' => $fee,
                 'provider_amount_minor' => $cashMinor - $fee,
-                'deductions' => ['rate.platform_commission' => ['rate' => 15, 'amount_minor' => $fee]],
-                'rate_snapshot' => ['rate.platform_commission' => 15],
+                'deductions' => ['rate.platform_commission' => ['rate' => $platformRate, 'amount_minor' => $fee]],
+                'rate_snapshot' => ['rate.platform_commission' => $platformRate],
                 'operator_subscription' => false,
                 'institution_id' => $profile->medical_institution_id,
                 'doctor_share_percent' => $profile->effectiveInstitutionSharePercent(),

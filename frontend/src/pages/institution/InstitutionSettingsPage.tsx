@@ -26,6 +26,7 @@ export function InstitutionSettingsPage() {
   const [institution, setInstitution] = useState<Institution | null>(null);
   const [form, setForm] = useState<Form | null>(null);
   const [saving, setSaving] = useState(false);
+  const [applyToAll, setApplyToAll] = useState(true);
 
   useEffect(() => {
     apiRequest<{ institution: Institution }>('/institution/dashboard')
@@ -40,7 +41,7 @@ export function InstitutionSettingsPage() {
     try {
       const response = await apiRequest<{ message: string; institution: Institution }>('/institution/settings', {
         method: 'PUT',
-        body: JSON.stringify({ ...Object.fromEntries(Object.entries(form).map(([key, value]) => [key, value === '' ? null : value])), doctor_share_percent: Number(form.doctor_share_percent) })
+        body: JSON.stringify({ ...Object.fromEntries(Object.entries(form).map(([key, value]) => [key, value === '' ? null : value])), doctor_share_percent: Number(form.doctor_share_percent), apply_share_to_all_doctors: applyToAll })
       });
       setInstitution(response.institution);
       setForm(toForm(response.institution));
@@ -62,7 +63,7 @@ export function InstitutionSettingsPage() {
       {!form ? <Skeleton className="h-96 w-full rounded-2xl" /> : (
         <form onSubmit={save} className="grid items-start gap-6 xl:grid-cols-2">
           <section className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-            <SectionHeader title="Împărțirea banilor" description="Se aplică medicilor fără un procent propriu, pentru consultațiile finalizate de acum înainte." />
+            <SectionHeader title="Împărțirea banilor" description="Procentul medicului se calculează din partea instituției și se fixează la programare. Programările existente își păstrează condițiile." />
             <div className="space-y-2">
               <Label htmlFor="share">Procentul medicului</Label>
               <div className="relative max-w-40">
@@ -70,11 +71,12 @@ export function InstitutionSettingsPage() {
                 <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">%</span>
               </div>
             </div>
+            <label className="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" checked={applyToAll} onChange={(event) => setApplyToAll(event.target.checked)} className="mt-1" /><span>Aplică procentul tuturor medicilor instituției. Înlocuiește procentele individuale pentru programările noi.</span></label>
             <div className="space-y-2 rounded-xl bg-slate-50 p-4 text-sm">
               <p className="font-semibold text-slate-900">Cum se calculează</p>
               <ol className="list-decimal space-y-1 pl-5 text-slate-600">
                 <li>Pacientul achită consultația pe platformă.</li>
-                <li>Platforma reține comisionul ei, la fel ca pentru orice medic.</li>
+                <li>Instituției îi revin <strong>{institution?.revenue_share_percent}%</strong> din banii achitați efectiv; platforma păstrează restul.</li>
                 <li>Din ce rămâne, medicul primește <strong className="text-slate-900">{Number(form.doctor_share_percent) || 0}%</strong>, iar instituția restul.</li>
               </ol>
               <p className="pt-1 text-slate-600">Din <strong>100 MDL</strong> rămași: medicul <strong className="text-slate-900">{money(example.doctor)} MDL</strong>, instituția <strong className="text-slate-900">{money(example.institution)} MDL</strong>.</p>

@@ -12,6 +12,11 @@ class Consultation extends Model
 {
     use StoresDatesInAppTimezone;
 
+    public function request(): BelongsTo
+    {
+        return $this->belongsTo(ConsultationRequest::class, 'consultation_request_id');
+    }
+
     public function patient(): BelongsTo
     {
         return $this->belongsTo(User::class, 'patient_id');

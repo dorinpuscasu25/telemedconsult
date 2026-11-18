@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\PatientCardPackage;
+use App\Models\PatientProfile;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -14,7 +16,16 @@ class AdminPatientCardPackageController extends Controller
         $this->authorizeAdmin($request);
 
         return response()->json([
-            'data' => PatientCardPackage::orderBy('profile_slots')->orderBy('id')->get()->map(fn (PatientCardPackage $package) => $this->serialize($package)),
+            'data' => PatientCardPackage::withCount('purchases')
+                ->withSum('purchases as profiles_purchased', 'profile_slots')
+                ->withSum('purchases as profiles_activated', 'used_slots')
+                ->withSum('purchases as revenue_minor', 'amount_minor')
+                ->orderBy('profile_slots')->orderBy('id')->get()->map(fn (PatientCardPackage $package) => $this->serialize($package)),
+            'free_profile' => [
+                'name' => 'Profil gratuit', 'price' => 0, 'profile_slots' => 1, 'permanent' => true,
+                'claims_count' => User::whereNotNull('free_patient_profile_claimed_at')->count(),
+                'profiles_count' => PatientProfile::where('is_free', true)->count(),
+            ],
         ]);
     }
 
@@ -88,6 +99,10 @@ class AdminPatientCardPackageController extends Controller
             'bonus_points' => $package->price_minor / 100,
             'validity_days' => $package->validity_days,
             'is_active' => $package->is_active,
+            'purchases_count' => (int) ($package->purchases_count ?? 0),
+            'profiles_purchased' => (int) ($package->profiles_purchased ?? 0),
+            'profiles_activated' => (int) ($package->profiles_activated ?? 0),
+            'revenue' => (int) ($package->revenue_minor ?? 0) / 100,
         ];
     }
 

@@ -40,6 +40,7 @@ class AdminController extends Controller
             'doctors' => $this->countRole('doctor'),
             'operators' => $this->countRole('operator'),
             'coordinators' => $this->countRole('coordinator'),
+            'institutions' => MedicalInstitution::count(),
             'pending_doctors' => DoctorProfile::where('is_approved', false)->count(),
         ]);
     }
@@ -196,7 +197,8 @@ class AdminController extends Controller
             }
 
             if (isset($validated['roles'])) {
-                $roles = Role::whereIn('name', $validated['roles'])->get();
+                $preservedRoles = $user->roles()->whereNotIn('name', self::MANAGED_ROLES)->pluck('name')->all();
+                $roles = Role::whereIn('name', [...$validated['roles'], ...$preservedRoles])->get();
                 $user->roles()->sync($roles->pluck('id'));
                 $user->active_role_id = $roles->contains('id', $user->active_role_id)
                     ? $user->active_role_id
@@ -473,10 +475,13 @@ class AdminController extends Controller
         return User::whereHas('roles', fn ($roles) => $roles->where('name', $role))->count();
     }
 
-    private function notifyAdmins(string $title, string $body, string $url, bool $sendEmail): void
+    private function notifyAdmins(string $title, string $body, string $url, bool $enabled): void
     {
-        $admins = User::whereHas('roles', fn ($query) => $query->where('name', 'admin'))->get();
-        Notification::send($admins, new AppEventNotification($title, $body, $url, 'info', $sendEmail));
+        if (! $enabled) {
+            return;
+        }
+        $admins = User::where('status', 'active')->whereHas('roles', fn ($query) => $query->where('name', 'admin'))->get();
+        Notification::send($admins, new AppEventNotification($title, $body, $url, 'info', category: 'requests'));
     }
 
     private function settingBool(string $key, bool $default): bool

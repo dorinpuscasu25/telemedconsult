@@ -54,6 +54,8 @@ interface Region {
   localities: Locality[];
 }
 
+interface PatientCountry { code: string | null; name: string; profiles: number; localities: Array<{ region: string | null; city: string | null; locality: string | null; profiles: number }> }
+
 const emptyRegionForm = { name: '', type: 'raion', country: 'Republica Moldova', is_active: true };
 const emptyLocalityForm = { name: '', type: 'oras', is_active: true };
 
@@ -62,6 +64,10 @@ const typeLabel = (types: { value: string; label: string }[], value: string) =>
 
 export function RegionsPage() {
   const [regions, setRegions] = useState<Region[]>([]);
+  const [countries, setCountries] = useState<PatientCountry[]>([]);
+  const [geographyScope, setGeographyScope] = useState<'MD' | 'foreign'>('MD');
+  const [selectedCountry, setSelectedCountry] = useState('');
+  const [geographyError, setGeographyError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -76,6 +82,9 @@ export function RegionsPage() {
   const [isLocalityModalOpen, setIsLocalityModalOpen] = useState(false);
 
   const loadRegions = () => {
+    apiRequest<{ data: PatientCountry[] }>('/admin/geo/patients')
+      .then((response) => { setCountries(response.data); setGeographyError(''); })
+      .catch(() => setGeographyError('Distribuția pacienților nu a putut fi încărcată.'));
     apiRequest<{ data: Region[] }>('/admin/geo/regions')
       .then((response) => setRegions(response.data ?? []))
       .catch((err) => setError(err instanceof Error ? err.message : 'Nu am putut încărca regiunile.'));
@@ -95,6 +104,8 @@ export function RegionsPage() {
         region.localities.some((locality) => locality.name.toLowerCase().includes(query))
     );
   }, [regions, searchTerm]);
+  const patientCountries = countries.filter((country) => geographyScope === 'MD' ? country.code === 'MD' : country.code !== 'MD');
+  const patientCountry = patientCountries.find((country) => (country.code || country.name) === selectedCountry) ?? patientCountries[0];
 
   const openCreateRegion = () => {
     setError('');
@@ -214,6 +225,18 @@ export function RegionsPage() {
           Adaugă regiune
         </Button>
       </div>
+
+      <Card>
+        <CardHeader><CardTitle>Unde locuiesc pacienții</CardTitle><p className="text-sm text-slate-500">Numărăm profilurile de pacient existente. Mai multe profiluri din același cont se numără separat.</p></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2"><Button variant={geographyScope === 'MD' ? 'default' : 'outline'} onClick={() => setGeographyScope('MD')}>Republica Moldova</Button><Button variant={geographyScope === 'foreign' ? 'default' : 'outline'} onClick={() => setGeographyScope('foreign')}>Alte țări</Button></div>
+          {geographyError && <p role="alert" className="text-sm text-red-700">{geographyError}</p>}
+          {patientCountry ? <>
+            <label className="flex max-w-sm flex-col gap-1 text-sm">Țara<select aria-label="Țara din raport" className="h-11 rounded-xl border border-slate-200 px-3" value={patientCountry.code || patientCountry.name} onChange={(event) => setSelectedCountry(event.target.value)}>{patientCountries.map((country) => <option key={country.code || country.name} value={country.code || country.name}>{country.name} · {country.profiles} profiluri</option>)}</select></label>
+            <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b"><th className="p-2">Regiune / district</th><th className="p-2">Oraș</th><th className="p-2">Localitate</th><th className="p-2 text-right">Profiluri</th></tr></thead><tbody>{patientCountry.localities.map((location, index) => <tr key={index} className="border-b border-slate-100"><td className="p-2">{location.region || '—'}</td><td className="p-2">{location.city || '—'}</td><td className="p-2">{location.locality || 'Nespecificată'}</td><td className="p-2 text-right font-semibold">{location.profiles}</td></tr>)}</tbody></table></div>
+          </> : !geographyError && <p className="text-sm text-slate-500">Nu există încă profiluri în această categorie.</p>}
+        </CardContent>
+      </Card>
 
       <Card className="glass-card border-0">
         <CardHeader className="gap-4">

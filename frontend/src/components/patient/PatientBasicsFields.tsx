@@ -3,6 +3,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '../ui/select';
 import { cn } from '../ui/utils';
+import { CountrySelect } from './CountrySelect';
 
 export type CatalogLocality = { id: number; name: string; type: string };
 export type CatalogRegion = { id: number; name: string; type: string; country?: string; localities: CatalogLocality[] };
@@ -14,6 +15,11 @@ export type PatientBasics = {
   gender: string;
   region_id: string;
   locality_id: string;
+  country_code: string;
+  country: string;
+  region: string;
+  city: string;
+  locality: string;
 };
 
 export const emptyPatientBasics: PatientBasics = {
@@ -22,12 +28,12 @@ export const emptyPatientBasics: PatientBasics = {
   birth_date: '',
   gender: '',
   region_id: '',
-  locality_id: ''
+  locality_id: '', country_code: 'MD', country: 'Republica Moldova', region: '', city: '', locality: ''
 };
 
-/** Cele 6 date cerute la adăugarea unui pacient. Adresa (strada) se cere doar la programarea cu examinare. */
+/** Adresa stradală se cere doar la programarea cu examinare. */
 export function isPatientBasicsComplete(value: PatientBasics): boolean {
-  return Boolean(value.first_name.trim() && value.last_name.trim() && value.birth_date && value.gender && value.region_id && value.locality_id);
+  return Boolean(value.first_name.trim() && value.last_name.trim() && value.birth_date && value.gender && value.country_code && (value.country_code === 'MD' ? value.region_id && value.locality_id : value.locality.trim()));
 }
 
 export function PatientBasicsFields({ value, onChange, regions }: {
@@ -67,13 +73,16 @@ export function PatientBasicsFields({ value, onChange, regions }: {
           })}
         </div>
       </div>
-      <Field label="Raion / municipiu" wide>
+      <Field label="Țara de trai" wide>
+        <CountrySelect value={value.country_code} label={value.country} onChange={(country_code, country) => set({ country_code, country, region_id: '', locality_id: '', region: '', city: '', locality: '' })} className={input} />
+      </Field>
+      {value.country_code === 'MD' ? <><Field label="Raion / municipiu" wide>
         <Select value={value.region_id} onValueChange={(regionId) => set({ region_id: regionId, locality_id: '' })}>
           <SelectTrigger className={input}>
             {region?.name || <span className="text-slate-400">Alege raionul</span>}
           </SelectTrigger>
           <SelectContent className="max-h-64 overflow-y-auto">
-            {regions.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>)}
+            {regions.filter((item) => !item.country || ['Republica Moldova', 'Moldova', 'MD'].includes(item.country)).map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>)}
           </SelectContent>
         </Select>
       </Field>
@@ -87,19 +96,25 @@ export function PatientBasicsFields({ value, onChange, regions }: {
           </SelectContent>
         </Select>
       </Field>
+      </> : <>
+        <Field label="Regiune / district (opțional)" wide><Input value={value.region} onChange={(event) => set({ region: event.target.value })} maxLength={120} className={input} /></Field>
+        <Field label="Oraș (opțional)" wide><Input value={value.city} onChange={(event) => set({ city: event.target.value })} maxLength={120} className={input} /></Field>
+        <Field label="Localitate" wide><Input required value={value.locality} onChange={(event) => set({ locality: event.target.value })} maxLength={120} className={input} /></Field>
+      </>}
     </div>
   );
 }
 
-/** Corpul cererii `POST /patient/profiles` din cele 6 câmpuri. */
+/** Corpul cererii `POST /patient/profiles`. */
 export function patientBasicsPayload(value: PatientBasics) {
   return {
     first_name: value.first_name.trim(),
     last_name: value.last_name.trim(),
     birth_date: value.birth_date,
     gender: value.gender,
-    region_id: Number(value.region_id),
-    locality_id: Number(value.locality_id)
+    country_code: value.country_code,
+    ...(value.country_code === 'MD' ? { region_id: Number(value.region_id), locality_id: Number(value.locality_id) }
+      : { region: value.region.trim() || null, city: value.city.trim() || null, locality: value.locality.trim() })
   };
 }
 

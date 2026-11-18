@@ -38,6 +38,7 @@ use App\Services\ObjectiveDataSchema;
 use App\Services\OperatorAssignmentService;
 use App\Services\PatientRecordAccess;
 use App\Services\PlatformConfig;
+use App\Services\PrescriptionAttachment;
 use App\Services\WalletLedger;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -227,14 +228,6 @@ class WorkflowController extends Controller
         ]);
 
         $patientProfile = $this->resolvePatientProfile($request, (int) $validated['patient_profile_id']);
-        abort_if(
-            ConsultationRequest::where('patient_id', $request->user()->id)
-                ->where('status', 'completed')
-                ->whereNull('closed_at')
-                ->exists(),
-            422,
-            'Ai consultații finalizate care așteaptă rating. Completează ratingul înainte de o solicitare nouă.'
-        );
 
         $doctorService = $this->resolveDoctorService($validated);
         $validated['consultation_kind'] ??= $validated['type'] === 'video' ? 'video' : 'with_exam';
@@ -264,6 +257,9 @@ class WorkflowController extends Controller
             $providerId = $validated['doctor_id'] ?? $validated['operator_id'] ?? null;
             if ($providerId) {
                 User::whereKey($providerId)->lockForUpdate()->firstOrFail();
+            }
+            if (! empty($validated['scheduled_at'])) {
+                $this->ensureSchedulable($validated);
             }
             $provider = $this->providerForPricing($validated) ?? $request->user();
             $costBreakdown = null;
@@ -471,7 +467,7 @@ class WorkflowController extends Controller
             'doctor_history_notes' => ['nullable', 'string', 'max:4000'],
             'objective_exam' => ['nullable', 'string', 'max:4000'],
             'higo_status' => ['required', 'in:not_performed,reviewed'],
-            'higo_exam_id' => ['required_if:higo_status,reviewed', 'prohibited_if:higo_status,not_performed', 'integer'],
+            'higo_exam_id' => ['sometimes', 'prohibited_if:higo_status,not_performed', 'integer'],
             'higo_reviewed' => ['prohibited'],
             'prescription' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
         ]);
@@ -482,7 +478,9 @@ class WorkflowController extends Controller
 
         abort_unless($user->hasRole('admin') || (int) $user->id === (int) $provider->id, 403, 'Nu puteți finaliza această solicitare.');
 
-        $consultation = DB::transaction(function () use ($consultationRequest, $provider, $validated, $request) {
+        $prescription = $request->hasFile('prescription') ? app(PrescriptionAttachment::class)->prepare($request->file('prescription')) : null;
+
+        $consultation = DB::transaction(function () use ($consultationRequest, $provider, $validated, $prescription) {
             $consultationRequest = ConsultationRequest::lockForUpdate()->findOrFail($consultationRequest->id);
             abort_unless(in_array($consultationRequest->status, ['new', 'accepted'], true), 422, 'Solicitarea a fost deja finalizată.');
             $doctorId = $provider->id;
@@ -534,19 +532,12 @@ class WorkflowController extends Controller
                 'completed_at' => now(),
             ]);
 
-            // Banii rămân rezervați: plata se face când pacientul închide consultația
-            // prin recenzie — vezi ConsultationSettlement.
-
             $fhir = $doctorId ? $this->buildFhirEncounter($consultation->load(['patient', 'doctor'])) : null;
             $consultation->forceFill(['fhir_payload' => $fhir])->save();
 
-            $document = app(MedicalDocumentPublisher::class)->publish($consultation, ['has_prescription' => $request->hasFile('prescription')]);
-            if ($request->hasFile('prescription')) {
-                $document->forceFill([
-                    'prescription_path' => $request->file('prescription')->store('medical-prescriptions', 'local'),
-                    'prescription_mime' => $request->file('prescription')->getMimeType(),
-                ])->save();
-            }
+            app(MedicalDocumentPublisher::class)->publish($consultation, ['prescription' => $prescription]);
+
+            app(ConsultationSettlement::class)->close($consultationRequest);
 
             if (isset($conversation)) {
                 ConversationUpdated::dispatch($conversation->refresh()->load(['patient', 'doctor', 'operator', 'messages.sender']));
@@ -554,7 +545,7 @@ class WorkflowController extends Controller
 
             $consultationRequest->patient?->notify(new AppEventNotification(
                 'Consultație finalizată',
-                'Rezultatul consultației este pregătit. Lasă o recenzie pentru a vedea rezultatul și a închide consultația.',
+                'Rezultatul consultației este disponibil. Lasă o recenzie și primești 10 puncte bonus pentru fiecare prestator evaluat.',
                 '/patient/chat?request='.$consultationRequest->id,
                 'success',
             ));
@@ -1399,31 +1390,38 @@ class WorkflowController extends Controller
             ->sortBy(fn (CarbonImmutable $value) => $value->getTimestamp())
             ->values();
 
-        foreach ($slots as $slot) {
-            $this->ensureSchedulable([
-                'type' => $consultationRequest->type,
-                'doctor_id' => $consultationRequest->doctor_id ?: ($user->hasRole('doctor') ? $user->id : null),
-                'operator_id' => $consultationRequest->operator_id ?: ($user->hasRole('operator') ? $user->id : null),
-                'scheduled_at' => $slot->toIso8601String(),
-            ], $consultationRequest->id);
-        }
-
-        $isReschedule = $consultationRequest->status === 'accepted'
-            || ($consultationRequest->status === 'rescheduled' && $consultationRequest->proposal_is_reschedule);
         $expiresAt = $this->proposalDeadline($slots->first());
+        $consultationRequest = DB::transaction(function () use ($consultationRequest, $user, $slots, $validated, $expiresAt) {
+            $item = ConsultationRequest::lockForUpdate()->findOrFail($consultationRequest->id);
+            abort_unless(in_array($item->status, ['new', 'accepted', 'rescheduled'], true) && ! $item->doctor_started_at, 422, 'Nu se mai poate propune alt interval.');
+            abort_unless($user->hasRole('admin') || (int) $item->doctor_id === (int) $user->id || (int) $item->operator_id === (int) $user->id, 403);
 
-        $consultationRequest->forceFill([
-            'status' => 'rescheduled',
-            'proposed_scheduled_at' => $slots->first(),
-            'proposed_slots' => $slots->map(fn (CarbonImmutable $slot) => $slot->utc()->toIso8601String())->all(),
-            'proposal_note' => $validated['note'] ?? null,
-            'proposal_expires_at' => $expiresAt,
-            'proposal_is_reschedule' => $isReschedule,
-            'proposed_by' => $user->id,
-            'patient_asked_at' => null,
-            'patient_time_note' => null,
-            'doctor_reply_due_at' => null,
-        ])->save();
+            foreach ($slots as $slot) {
+                $this->ensureSchedulable([
+                    'type' => $item->type,
+                    'doctor_id' => $item->doctor_id,
+                    'operator_id' => $item->operator_id,
+                    'scheduled_at' => $slot->toIso8601String(),
+                ], $item->id);
+            }
+
+            $isReschedule = $item->status === 'accepted' || ($item->status === 'rescheduled' && $item->proposal_is_reschedule);
+            $item->forceFill([
+                'status' => 'rescheduled',
+                'proposed_scheduled_at' => $slots->first(),
+                'proposed_slots' => $slots->map(fn (CarbonImmutable $slot) => $slot->utc()->toIso8601String())->all(),
+                'proposal_note' => $validated['note'] ?? null,
+                'proposal_expires_at' => $expiresAt,
+                'proposal_is_reschedule' => $isReschedule,
+                'proposed_by' => $user->id,
+                'patient_asked_at' => null,
+                'patient_time_note' => null,
+                'doctor_reply_due_at' => null,
+            ])->save();
+
+            return $item;
+        });
+        $isReschedule = $consultationRequest->proposal_is_reschedule;
 
         $labels = $slots->map(fn (CarbonImmutable $slot) => $slot->setTimezone('Europe/Chisinau')->format('d.m H:i'))->implode(', ');
         $this->postSystemMessage($consultationRequest, $user, ($isReschedule ? 'Medicul propune mutarea consultației: ' : 'Medicul propune altă oră: ').$labels.($validated['note'] ?? null ? ' — „'.$validated['note'].'”' : ''));
@@ -1447,11 +1445,18 @@ class WorkflowController extends Controller
 
         $validated = $request->validate(['note' => ['nullable', 'string', 'max:500']]);
 
-        $consultationRequest->forceFill([
-            'patient_asked_at' => now(),
-            'patient_time_note' => $validated['note'] ?? null,
-            'proposal_expires_at' => now()->addDay(),
-        ])->save();
+        $consultationRequest = DB::transaction(function () use ($consultationRequest, $request, $validated) {
+            $item = ConsultationRequest::lockForUpdate()->findOrFail($consultationRequest->id);
+            abort_unless((int) $request->user()->id === (int) $item->patient_id, 403);
+            abort_unless($item->status === 'rescheduled' && ! $item->patient_asked_at, 422, 'Nu există o propunere activă.');
+            $item->forceFill([
+                'patient_asked_at' => now(),
+                'patient_time_note' => $validated['note'] ?? null,
+                'proposal_expires_at' => now()->addDay(),
+            ])->save();
+
+            return $item;
+        });
 
         $this->postSystemMessage($consultationRequest, $request->user(), 'Pacientul cere alte ore'.($validated['note'] ?? null ? ': „'.$validated['note'].'”' : '.'));
         $consultationRequest->doctor?->notify(new AppEventNotification(
@@ -1472,7 +1477,14 @@ class WorkflowController extends Controller
         abort_unless((int) $request->user()->id === (int) $consultationRequest->patient_id, 403);
         abort_unless($consultationRequest->status === 'rescheduled' && $consultationRequest->proposal_is_reschedule, 422, 'Nu există o reprogramare activă.');
 
-        $this->clearProposal($consultationRequest, 'accepted');
+        $consultationRequest = DB::transaction(function () use ($consultationRequest, $request) {
+            $item = ConsultationRequest::lockForUpdate()->findOrFail($consultationRequest->id);
+            abort_unless((int) $request->user()->id === (int) $item->patient_id, 403);
+            abort_unless($item->status === 'rescheduled' && $item->proposal_is_reschedule, 422, 'Nu există o reprogramare activă.');
+            $this->clearProposal($item, 'accepted');
+
+            return $item;
+        });
         $this->postSystemMessage($consultationRequest, $request->user(), 'Pacientul păstrează ora confirmată.');
         $consultationRequest->doctor?->notify(new AppEventNotification(
             'Pacientul păstrează ora',
@@ -1493,10 +1505,18 @@ class WorkflowController extends Controller
         abort_unless((int) $consultationRequest->doctor_id === (int) $user->id || $user->hasRole('admin'), 403);
         abort_unless($consultationRequest->status === 'rescheduled', 422, 'Nu există o propunere activă.');
 
-        $this->clearProposal($consultationRequest, $consultationRequest->proposal_is_reschedule ? 'accepted' : 'new');
-        if (! $consultationRequest->proposal_is_reschedule) {
-            $consultationRequest->forceFill(['doctor_reply_due_at' => $this->doctorReplyDeadline()])->save();
-        }
+        $consultationRequest = DB::transaction(function () use ($consultationRequest, $user) {
+            $item = ConsultationRequest::lockForUpdate()->findOrFail($consultationRequest->id);
+            abort_unless((int) $item->doctor_id === (int) $user->id || $user->hasRole('admin'), 403);
+            abort_unless($item->status === 'rescheduled', 422, 'Nu există o propunere activă.');
+            $isReschedule = $item->proposal_is_reschedule;
+            $this->clearProposal($item, $isReschedule ? 'accepted' : 'new');
+            if (! $isReschedule) {
+                $item->forceFill(['doctor_reply_due_at' => $this->doctorReplyDeadline()])->save();
+            }
+
+            return $item;
+        });
         $this->postSystemMessage($consultationRequest, $user, 'Medicul a retras propunerea de oră.');
 
         return response()->json([
@@ -1577,22 +1597,35 @@ class WorkflowController extends Controller
         abort_if($consultationRequest->proposal_expires_at?->isPast(), 422, 'Propunerea a expirat.');
 
         $validated = $request->validate(['scheduled_at' => ['nullable', 'date']]);
-        $slots = collect($consultationRequest->proposed_slots ?: [$consultationRequest->proposed_scheduled_at->toIso8601String()])
-            ->map(fn ($value) => CarbonImmutable::parse($value));
-        $chosen = isset($validated['scheduled_at'])
-            ? $slots->first(fn (CarbonImmutable $slot) => $slot->getTimestamp() === CarbonImmutable::parse($validated['scheduled_at'])->getTimestamp())
-            : $slots->first();
-        abort_unless($chosen, 422, 'Alege una dintre orele propuse de medic.');
+        $consultationRequest = DB::transaction(function () use ($consultationRequest, $user, $validated) {
+            $item = ConsultationRequest::lockForUpdate()->findOrFail($consultationRequest->id);
+            abort_unless((int) $user->id === (int) $item->patient_id, 403);
+            abort_unless($item->status === 'rescheduled' && $item->proposed_scheduled_at && ! $item->patient_asked_at, 422, 'Nu există o propunere activă.');
+            abort_if($item->proposal_expires_at?->isPast(), 422, 'Propunerea a expirat.');
+            $slots = collect($item->proposed_slots ?: [$item->proposed_scheduled_at->toIso8601String()])
+                ->map(fn ($value) => CarbonImmutable::parse($value));
+            $chosen = isset($validated['scheduled_at'])
+                ? $slots->first(fn (CarbonImmutable $slot) => $slot->getTimestamp() === CarbonImmutable::parse($validated['scheduled_at'])->getTimestamp())
+                : $slots->first();
+            abort_unless($chosen, 422, 'Alege una dintre orele propuse de medic.');
 
-        $this->ensureSchedulable([
-            'type' => $consultationRequest->type,
-            'doctor_id' => $consultationRequest->doctor_id,
-            'operator_id' => $consultationRequest->operator_id,
-            'scheduled_at' => $chosen->toIso8601String(),
-        ], $consultationRequest->id);
+            $providerId = $item->doctor_id ?? $item->operator_id;
+            if ($providerId) {
+                User::whereKey($providerId)->lockForUpdate()->firstOrFail();
+            }
+            $this->ensureSchedulable([
+                'type' => $item->type,
+                'doctor_id' => $item->doctor_id,
+                'operator_id' => $item->operator_id,
+                'scheduled_at' => $chosen->toIso8601String(),
+            ], $item->id);
 
-        $consultationRequest->forceFill(['scheduled_at' => $chosen, 'accepted_at' => now(), 'acceptance_expires_at' => null])->save();
-        $this->clearProposal($consultationRequest, 'accepted');
+            $item->forceFill(['scheduled_at' => $chosen, 'accepted_at' => now(), 'acceptance_expires_at' => null, 'doctor_reply_due_at' => null])->save();
+            $this->clearProposal($item, 'accepted');
+
+            return $item;
+        });
+        $chosen = CarbonImmutable::instance($consultationRequest->scheduled_at);
         $this->postSystemMessage($consultationRequest, $user, 'Pacientul a ales '.$chosen->setTimezone('Europe/Chisinau')->format('d.m, H:i').'.');
         $consultationRequest->doctor?->notify(new AppEventNotification(
             'Pacientul a ales ora',
@@ -1894,6 +1927,7 @@ class WorkflowController extends Controller
         abort_unless($service, 422, 'Serviciul ales nu mai este disponibil. Alege alt serviciu.');
 
         $validated['consultation_kind'] = $service->consultationKind();
+        $validated['appointment_service'] = $service->snapshot();
         if (isset($validated['type'])) {
             $validated['type'] = $service->type === 'video' ? 'video' : 'doctor';
         }
@@ -1907,10 +1941,10 @@ class WorkflowController extends Controller
             if (! empty($validated['doctor_id'])) {
                 $doctor = User::with('doctorProfile')->find($validated['doctor_id']);
 
-                return (int) ($doctor?->doctorProfile?->video_price ?? app(PlatformConfig::class)->number('video.default_price', 500));
+                return (int) ($doctor?->doctorProfile?->video_price ?? app(PlatformConfig::class)->number('video.default_price', 600));
             }
 
-            return (int) app(PlatformConfig::class)->number('video.default_price', 500);
+            return (int) app(PlatformConfig::class)->number('video.default_price', 600);
         }
 
         if ($validated['type'] === 'operator') {
@@ -1941,7 +1975,7 @@ class WorkflowController extends Controller
         abort_unless((int) $profile->user_id === (int) $request->user()->id, 403, 'Profilul de pacient nu aparține contului tău.');
 
         abort_unless($profile->status === 'active', 422, 'Profilul de pacient nu are cartelă activă. Cumpără sau reactivează o cartelă înainte de consultație.');
-        abort_if($profile->active_until && ! $profile->active_until->isFuture(), 422, 'Cartela profilului de pacient a expirat. Reînnoiește cartela înainte de o consultație nouă.');
+        abort_if(! $profile->isActiveForNewConsultations(), 422, 'Cartela profilului de pacient a expirat. Reînnoiește cartela înainte de o consultație nouă.');
 
         abort_unless(
             filled($profile->first_name) && filled($profile->last_name),
@@ -2137,7 +2171,11 @@ class WorkflowController extends Controller
         $schedule = app(DoctorSchedule::class);
 
         if ($isDoctor) {
-            $reason = $schedule->unavailableReason($provider, $scheduledAt, $ignoreRequestId);
+            $service = $validated['appointment_service'] ?? null;
+            if (! $service && $ignoreRequestId) {
+                $service = ConsultationRequest::find($ignoreRequestId)?->pricing_snapshot['service'] ?? null;
+            }
+            $reason = $schedule->unavailableReason($provider, $scheduledAt, $ignoreRequestId, $schedule->durationMinutes($service));
             abort_if($reason !== null, 422, $reason ?? '');
 
             return;

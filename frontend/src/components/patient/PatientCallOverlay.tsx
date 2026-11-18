@@ -6,6 +6,7 @@ import { ConnectionQuality, ConnectionState, MediaDeviceFailure, Track } from 'l
 import { Camera, CameraOff, Maximize2, MessageSquare, Mic, MicOff, Minimize2, PhoneOff, Send, WifiOff, X } from 'lucide-react';
 import { apiRequest } from '../../lib/api';
 import { cn } from '../ui/utils';
+import { consultationClock } from '../../lib/consultation-clock';
 import type { PatientCallSession, PatientCallSummary } from '../../contexts/PatientCallContext';
 import '@livekit/components-styles';
 
@@ -32,6 +33,7 @@ export default function PatientCallOverlay({ session, summary, expanded, onExpan
   const [deviceError, setDeviceError] = useState('');
   const fullScreen = Boolean(summary || (session && expanded));
   useEffect(() => { if (participantToken) { startedAt.current = null; finished.current = false; setDeviceError(''); } }, [participantToken]);
+  useEffect(() => { if (session?.startedAt !== null && session?.startedAt !== undefined && Number.isFinite(session.startedAt)) startedAt.current = session.startedAt; }, [participantToken, session?.startedAt]);
   useEffect(() => {
     if (!fullScreen) return;
     const bodyOverflow = document.body.style.overflow;
@@ -115,9 +117,9 @@ function CallSurface({ session, expanded, onExpandedChange, onConnected, started
   const remoteVideoOn = remoteTrack && isTrackReference(remoteTrack) && !remoteTrack.publication.isMuted;
   const localVideoOn = localTrack && isTrackReference(localTrack) && !localTrack.publication.isMuted;
   const doctorLeft = hadRemote.current && !doctor && state === ConnectionState.Connected;
-  const remaining = session.durationMinutes * 60 - (startedAt.current ? Math.floor((now - startedAt.current) / 1000) : 0);
-  const overtime = remaining < 0;
-  const timer = `${overtime ? '−' : ''}${formatSeconds(Math.abs(remaining))}`;
+  const clock = consultationClock(startedAt.current, session.durationMinutes, now);
+  const overtime = clock.overtime;
+  const timer = clock.display;
   const chatLink = `/patient/chat?request=${session.requestId}`;
   const patientFirst = session.patientName?.split(' ')[0];
 
@@ -154,7 +156,7 @@ function CallSurface({ session, expanded, onExpandedChange, onConnected, started
     : !expanded ? <div className="grid h-full w-full place-items-center bg-slate-800 text-sm font-semibold text-white/70">{initialsOf(session.doctorName)}</div> : <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-slate-800 text-sm text-white/70"><span className="grid h-[120px] w-[120px] place-items-center rounded-full bg-slate-700 text-4xl font-semibold">{initialsOf(session.doctorName)}</span><strong className="text-lg text-white">{session.doctorName}</strong><p className="px-4 text-center text-[13px]">{doctor ? doctor.isMicrophoneEnabled ? 'Camera e oprită · vă aude și vă vorbește' : 'Camera și microfonul medicului sunt oprite' : 'Așteptăm medicul să intre în apel…'}</p></div>;
 
   const timerPill = (small = false) => (
-    <span className={cn('flex items-center gap-1.5 rounded-full font-mono font-bold tabular-nums', overtime ? 'bg-orange-600' : 'bg-black/40', small ? 'px-2 py-0.5 text-[11px]' : 'h-9 px-3.5 text-[15px] sm:h-10 sm:gap-2.5 sm:px-4 sm:text-[17px]')}>
+    <span aria-label={`${clock.label}: ${timer}`} className={cn('flex items-center gap-1.5 rounded-full font-mono font-bold tabular-nums', overtime ? 'bg-orange-600' : 'bg-black/40', small ? 'px-2 py-0.5 text-[11px]' : 'h-9 px-3.5 text-[15px] sm:h-10 sm:gap-2.5 sm:px-4 sm:text-[17px]')}>
       <span className={cn('rounded-full', overtime ? 'bg-white' : 'bg-green-400', small ? 'h-1.5 w-1.5' : 'h-2 w-2')} />{timer}
       {!small && <span className="font-sans text-[11px] font-normal text-white/70">{overtime ? 'peste durată' : 'rămase'}</span>}
     </span>
@@ -379,7 +381,7 @@ function CallSummary({ summary, onClose }: { summary: PatientCallSummary; onClos
     <div role="dialog" aria-label="Apel încheiat" className="fixed inset-0 z-[70] flex flex-col bg-white px-6 pb-[max(2rem,env(safe-area-inset-bottom))] pt-40 sm:items-center sm:justify-center sm:bg-slate-50 sm:p-6 sm:text-center">
       <span className="grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-slate-700"><PhoneOff className="h-5 w-5" /></span>
       <h2 className="mt-4 text-[22px] font-bold tracking-tight text-slate-950">{failed ? 'Conexiunea video a eșuat' : 'Apel încheiat'}{summary.minutes ? ` · ${summary.minutes} min` : ''}</h2>
-      <p className="mt-2 text-sm text-slate-500">{failed ? 'Verifică internetul și încearcă din nou. Poți continua discuția în chat.' : summary.reason === 'completed' ? 'Rezultatul este pregătit. Lasă o recenzie în chat pentru a-l vedea.' : summary.reason === 'unavailable' ? 'Consultația nu mai este disponibilă pentru apel. Detaliile rămân în chat.' : 'Când rezultatul este pregătit, îl poți debloca prin recenzie în chat.'}</p>
+      <p className="mt-2 text-sm text-slate-500">{failed ? 'Verifică internetul și încearcă din nou. Poți continua discuția în chat.' : summary.reason === 'completed' ? 'Rezultatul este disponibil în chat. Lasă o recenzie și primești 10 puncte bonus.' : summary.reason === 'unavailable' ? 'Consultația nu mai este disponibilă pentru apel. Detaliile rămân în chat.' : 'Când rezultatul este pregătit, îl poți consulta direct în chat. Recenzia este opțională.'}</p>
       <div className="mt-auto flex flex-col items-center gap-3 sm:mt-6">
         {failed && <button type="button" onClick={() => go(`/consultations/${summary.requestId}/video`)} className="h-12 rounded-[10px] bg-blue-600 px-5 text-sm font-semibold text-white">Încearcă din nou</button>}
         <button type="button" autoFocus onClick={() => go(`/patient/chat?request=${summary.requestId}`)} className="h-12 w-full rounded-[10px] bg-blue-600 px-5 text-[15px] font-semibold text-white hover:bg-blue-700 sm:h-10 sm:w-auto sm:text-sm">Mergi la chat</button>
@@ -410,11 +412,6 @@ function cornerClass(corner: Corner): string {
   }[corner];
 }
 
-function formatSeconds(total: number): string {
-  const minutes = Math.floor(total / 60);
-  const seconds = total % 60;
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-}
 
 function initialsOf(name: string): string {
   return name.replace(/^dr\.?\s*/i, '').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('');

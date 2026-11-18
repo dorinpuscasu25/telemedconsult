@@ -16,6 +16,7 @@ import { CurrentTimeCard } from '../../components/app/CurrentTimeCard';
 interface DashboardData {
   summary: {
     performance?: DoctorPerformance | null;
+    ranking?: { position: number | null; total: number };
     current_month_revenue: number;
     current_month_consultations: number;
     rating: number;
@@ -289,6 +290,8 @@ export function DoctorHome() {
             <section className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-5">
               <span className="text-[13px] text-slate-500">Indicator de performanță</span>
               <span className="text-2xl font-bold text-slate-950">{Math.round(summary.performance.score)} <span className="text-sm font-medium text-slate-500">puncte</span></span>
+              <span className="text-sm text-slate-600">Locul {summary.ranking?.position ?? '—'} din {summary.ranking?.total ?? '—'}</span>
+              <Link to="/doctor/stats#clasament" className="text-[13px] font-medium text-blue-600 hover:underline">Vezi topul integral</Link>
               <Link to="/doctor/stats" className="text-[13px] font-medium text-blue-600 hover:underline">Cum se calculează</Link>
             </section>
           )}

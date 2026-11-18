@@ -20,7 +20,7 @@ class ConsultationPdf
         $pdf->render();
         $footer = mb_strimwidth((string) ($snapshot['clinic'] ?? 'telemedconsult.md'), 0, 45, '…').' · Document #'.$snapshot['document_id'].' · Cod pacient '.$snapshot['patient_code'];
         $pdf->getCanvas()->page_text(48, 814, $footer, $pdf->getFontMetrics()->getFont('DejaVu Sans', 'normal'), 8, [0.4, 0.45, 0.5]);
-        $pdf->getCanvas()->page_text(510, 814, '{PAGE_NUM} / {PAGE_COUNT}', $pdf->getFontMetrics()->getFont('DejaVu Sans', 'normal'), 8, [0.4, 0.45, 0.5]);
+        $pdf->getCanvas()->page_text(! empty($snapshot['has_prescription']) ? 425 : 510, 814, (! empty($snapshot['has_prescription']) ? 'Partea medicală · ' : '').'{PAGE_NUM} / {PAGE_COUNT}', $pdf->getFontMetrics()->getFont('DejaVu Sans', 'normal'), 8, [0.4, 0.45, 0.5]);
 
         return $pdf->output();
     }

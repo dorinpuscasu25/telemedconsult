@@ -23,6 +23,7 @@ use App\Services\DoctorPerformance;
 use App\Services\DoctorSchedule;
 use App\Services\DoctorServiceCatalog;
 use App\Services\InstitutionLedger;
+use App\Services\PayoutRequestWindow;
 use App\Services\PlatformConfig;
 use App\Services\PublicImageStorage;
 use Carbon\CarbonImmutable;
@@ -34,6 +35,7 @@ use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
 class DoctorOperationsController extends Controller
@@ -62,6 +64,7 @@ class DoctorOperationsController extends Controller
         $previousMonthRevenue = (float) $income->filter(fn (array $row) => $row['date']->betweenIncluded($previousMonthStart, $previousMonthEnd))->sum('amount');
 
         $performance = $doctor->doctorProfile ? app(DoctorPerformance::class)->forDoctor($doctor->doctorProfile) : null;
+        $ranking = app(DoctorPerformance::class)->leaderboard();
         $averageResponseMinutes = $performance['average_response_minutes'] ?? null;
 
         $pendingRequests = ConsultationRequest::query()
@@ -87,6 +90,7 @@ class DoctorOperationsController extends Controller
                 'reviews_count' => (int) ($doctor->doctorProfile?->reviews_count ?? 0),
                 'average_response_minutes' => $averageResponseMinutes !== null ? (int) round($averageResponseMinutes) : null,
                 'performance' => $performance,
+                'ranking' => ['position' => $ranking->firstWhere('doctor_id', $doctor->id)['position'] ?? null, 'total' => $ranking->count()],
             ],
             'pending_requests' => $pendingRequests->map(fn (ConsultationRequest $item) => [
                 'id' => (string) $item->id,
@@ -362,7 +366,10 @@ class DoctorOperationsController extends Controller
             'ignore' => ['nullable', 'integer'],
         ]);
 
-        return response()->json(app(DoctorSchedule::class)->freeSlots($doctor, (int) ($validated['days'] ?? 8), null, true, isset($validated['ignore']) ? (int) $validated['ignore'] : null));
+        $ignore = isset($validated['ignore']) ? ConsultationRequest::where('doctor_id', $doctor->id)->findOrFail($validated['ignore']) : null;
+        $schedule = app(DoctorSchedule::class);
+
+        return response()->json($schedule->freeSlots($doctor, (int) ($validated['days'] ?? 8), null, true, $ignore?->id, $schedule->durationMinutes($ignore?->pricing_snapshot['service'] ?? null)));
     }
 
     /** Fotografia din profilul public; o vede pacientul în catalog. */
@@ -397,7 +404,7 @@ class DoctorOperationsController extends Controller
             'Medicul cere schimbarea instituției',
             $doctor->name.' ('.($doctor->doctorProfile?->medicalInstitution?->name ?? 'fără instituție').'): '.$validated['message'],
             '/admin/doctors',
-            false,
+            true,
         );
 
         return response()->json(['message' => 'Mesajul a ajuns la administrator.']);
@@ -463,6 +470,7 @@ class DoctorOperationsController extends Controller
                 'reviews_count' => (int) ($doctor->doctorProfile?->reviews_count ?? 0),
                 'profile_views' => $profileViews,
                 'available_balance' => $this->availableBalanceMinor($doctor->id) / 100,
+                'payout_window' => app(PayoutRequestWindow::class)->current(),
                 'payout_account' => $doctor->doctorProfile?->payout_iban
                     ? trim(($doctor->doctorProfile->payout_bank ?? '').' ···· '.substr($doctor->doctorProfile->payout_iban, -4))
                     : null,
@@ -534,12 +542,11 @@ class DoctorOperationsController extends Controller
             ], 201);
         }
 
-        $config = app(PlatformConfig::class);
-        $day = (int) now()->format('j');
+        $window = app(PayoutRequestWindow::class)->current();
         abort_if(
-            $day < (int) $config->number('payout.request_day_start', 1) || $day > (int) $config->number('payout.request_day_end', 10),
+            ! $window['open'],
             422,
-            'Cererile de retragere pot fi depuse doar între zilele 1 și 10 ale lunii.'
+            $window['valid'] ? 'Cererile de retragere de la platformă pot fi depuse în zilele '.$window['start_day'].'–'.$window['end_day'].' ale lunii (ora Chișinăului).' : 'Perioada pentru cereri de plată nu este configurată corect. Contactează administratorul.'
         );
         abort_if($amountMinor < 50000, 422, 'Suma minimă pentru extragere este 500 MDL.');
         $availableMinor = $this->availableBalanceMinor($doctor->id);
@@ -646,21 +653,26 @@ class DoctorOperationsController extends Controller
             'slots.*.is_active' => ['nullable', 'boolean'],
         ]);
 
-        $slots = collect($validated['slots'])
-            ->filter(fn (array $slot) => $slot['starts_at'] < $slot['ends_at'])
-            ->values();
+        $slots = collect($validated['slots'])->values();
+        foreach ($slots as $index => $slot) {
+            if ($slot['ends_at'] !== '00:00' && $slot['starts_at'] >= $slot['ends_at']) {
+                throw ValidationException::withMessages([
+                    "slots.$index.ends_at" => ['Ora de sfârșit trebuie să fie după început. Folosește 00:00 pentru sfârșitul zilei; pentru alte intervale peste noapte adaugă separat ziua următoare.'],
+                ]);
+            }
+        }
 
         abort_if($slots->isEmpty(), 422, 'Adăugați cel puțin un interval valid.');
 
-        $doctor->doctorAvailabilities()->delete();
-        $slots->each(function (array $slot) use ($doctor) {
-            DoctorAvailability::create([
+        DB::transaction(function () use ($doctor, $slots) {
+            $doctor->doctorAvailabilities()->delete();
+            $slots->each(fn (array $slot) => DoctorAvailability::create([
                 'doctor_id' => $doctor->id,
                 'weekday' => $slot['weekday'],
                 'starts_at' => $slot['starts_at'],
                 'ends_at' => $slot['ends_at'],
                 'is_active' => $slot['is_active'] ?? true,
-            ]);
+            ]));
         });
 
         return response()->json([
@@ -688,10 +700,13 @@ class DoctorOperationsController extends Controller
         return app(InstitutionLedger::class)->platformDoctorBalanceMinor($doctorId);
     }
 
-    private function notifyAdmins(string $title, string $body, string $url, bool $sendEmail, string $level = 'info'): void
+    private function notifyAdmins(string $title, string $body, string $url, bool $enabled, string $level = 'info'): void
     {
-        $admins = User::whereHas('roles', fn ($query) => $query->where('name', 'admin'))->get();
-        Notification::send($admins, new AppEventNotification($title, $body, $url, $level, $sendEmail));
+        if (! $enabled) {
+            return;
+        }
+        $admins = User::where('status', 'active')->whereHas('roles', fn ($query) => $query->where('name', 'admin'))->get();
+        Notification::send($admins, new AppEventNotification($title, $body, $url, $level, category: str_contains($url, 'transactions') ? 'payments' : 'requests'));
     }
 
     private function settingBool(string $key, bool $default): bool

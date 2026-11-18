@@ -113,7 +113,7 @@ const filledSteps = (draft: Draft | null, hasFile: boolean) => [
 
 function formData(draft: Draft, file: File | null) {
   const body = new FormData();
-  const meds = draft.meds.filter((med) => med.n.trim()).map((med) => (med.d.trim() ? `${med.n.trim()} — ${med.d.trim()}` : med.n.trim())).join('\n');
+  const meds = draft.meds.filter((med) => med.n.trim()).map((med) => med.n.trim()).join('\n');
   body.append('doctor_history_notes', draft.anam);
   body.append('objective_exam', draft.exam);
   body.append('diagnosis', draft.diag);
@@ -122,7 +122,6 @@ function formData(draft: Draft, file: File | null) {
   body.append('investigation_recommendations', draft.inv);
   body.append('prescription_notes', meds);
   body.append('higo_status', draft.higoStatus);
-  if (draft.higoStatus === 'reviewed') body.append('higo_exam_id', draft.higoExamId);
   if (file) body.append('prescription', file);
   return body;
 }
@@ -139,6 +138,7 @@ function StepFields({ step, draft, update, request, file, setFile, context }: {
   step: number; draft: Draft; update: (patch: Partial<Draft>) => void; request: ConclusionRequest; file: File | null; setFile: (file: File | null) => void;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
+  const [fileError, setFileError] = useState('');
   const allergies = request.patient_profile?.medical_record ? sectionState(request.patient_profile.medical_record as MedicalRecord, 'drug_allergies') === 'done' : false;
   if (step === 0) {
     const declaration = [request.current_illness_history ? `Istoricul declarat: ${request.current_illness_history}` : '', request.symptoms].filter(Boolean).join('\n\n');
@@ -151,14 +151,14 @@ function StepFields({ step, draft, update, request, file, setFile, context }: {
     return (
       <>
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-slate-700">Observațiile tale</span>
+          <span className="text-[13px] font-medium text-slate-700">Observațiile medicului</span>
           <textarea rows={7} value={draft.exam} onChange={(event) => update({ exam: event.target.value })} placeholder="Ex: Faringe hiperemiat, amigdale mărite fără depozite. Respirație liberă." className={cn(inputClass, 'resize-y py-3 leading-[1.55]')} />
         </label>
         <fieldset className="space-y-3 rounded-xl border border-slate-200 p-3">
           <legend className="px-1 text-sm font-semibold text-slate-700">Examinare HIGO · alegere obligatorie</legend>
           <label className="flex items-start gap-2 text-sm"><input type="radio" name={`higo-${request.id}`} checked={draft.higoStatus === 'not_performed'} onChange={() => update({ higoStatus: 'not_performed', higoExamId: '' })} disabled={Boolean(context?.higo_exams?.length)} />Nu a fost efectuată</label>
-          <label className="flex items-start gap-2 text-sm"><input type="radio" name={`higo-${request.id}`} checked={draft.higoStatus === 'reviewed'} onChange={() => update({ higoStatus: 'reviewed' })} />A fost efectuată; am consultat datele</label>
-          {draft.higoStatus === 'reviewed' && <label className="flex flex-col gap-1.5 text-sm">Examinarea consultată<select value={draft.higoExamId} onChange={(event) => update({ higoExamId: event.target.value })} className={cn(inputClass, 'h-11')}><option value="">Selectează examinarea</option>{(context?.higo_exams ?? []).map((exam) => <option key={exam.id} value={exam.id}>{new Date(exam.performed_at).toLocaleString('ro-RO')} · {exam.external_id}</option>)}</select>{!context?.higo_exams?.length && <span className="text-xs text-amber-700">Nu există încă date HIGO asociate acestei consultații.</span>}</label>}
+          <label className="flex items-start gap-2 text-sm"><input type="radio" name={`higo-${request.id}`} checked={draft.higoStatus === 'reviewed'} onChange={() => update({ higoStatus: 'reviewed' })} disabled={!context?.higo_exams?.length} />A fost efectuată; am consultat toate datele</label>
+          {!context?.higo_exams?.length && <p className="text-xs text-amber-700">Nu există încă date HIGO asociate acestei consultații.</p>}
         </fieldset>
       </>
     );
@@ -179,27 +179,31 @@ function StepFields({ step, draft, update, request, file, setFile, context }: {
   return (
     <>
       <div className="flex flex-col gap-2">
-        <span className="text-[13px] font-medium text-slate-700">Medicamente</span>
+        <span className="text-[13px] font-medium text-slate-700">Medicament eliberat pe rețetă</span>
+        <p className="text-xs text-slate-500">Indică medicamentul sau substanța activă. Doza și durata rămân în rubrica „Tratament medicamentos”.</p>
         {draft.meds.map((med, index) => (
-          <div key={index} className="grid grid-cols-[1fr_1fr_36px] gap-2">
+          <div key={index} className="grid grid-cols-[1fr_36px] gap-2">
             <input value={med.n} placeholder="Medicament" onChange={(event) => update({ meds: draft.meds.map((item, i) => (i === index ? { ...item, n: event.target.value } : item)) })} className={cn(inputClass, 'h-10 min-w-0')} />
-            <input value={med.d} placeholder="Dozaj și durată" onChange={(event) => update({ meds: draft.meds.map((item, i) => (i === index ? { ...item, d: event.target.value } : item)) })} className={cn(inputClass, 'h-10 min-w-0')} />
             <button type="button" aria-label="Șterge medicamentul" onClick={() => update({ meds: draft.meds.length > 1 ? draft.meds.filter((_, i) => i !== index) : [{ n: '', d: '' }] })} className="grid h-10 w-9 place-items-center text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
+            {med.d.trim() && <p className="col-span-2 text-xs text-amber-700">Detalii din ciorna anterioară: {med.d}. Include-le în „Tratament medicamentos” înainte de publicare.</p>}
           </div>
         ))}
         <button type="button" onClick={() => update({ meds: [...draft.meds, { n: '', d: '' }] })} className="h-9 self-start rounded-[10px] border border-slate-200 bg-white px-3 text-[13px] font-medium hover:bg-slate-50">+ Adaugă medicament</button>
       </div>
       <div className="flex flex-col gap-1.5">
-        <span className="text-[13px] font-medium text-slate-700">Rețetă scanată <span className="font-normal text-slate-400">· opțional</span></span>
+        <span className="text-[13px] font-medium text-slate-700">Încarcă rețeta <span className="font-normal text-slate-400">· scanată sau fotografiată, opțional</span></span>
         <input ref={fileInput} type="file" className="sr-only" accept="application/pdf,image/jpeg,image/png" onChange={(event) => {
           const next = event.target.files?.[0] ?? null;
-          if (next && (!['application/pdf', 'image/jpeg', 'image/png'].includes(next.type) || next.size > 10 * 1024 * 1024)) { event.target.value = ''; return; }
+          if (next && (!['application/pdf', 'image/jpeg', 'image/png'].includes(next.type) || next.size > 10 * 1024 * 1024)) { event.target.value = ''; setFileError('Alege un fișier PDF, JPG sau PNG de cel mult 10 MB.'); return; }
+          setFileError('');
           setFile(next);
         }} />
-        <button type="button" onClick={() => { if (file) { setFile(null); if (fileInput.current) fileInput.current.value = ''; } else fileInput.current?.click(); }}
+        <button type="button" onClick={() => { setFileError(''); if (file) { setFile(null); if (fileInput.current) fileInput.current.value = ''; } else fileInput.current?.click(); }}
           className="h-[84px] rounded-xl border-[1.5px] border-dashed border-slate-300 bg-slate-50 text-sm text-slate-600 hover:border-blue-300">
-          {file ? `✓ ${file.name} · ${Math.max(1, Math.round(file.size / 1024))} KB · atinge ca s-o scoți` : 'Trage aici sau alege fișierul · PDF, JPG, PNG, max. 10 MB'}
+          {file ? `✓ ${file.name} · ${Math.max(1, Math.round(file.size / 1024))} KB · atinge ca s-o scoți` : 'Alege fișierul · PDF scanat, JPG, PNG, max. 10 MB'}
         </button>
+        {fileError && <p role="alert" className="text-xs text-red-700">{fileError}</p>}
+        <p className="text-xs text-slate-500">Rețeta se include în anexa nr. 1 la decizie și rămâne disponibilă separat pentru descărcare. PDF: cel mult 100 de pagini, fără parolă, formulare sau adnotări. Fotografie: cel mult 16 megapixeli.</p>
       </div>
       {allergies && <span className="text-[13px] text-slate-500">Pacientul are alergii în fișă: {sectionSummary(request.patient_profile?.medical_record as MedicalRecord, 'drug_allergies')}. Verifică rețeta înainte de publicare.</span>}
     </>
@@ -286,7 +290,7 @@ export function ConclusionDialog({ request, open, onOpenChange, onPublished }: {
 
   if (!request) return null;
   const filled = filledSteps(draft, Boolean(file));
-  const canPublish = filled[2] && Boolean(draft?.higoStatus) && (draft?.higoStatus !== 'reviewed' || Boolean(draft?.higoExamId));
+  const canPublish = filled[2] && Boolean(draft?.higoStatus) && (draft?.higoStatus !== 'reviewed' || Boolean(context?.higo_exams?.length));
   const name = request.patient_profile?.name || request.patient?.name || 'Pacient';
   const profile = request.patient_profile;
   const record = (profile?.medical_record ?? {}) as MedicalRecord;
@@ -296,10 +300,7 @@ export function ConclusionDialog({ request, open, onOpenChange, onPublished }: {
   const preview = async () => {
     if (!draft) return;
     try {
-      const blob = await apiBlob(`/requests/${request.id}/documents/preview`, { method: 'POST', body: JSON.stringify({
-        doctor_history_notes: draft.anam, objective_exam: draft.exam, diagnosis: draft.diag, treatment_plan: draft.plan, recommendations: draft.rec,
-        investigation_recommendations: draft.inv, prescription_notes: draft.meds.filter((med) => med.n.trim()).map((med) => `${med.n} — ${med.d}`).join('\n'), has_prescription: Boolean(file), higo_status: draft.higoStatus, ...(draft.higoStatus === 'reviewed' ? { higo_exam_id: Number(draft.higoExamId) } : {})
-      }) });
+      const blob = await apiBlob(`/requests/${request.id}/documents/preview`, { method: 'POST', body: formData(draft, file) });
       setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return URL.createObjectURL(blob); });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Previzualizarea nu a reușit.');
@@ -372,7 +373,7 @@ export function ConclusionPanel({ request, onPublished }: { request: ConclusionR
   const [confirming, setConfirming] = useState(false);
   const { busy, error, publish } = usePublish(request, draft, file, flush, () => { setConfirming(false); onPublished(); });
   const filled = filledSteps(draft, Boolean(file));
-  const canPublish = filled[2] && Boolean(draft?.higoStatus) && (draft?.higoStatus !== 'reviewed' || Boolean(draft?.higoExamId));
+  const canPublish = filled[2] && Boolean(draft?.higoStatus) && (draft?.higoStatus !== 'reviewed' || Boolean(context?.higo_exams?.length));
 
   return (
     <div className="relative flex h-full w-full flex-col bg-white text-slate-950">

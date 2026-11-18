@@ -26,6 +26,8 @@ class ReferralProgram
     /** Procentul din alimentare care merge către invitator. */
     public const RATE_SETTING = 'rate.affiliate_patient_topup';
 
+    public const DOCTOR_RATE_SETTING = 'rate.affiliate_doctor_topup';
+
     /** Alimentările sub această sumă (MDL) nu generează comision. */
     public const MIN_AMOUNT_SETTING = 'affiliate.patient_topup_min_amount';
 
@@ -45,9 +47,11 @@ class ReferralProgram
     }
 
     /** Procentul curent, limitat la intervalul 0–100. */
-    public function ratePercent(): float
+    public function ratePercent(?User $referrer = null): float
     {
-        return max(0.0, min(100.0, $this->config->number(self::RATE_SETTING, 0)));
+        $doctor = $referrer && $referrer->hasRole('doctor') && ! $referrer->hasRole('operator');
+
+        return max(0.0, min(100.0, $this->config->number($doctor ? self::DOCTOR_RATE_SETTING : self::RATE_SETTING, $doctor ? 10 : 0)));
     }
 
     /** Suma minimă (în MDL) a unei alimentări eligibile. */
@@ -191,18 +195,18 @@ class ReferralProgram
             return null;
         }
 
-        $rate = $this->ratePercent();
+        $referrer = User::with('roles')->find($referral->referrer_id);
+        $walletType = $referrer ? $this->rewardWalletType($referrer) : null;
+        if (! $walletType) {
+            return null;
+        }
+        $rate = $this->ratePercent($referrer);
         $commissionMinor = (int) round($depositMinor * $rate / 100);
 
         if ($commissionMinor <= 0) {
             return null;
         }
 
-        $referrer = User::with('roles')->find($referral->referrer_id);
-        $walletType = $referrer ? $this->rewardWalletType($referrer) : null;
-        if (! $walletType) {
-            return null;
-        }
         $currency = $payment->currency ?: 'MDL';
         $wallet = app(WalletLedger::class)->locked((int) $referral->referrer_id, $walletType, $currency);
         $wallet->increment('balance_minor', $commissionMinor);
@@ -225,7 +229,7 @@ class ReferralProgram
                 'reward_wallet_type' => $walletType,
                 'first_deposit_only' => true,
             ],
-            'rate_snapshot' => [self::RATE_SETTING => $rate],
+            'rate_snapshot' => [$referrer->hasRole('doctor') && ! $referrer->hasRole('operator') ? self::DOCTOR_RATE_SETTING : self::RATE_SETTING => $rate],
         ]);
 
         $commission = ReferralCommission::create([
@@ -271,7 +275,7 @@ class ReferralProgram
             return WalletLedger::REAL;
         }
 
-        return ! $user->hasRole('doctor') && $user->hasRole('patient') ? WalletLedger::POINTS : null;
+        return $user->hasRole('doctor') || $user->hasRole('patient') ? WalletLedger::POINTS : null;
     }
 
     private function isUniqueConstraintViolation(QueryException $exception): bool

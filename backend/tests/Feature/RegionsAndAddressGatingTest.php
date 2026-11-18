@@ -155,6 +155,57 @@ class RegionsAndAddressGatingTest extends TestCase
             ->assertJsonPath('message', 'Completează adresa profilului (raion, localitate și stradă) înainte de o consultație cu examinare la domiciliu.');
     }
 
+    public function test_foreign_patient_uses_country_list_and_manual_location_without_moldovan_ids(): void
+    {
+        $this->getJson('/api/v1/catalog/countries')->assertOk()->assertJsonFragment(['code' => 'RO', 'name' => 'România']);
+        $patient = $this->userWithRole('patient');
+        $this->grantProfileSlot($patient);
+        Sanctum::actingAs($patient);
+        $payload = ['first_name' => 'Ana', 'last_name' => 'Popescu', 'birth_date' => '1990-01-01', 'gender' => 'F', 'country_code' => 'RO', 'region' => '  Județul   Iași ', 'city' => ' Iași ', 'locality' => ' Iași '];
+        $id = $this->postJson('/api/v1/patient/profiles', $payload)->assertCreated()
+            ->assertJsonPath('patient_profile.country', 'România')->assertJsonPath('patient_profile.country_code', 'RO')
+            ->assertJsonPath('patient_profile.region', 'Județul Iași')->assertJsonPath('patient_profile.city', 'Iași')->assertJsonPath('patient_profile.region_id', null)->json('patient_profile.id');
+        $this->putJson('/api/v1/patient/profiles/'.$id, ['first_name' => 'Ana-Maria'])->assertOk();
+        $this->assertDatabaseHas('patient_profiles', ['id' => $id, 'country_code' => 'RO', 'city' => 'Iași', 'locality_id' => null]);
+        $this->putJson('/api/v1/patient/profiles/'.$id, ['country_code' => 'MD'])->assertUnprocessable()->assertJsonValidationErrors(['region_id', 'locality_id']);
+        $this->assertDatabaseHas('patient_profiles', ['id' => $id, 'country_code' => 'RO']);
+        $locality = $this->activeLocality();
+        $this->putJson('/api/v1/patient/profiles/'.$id, ['country_code' => 'MD', 'region_id' => $locality->region_id, 'locality_id' => $locality->id])->assertOk();
+        $this->assertDatabaseHas('patient_profiles', ['id' => $id, 'country_code' => 'MD', 'country' => 'Republica Moldova', 'city' => null, 'region' => $locality->region->name, 'locality' => $locality->name]);
+        $this->putJson('/api/v1/patient/profiles/'.$id, ['country_code' => 'IT', 'city' => 'Roma', 'locality' => 'Roma'])->assertOk();
+        $this->assertDatabaseHas('patient_profiles', ['id' => $id, 'country_code' => 'IT', 'city' => 'Roma', 'region' => null, 'region_id' => null, 'locality_id' => null]);
+    }
+
+    public function test_foreign_address_rejects_unknown_country_moldovan_catalog_ids_and_missing_locality(): void
+    {
+        $patient = $this->userWithRole('patient');
+        $this->grantProfileSlot($patient);
+        $locality = $this->activeLocality();
+        Sanctum::actingAs($patient);
+        $payload = ['first_name' => 'Ana', 'last_name' => 'Popescu', 'birth_date' => '1990-01-01', 'gender' => 'F', 'country_code' => 'RO', 'city' => 'Iași', 'locality' => 'Iași'];
+        $this->postJson('/api/v1/patient/profiles', [...$payload, 'country_code' => 'ZZ'])->assertUnprocessable()->assertJsonValidationErrors('country_code');
+        $this->postJson('/api/v1/patient/profiles', [...$payload, 'region_id' => $locality->region_id, 'locality_id' => $locality->id])->assertUnprocessable()->assertJsonValidationErrors(['region_id', 'locality_id']);
+        $this->postJson('/api/v1/patient/profiles', [...$payload, 'locality' => ''])->assertUnprocessable()->assertJsonValidationErrors('locality');
+        $this->assertSame(0, PatientProfile::count());
+    }
+
+    public function test_admin_geography_counts_profiles_separately_and_normalizes_location_spelling(): void
+    {
+        $owner = $this->userWithRole('patient');
+        foreach ([['country_code' => 'RO', 'country' => 'România', 'region' => 'Județul Iași', 'city' => 'Iași', 'locality' => 'Iași'], ['country_code' => 'RO', 'country' => 'România', 'region' => ' județul  iași ', 'city' => 'iasi', 'locality' => 'IAȘI'], ['country' => 'Republica Moldova', 'locality' => 'Chișinău']] as $location) {
+            PatientProfile::create(['user_id' => $owner->id, 'first_name' => 'Pacient', 'last_name' => 'Test', ...$location]);
+        }
+        Sanctum::actingAs($owner);
+        $this->getJson('/api/v1/admin/geo/patients')->assertForbidden();
+        Sanctum::actingAs($this->userWithRole('admin'));
+        $response = $this->getJson('/api/v1/admin/geo/patients')->assertOk()->assertJsonPath('unit', 'patient_profiles')->assertJsonCount(2, 'data');
+        $romania = collect($response->json('data'))->firstWhere('code', 'RO');
+        $this->assertSame(2, $romania['profiles']);
+        $this->assertCount(1, $romania['localities']);
+        $this->assertSame(2, $romania['localities'][0]['profiles']);
+        $this->assertSame(1, collect($response->json('data'))->firstWhere('code', 'MD')['profiles']);
+    }
+
     public function test_video_request_is_not_blocked_by_missing_address(): void
     {
         $patient = $this->userWithRole('patient');

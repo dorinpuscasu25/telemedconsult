@@ -36,7 +36,7 @@ export function longDateTime(value: string): string {
  * fără program, luni–vineri 09:00–18:00) și orele lor. „Altă oră” lasă
  * pacientul să aleagă liber data și ora.
  */
-export function SlotPicker({ doctorId, value, onChange }: { doctorId: string; value: string; onChange: (value: string) => void }) {
+export function SlotPicker({ doctorId, serviceId, value, onChange }: { doctorId: string; serviceId?: string | null; value: string; onChange: (value: string) => void }) {
   const [data, setData] = useState<SlotsResponse | null>(null);
   const [failed, setFailed] = useState(false);
   const [dayIndex, setDayIndex] = useState(0);
@@ -46,7 +46,8 @@ export function SlotPicker({ doctorId, value, onChange }: { doctorId: string; va
     let cancelled = false;
     setData(null);
     setFailed(false);
-    apiRequest<SlotsResponse>(`/catalog/doctors/${doctorId}/slots?days=14`, { auth: false })
+    const serviceQuery = serviceId && Number.isInteger(Number(serviceId)) && Number(serviceId) > 0 ? `&service_id=${serviceId}` : '';
+    apiRequest<SlotsResponse>(`/catalog/doctors/${doctorId}/slots?days=14${serviceQuery}`, { auth: false })
       .then((response) => {
         if (cancelled) return;
         // Doar zilele în care chiar sunt ore libere: weekendul și concediul dispar.
@@ -60,7 +61,7 @@ export function SlotPicker({ doctorId, value, onChange }: { doctorId: string; va
     return () => { cancelled = true; };
     // `value` se citește doar la încărcare, ca să redeschidă ziua aleasă.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doctorId]);
+  }, [doctorId, serviceId]);
 
   const freeChoice = failed || (data && data.days.length === 0);
   const day = data?.days[dayIndex];
@@ -69,6 +70,8 @@ export function SlotPicker({ doctorId, value, onChange }: { doctorId: string; va
     <fieldset className="min-w-0 space-y-3">
       <legend className="mb-1 text-sm font-medium text-slate-900">Când îți convine?</legend>
       {!data && !failed && <Skeleton className="h-24 w-full rounded-xl" />}
+      {failed && <p role="alert" className="text-xs text-amber-700">Orele libere nu au putut fi încărcate. Ora introdusă manual va fi verificată la trimiterea cererii.</p>}
+      {data && data.days.length === 0 && <p role="status" className="text-xs text-slate-500">Nu sunt ore libere în următoarele 14 zile pentru acest serviciu. Poți verifica o altă dată sau alege alt medic.</p>}
       {data && !freeChoice && (
         <>
           <div className="grid grid-cols-5 gap-2 sm:grid-cols-6" role="radiogroup" aria-label="Ziua">

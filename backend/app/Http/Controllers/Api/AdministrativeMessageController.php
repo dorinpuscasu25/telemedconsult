@@ -32,12 +32,13 @@ class AdministrativeMessageController extends Controller
         $admin = $user->hasRole('admin');
         $rows = AdministrativeConversation::with('target:id,name')->when(! $admin, fn ($q) => $q->where('target_id', $user->id))->withCount(['messages as unread_count' => fn ($q) => $q->where('sender_is_admin', ! $admin)->whereNull('read_at')])->latest('updated_at')->paginate(30);
 
-        return response()->json($rows);
+        return response()->json($rows)->header('Cache-Control', 'private, no-store');
     }
 
     public function store(Request $request): JsonResponse
     {
         abort_unless($request->user()->hasRole('admin'), 403);
+        $this->authorize($request->user());
         $input = $request->validate(['target_id' => ['required', 'integer', 'exists:users,id']]);
         $target = User::findOrFail($input['target_id']);
         $this->authorize($target);
@@ -58,7 +59,7 @@ class AdministrativeMessageController extends Controller
         $messages = $conversation->messages()->with('sender:id,name')->latest('id')->paginate(30);
         AdministrativeMessage::whereIn('id', $messages->getCollection()->pluck('id'))->where('sender_is_admin', ! $user->hasRole('admin'))->whereNull('read_at')->update(['read_at' => now()]);
 
-        return response()->json(['conversation' => ['id' => $conversation->id, 'target' => $conversation->target()->first(['id', 'name'])], 'messages' => $messages->through(fn ($message) => $this->serialize($message, $user))]);
+        return response()->json(['conversation' => ['id' => $conversation->id, 'target' => $conversation->target()->first(['id', 'name'])], 'messages' => $messages->through(fn ($message) => $this->serialize($message, $user))])->header('Cache-Control', 'private, no-store');
     }
 
     public function send(StoreAdministrativeMessageRequest $request, AdministrativeConversation $conversation): JsonResponse

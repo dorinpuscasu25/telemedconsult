@@ -7,6 +7,7 @@ import { cn } from '../../ui/utils';
 import { apiRequest } from '../../../lib/api';
 import { todayDate, type MedicalField, type MedicalRecord, type RecordEntry } from '../../../lib/medical-record';
 import { LIST_PROMPTS, MEDICATION_CHIPS, RELATIVES, ageInYears, listEntries, nothingFlags, objectValues, sectionByKey } from './sectionMeta';
+import { toast } from 'sonner';
 
 type SaveState = 'saved' | 'saving' | 'error' | 'idle';
 type Answer = 'yes' | 'no' | 'unknown';
@@ -31,28 +32,46 @@ export function SectionEditor({ profileId, sectionKey, record, patientName, birt
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [error, setError] = useState('');
   const timer = useRef<number | null>(null);
+  const pendingSave = useRef<(() => Promise<void>) | null>(null);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
 
-  const send = useCallback(async (body: Record<string, unknown>) => {
-    setSaveState('saving');
-    setError('');
-    try {
-      const response = await apiRequest<{ medical_record: MedicalRecord }>(`/patient/profiles/${profileId}/medical-record`, { method: 'PATCH', body: JSON.stringify({ section: sectionKey, ...body }) });
-      onRecordChange(response.medical_record ?? {});
-      setSaveState('saved');
-    } catch (err) {
-      setSaveState('error');
-      setError(err instanceof Error ? err.message : 'Nu am putut salva.');
-    }
+  const send = useCallback((body: Record<string, unknown>) => {
+    const task = saveQueue.current.then(async () => {
+      setSaveState('saving');
+      setError('');
+      try {
+        const payload = JSON.stringify({ section: sectionKey, ...body });
+        const response = await apiRequest<{ medical_record: MedicalRecord }>(`/patient/profiles/${profileId}/medical-record`, { method: 'PATCH', body: payload, keepalive: new TextEncoder().encode(payload).length < 60 * 1024 });
+        onRecordChange(response.medical_record ?? {});
+        setSaveState(pendingSave.current ? 'saving' : 'saved');
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Nu am putut salva.';
+        setSaveState('error'); setError(message); toast.error(message);
+      }
+    });
+    saveQueue.current = task;
+    return task;
   }, [profileId, sectionKey, onRecordChange]);
+
+  const saveNow = useCallback((body: Record<string, unknown>) => {
+    if (timer.current) window.clearTimeout(timer.current);
+    pendingSave.current = null;
+    return send(body);
+  }, [send]);
 
   /** Salvează după o scurtă pauză, ca să nu trimitem la fiecare tastă. */
   const saveSoon = useCallback((body: Record<string, unknown>) => {
     if (timer.current) window.clearTimeout(timer.current);
     setSaveState('saving');
-    timer.current = window.setTimeout(() => { void send(body); }, 700);
+    pendingSave.current = () => send(body);
+    timer.current = window.setTimeout(() => { const save = pendingSave.current; pendingSave.current = null; void save?.(); }, 700);
   }, [send]);
 
-  useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); }, []);
+  useEffect(() => () => {
+    if (timer.current) window.clearTimeout(timer.current);
+    const save = pendingSave.current; pendingSave.current = null;
+    void save?.();
+  }, [profileId, sectionKey]);
 
   if (!section) return null;
 
@@ -71,8 +90,8 @@ export function SectionEditor({ profileId, sectionKey, record, patientName, birt
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
         {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
         {section.repeated
-          ? <ListEditor sectionKey={sectionKey} record={record} patientName={patientName} saveNow={send} saveSoon={saveSoon} />
-          : <ObjectEditor sectionKey={sectionKey} record={record} birthDate={birthDate} saveNow={send} saveSoon={saveSoon} />}
+          ? <ListEditor sectionKey={sectionKey} record={record} patientName={patientName} saveNow={saveNow} saveSoon={saveSoon} />
+          : <ObjectEditor sectionKey={sectionKey} record={record} birthDate={birthDate} saveNow={saveNow} saveSoon={saveSoon} />}
       </div>
       {footer && <footer className="shrink-0 bg-white px-5 pb-[max(20px,env(safe-area-inset-bottom))] pt-2">{footer}</footer>}
     </div>
@@ -310,6 +329,7 @@ function ListEditor({ sectionKey, record, patientName, saveNow, saveSoon }: { se
                       <span className="truncate text-sm font-semibold text-slate-950">{String(entry.name ?? '')}</span>
                       {meta && <span className="shrink-0 text-xs text-slate-500">{meta}</span>}
                     </div>
+                    {openIndex !== index && detailFields.filter((field) => !['allergy_type', 'period', 'date'].includes(field.key) && entry[field.key]).map((field) => <p key={field.key} className="whitespace-pre-wrap text-sm text-slate-600"><strong>{field.label}: </strong>{String(entry[field.key])}</p>)}
                     <div className="flex gap-4 text-[13px] font-medium">
                       {detailFields.length > 0 && <button type="button" onClick={() => setOpenIndex(openIndex === index ? null : index)} className="text-blue-600 hover:underline">{openIndex === index ? 'Gata' : 'Adaugă detalii'}</button>}
                       <button type="button" onClick={() => removeAt(index)} className="text-slate-500 hover:text-red-600">Elimină</button>
@@ -403,7 +423,7 @@ function ObjectEditor({ sectionKey, record, birthDate, saveNow, saveSoon }: { se
 
   const bloodGroup = (
     <div className="flex flex-col gap-2">
-      <Label>Grupa sangvină și Rh</Label>
+      <Label>Grupa sangvină și Rh{str('blood_group') && str('rh') && <span className="ml-2 font-bold text-red-600">{str('blood_group')}{str('rh') === 'positive' ? '+' : '−'}</span>}</Label>
       <div className="flex gap-2">
         <div className="grid flex-[2] grid-cols-4 gap-1.5">
           {['A', 'B', 'AB', 'O'].map((group) => <button key={group} type="button" aria-pressed={str('blood_group') === group} onClick={() => update('blood_group', str('blood_group') === group ? null : group, true)} className={cn('h-12 rounded-[10px] text-base font-semibold', str('blood_group') === group ? PILL_ON : PILL_OFF)}>{group}</button>)}
@@ -436,12 +456,13 @@ function ObjectEditor({ sectionKey, record, birthDate, saveNow, saveSoon }: { se
       <div className="flex flex-col gap-[22px]">
         {nothingNote}
         <div className="flex flex-col gap-2"><Label>Modul nașterii</Label><OptionCards value={str('birth_method')} options={options('birth_method').map(([key, label]) => [key, label.replace('Operație cezariană', 'Cezariană').replace(' extracție', '')])} onChange={(value) => update('birth_method', str('birth_method') === value ? null : value, true)} /></div>
+        {(str('birth_method') === 'other' || str('birth_method_details')) && <label className="space-y-2 text-sm font-medium">Detalii despre modul nașterii<Textarea value={str('birth_method_details')} onChange={(event) => update('birth_method_details', event.target.value)} maxLength={4000} /></label>}
         <div className="flex flex-col gap-2">
           <div className="flex justify-between"><Label>Termenul nașterii</Label>{weeks && <span className="text-sm font-semibold text-blue-600">{weeks} săptămâni</span>}</div>
           <div className="-mx-5 flex gap-1.5 overflow-x-auto px-5 pb-1 [scrollbar-width:none]">
-            {Array.from({ length: 20 }, (_, i) => String(i + 24)).map((week) => <button key={week} type="button" onClick={() => update('gestational_weeks', weeks === week ? null : week, true)} className={cn('h-11 w-11 shrink-0 rounded-[10px] text-sm font-semibold', weeks === week ? PILL_ON : PILL_OFF)}>{week}</button>)}
+            {Array.from({ length: 19 }, (_, i) => String(i + 24)).map((week) => <button key={week} type="button" onClick={() => update('gestational_weeks', weeks === week ? null : week, true)} className={cn('h-11 w-11 shrink-0 rounded-[10px] text-sm font-semibold', weeks === week ? PILL_ON : PILL_OFF)}>{week}</button>)}
           </div>
-          <span className="text-xs text-slate-500">Derulează: 24–43 săptămâni</span>
+          <span className="text-xs text-slate-500">Derulează: 24–42 săptămâni</span>
         </div>
         <div className="flex flex-col gap-2">
           <Label>Masa la naștere</Label>
@@ -463,13 +484,14 @@ function ObjectEditor({ sectionKey, record, birthDate, saveNow, saveSoon }: { se
         </div>
         <div className="flex flex-col gap-2">
           <Label>Scor APGAR</Label>
-          <div className="grid grid-cols-5 gap-1.5">{Array.from({ length: 10 }, (_, i) => String(i + 1)).map((score) => <button key={score} type="button" onClick={() => update('apgar', str('apgar') === score ? null : score, true)} className={cn('h-11 rounded-[10px] text-[15px] font-semibold', str('apgar') === score ? PILL_ON : PILL_OFF)}>{score}</button>)}</div>
+          <Input aria-label="Scor APGAR" value={str('apgar')} onChange={(event) => update('apgar', event.target.value)} maxLength={30} placeholder="De exemplu: 8/8 sau 9-9" />
         </div>
-        <div className="flex flex-col gap-2"><Label>Alimentație</Label><Segmented value={str('feeding')} options={options('feeding')} onChange={(value) => update('feeding', value, true)} /></div>
+        <div className="flex flex-col gap-3"><Label>Alimentație — perioade</Label><p className="text-xs text-slate-500">Poți descrie toate tipurile folosite și perioada fiecăruia.</p>{[['feeding_natural_period', 'Naturală'], ['feeding_artificial_period', 'Artificială'], ['feeding_mixed_period', 'Mixtă']].map(([key, label]) => <label key={key} className="space-y-1 text-sm">{label}<Textarea value={str(key)} onChange={(event) => update(key, event.target.value)} maxLength={4000} placeholder="De când până când / cât timp" /></label>)}{str('feeding') && <p className="text-xs text-slate-500">Alimentație înregistrată anterior: {options('feeding').find(([key]) => key === str('feeding'))?.[1] ?? str('feeding')}</p>}</div>
         {bloodGroup}
         <div className="flex flex-col gap-2">
           <Label>Dezvoltare neuropsihică și motorie</Label>
-          <div className="flex flex-wrap gap-1.5">{['la 6 luni', 'la 1 an', 'la 2 ani', 'la 3 ani'].map((item) => <Pill key={item} selected={str('development_age') === item} onClick={() => update('development_age', str('development_age') === item ? null : item, true)}>{item}</Pill>)}</div>
+          {([['development_6_months', 'La 6 luni'], ['development_1_year', 'La 1 an'], ['development_2_years', 'La 2 ani'], ['development_3_years', 'La 3 ani']] as const).map(([key, label]) => <label key={key} className="space-y-1 text-sm">{label}<Textarea value={str(key)} onChange={(event) => update(key, event.target.value)} maxLength={4000} /></label>)}
+          <Label>Alte particularități{str('development_age') && ` · înregistrate anterior ${str('development_age')}`}</Label>
           <Textarea value={str('development')} onChange={(event) => update('development', event.target.value)} placeholder="Ex.: a mers singură la 11 luni, primele cuvinte la 1 an" maxLength={4000} className="min-h-16 rounded-[10px] text-sm" />
         </div>
         <div className="flex flex-col gap-1.5">

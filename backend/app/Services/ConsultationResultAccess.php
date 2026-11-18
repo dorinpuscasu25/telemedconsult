@@ -20,7 +20,7 @@ class ConsultationResultAccess
 
     public function unlocked(ConsultationRequest $request): bool
     {
-        return $request->closed_at !== null && $this->reviewsComplete($request);
+        return $request->status === 'completed';
     }
 
     public function canRead(ConsultationRequest $request, ?User $viewer): bool

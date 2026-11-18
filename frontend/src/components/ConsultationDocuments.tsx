@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { FileText, Download, FilePlus2, Paperclip, Archive, ChevronDown, Star, LockKeyhole } from 'lucide-react';
+import { FileText, Download, FilePlus2, Paperclip, Archive, ChevronDown, Star } from 'lucide-react';
 import { apiRequest } from '../lib/api';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { dateTime } from '../lib/format';
 
 export type ConsultationDocument = { id: number; title: string; type: string; parent_document_id?: number | null; published_at?: string; url?: string | null; prescription_url?: string | null; status: string; prescription_instructions?: string };
-type Response = { documents: ConsultationDocument[]; can_addendum: boolean; addendum_until?: string | null; prescription_instructions?: string; result_locked?: boolean; review_providers?: { doctor: boolean; operator: boolean } };
+type Response = { documents: ConsultationDocument[]; can_addendum: boolean; addendum_until?: string | null; prescription_instructions?: string; result_locked?: boolean; can_review?: boolean; review_providers?: { doctor: boolean; operator: boolean } };
 
 export function ConsultationDocuments({ requestId, compact = false, onUnlocked }: { requestId: string | number; compact?: boolean; onUnlocked?: () => void }) {
   const [data, setData] = useState<Response | null>(null);
@@ -18,8 +18,9 @@ export function ConsultationDocuments({ requestId, compact = false, onUnlocked }
   const [rating, setRating] = useState(0);
   const [operatorRating, setOperatorRating] = useState(0);
   const [comment, setComment] = useState('');
+  const [reviewNotice, setReviewNotice] = useState('');
   const load = useCallback(() => apiRequest<Response>(`/requests/${requestId}/documents`).then(setData).catch((err) => setError(err.message)), [requestId]);
-  useEffect(() => { setData(null); setError(''); setEditing(false); setRecommendations(''); setReviewing(false); setRating(0); setOperatorRating(0); setComment(''); void load(); }, [load]);
+  useEffect(() => { setData(null); setError(''); setReviewNotice(''); setEditing(false); setRecommendations(''); setReviewing(false); setRating(0); setOperatorRating(0); setComment(''); void load(); }, [load]);
   const addendum = async () => {
     setSaving(true); setError('');
     try { await apiRequest(`/requests/${requestId}/documents/addendum`, { method: 'POST', body: JSON.stringify({ recommendations }) }); setRecommendations(''); setEditing(false); await load(); }
@@ -28,29 +29,33 @@ export function ConsultationDocuments({ requestId, compact = false, onUnlocked }
   };
   const review = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (saving) return;
+    const doctorReview = Boolean(data?.review_providers?.doctor && rating);
+    const operatorReview = Boolean(data?.review_providers?.operator && operatorRating);
+    if (saving || (!doctorReview && !operatorReview) || !comment.trim()) return;
     setSaving(true); setError('');
     try {
-      await apiRequest(`/requests/${requestId}/review`, { method: 'POST', body: JSON.stringify({ rating: data?.review_providers?.doctor ? rating : operatorRating, operator_rating: data?.review_providers?.operator ? operatorRating : undefined, provider_type: 'both', comment }) });
+      const response = await apiRequest<{ message: string }>(`/requests/${requestId}/review`, { method: 'POST', body: JSON.stringify({ rating: doctorReview ? rating : operatorRating, operator_rating: operatorReview ? operatorRating : undefined, provider_type: doctorReview && operatorReview ? 'both' : doctorReview ? 'doctor' : 'operator', comment }) });
+      setReviewNotice(response.message);
       setReviewing(false);
+      setRating(0); setOperatorRating(0); setComment('');
       await load();
       window.dispatchEvent(new CustomEvent('consultation-result-unlocked', { detail: String(requestId) }));
       onUnlocked?.();
     } catch (err) { setError(err instanceof Error ? err.message : 'Recenzia nu a putut fi salvată.'); }
     finally { setSaving(false); }
   };
-  if (data?.result_locked) return <section className="w-full max-w-lg space-y-3 rounded-xl border border-blue-200 bg-white p-4" aria-label="Rezultatul consultației">
-    <div className="flex items-start gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600"><LockKeyhole size={19} /></span><div><p className="text-sm font-semibold text-slate-950">Rezultatul consultației este pregătit</p><p className="mt-1 text-[13px] leading-5 text-slate-600">Lasă o recenzie pentru a vedea rezultatul. După trimitere, consultația se închide și plata ajunge la prestator.</p></div></div>
-    {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+  const reviewPrompt = data?.can_review ? <section className="w-full max-w-lg space-y-3 rounded-xl border border-blue-200 bg-white p-4" aria-label="Recenzie opțională">
+    <div className="flex items-start gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600"><Star size={19} /></span><div><p className="text-sm font-semibold text-slate-950">Cum a fost experiența ta?</p><p className="mt-1 text-[13px] leading-5 text-slate-600">Lasă o recenzie și primești 10 puncte bonus pentru fiecare prestator evaluat. Recenzia este opțională; rezultatul consultației este deja disponibil.</p></div></div>
     {!reviewing ? <Button className="h-10 rounded-[10px]" onClick={() => setReviewing(true)}><Star size={16} />Lasă recenzie</Button> : <form onSubmit={review} className="space-y-3">
       {data.review_providers?.doctor && <ReviewStars label="Cum a fost consultația cu medicul?" value={rating} onChange={setRating} />}
       {data.review_providers?.operator && <ReviewStars label="Cum a fost serviciul operatorului?" value={operatorRating} onChange={setOperatorRating} />}
       <label className="block space-y-1.5 text-sm font-medium text-slate-700">Recenzia ta<Textarea required maxLength={2000} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Descrie experiența ta…" /></label>
-      <div className="flex flex-wrap gap-2"><Button type="submit" disabled={saving || !comment.trim() || Boolean(data.review_providers?.doctor && !rating) || Boolean(data.review_providers?.operator && !operatorRating)}>{saving ? 'Se trimite…' : 'Trimite recenzia și vezi rezultatul'}</Button><Button type="button" variant="ghost" disabled={saving} onClick={() => setReviewing(false)}>Înapoi</Button></div>
+      <div className="flex flex-wrap gap-2"><Button type="submit" disabled={saving || !comment.trim() || !(data.review_providers?.doctor && rating || data.review_providers?.operator && operatorRating)}>{saving ? 'Se trimite…' : 'Trimite recenzia'}</Button><Button type="button" variant="ghost" disabled={saving} onClick={() => setReviewing(false)}>Înapoi</Button></div>
     </form>}
-  </section>;
+  </section> : null;
   return <div className={compact ? 'space-y-2' : 'space-y-3'}>
     {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+    {reviewNotice && <p role="status" className="text-sm text-emerald-700">{reviewNotice}</p>}
     {data?.documents.map((document) => <div key={document.id} className={`flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white ${compact ? 'px-3 py-2.5' : 'p-4'}`}>
       <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${document.url ? 'bg-indigo-50 text-primary' : 'bg-slate-100 text-slate-400'}`}>{document.url ? <FileText size={19} /> : <Archive size={19} />}</span>
       <div className="min-w-0 flex-1">
@@ -67,6 +72,7 @@ export function ConsultationDocuments({ requestId, compact = false, onUnlocked }
       </div>
       {document.prescription_url && !compact && <p className="w-full text-xs leading-relaxed text-slate-500">{document.prescription_instructions || data.prescription_instructions}</p>}
     </div>)}
+    {reviewPrompt}
     {!data && !error && <p role="status" className="text-xs text-slate-400">Se încarcă documentele…</p>}
     {data && !data.documents.length && <div className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">Documentul PDF va fi disponibil după finalizarea consultației.</div>}
     {data?.can_addendum && <div>

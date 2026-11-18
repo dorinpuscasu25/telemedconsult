@@ -24,6 +24,7 @@ use App\Services\FeatureFlags;
 use App\Services\InsufficientWalletBalance;
 use App\Services\MaibCheckout;
 use App\Services\PatientCardPurchaser;
+use App\Services\PatientGeography;
 use App\Services\PlatformConfig;
 use App\Services\WalletLedger;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -31,7 +32,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class PatientProfileController extends Controller
 {
@@ -45,7 +48,7 @@ class PatientProfileController extends Controller
             ->map(fn ($transaction) => (int) ($transaction->metadata['patient_card_package_id'] ?? 0))->all();
 
         return response()->json([
-            'free_profile' => ['available' => $freeAvailable, 'claimed_at' => $user->free_patient_profile_claimed_at, 'validity_years' => 1],
+            'free_profile' => ['available' => $freeAvailable, 'claimed_at' => $user->free_patient_profile_claimed_at, 'validity_years' => null, 'permanent' => true],
             'can_add_patient' => $freeAvailable || ! $this->packageRequired() || $purchases->contains(fn ($purchase) => $purchase->availableSlots() > 0),
             'user' => [
                 'id' => (string) $user->id,
@@ -139,7 +142,7 @@ class PatientProfileController extends Controller
                 }
                 $profile = new PatientProfile([
                     ...$validated, 'user_id' => $account->id, 'status' => 'active',
-                    'active_until' => now()->addYearNoOverflow(), 'life_history' => [],
+                    'active_until' => null, 'life_history' => [],
                 ]);
                 $profile->forceFill(['is_free' => true])->save();
                 $account->forceFill(['free_patient_profile_claimed_at' => now()])->save();
@@ -187,7 +190,7 @@ class PatientProfileController extends Controller
     {
         abort_unless($patientProfile->user_id === $request->user()->id || $request->user()->hasRole('admin'), 403);
 
-        $patientProfile->update($this->validatePatientProfile($request, false));
+        $patientProfile->update($this->validatePatientProfile($request, false, $patientProfile));
 
         dispatch(SyncHigoEntity::forEntity($patientProfile->refresh()));
 
@@ -437,9 +440,21 @@ class PatientProfileController extends Controller
         ]);
     }
 
-    private function validatePatientProfile(Request $request, bool $creating = true): array
+    private function validatePatientProfile(Request $request, bool $creating = true, ?PatientProfile $profile = null): array
     {
         $required = $creating ? 'required' : 'sometimes';
+        $geography = app(PatientGeography::class);
+        $countryCode = $request->filled('country_code') ? strtoupper($request->string('country_code')->toString())
+            : $geography->countryCode($request->input('country', $profile?->country));
+        $foreign = $countryCode !== 'MD';
+        $countryChanged = $profile && $countryCode !== ($profile->country_code ?? $geography->countryCode($profile->country));
+        $locationRequired = $creating || $countryChanged;
+        if (($creating || $request->hasAny(['country', 'country_code'])) && ! array_key_exists($countryCode ?? '', $geography->countries())) {
+            throw ValidationException::withMessages(['country_code' => ['Alege țara din listă.']]);
+        }
+        if ($request->has('country_code')) {
+            $request->merge(['country_code' => $countryCode]);
+        }
 
         $validated = $request->validate([
             'first_name' => [$required, 'string', 'max:255'],
@@ -447,11 +462,15 @@ class PatientProfileController extends Controller
             'birth_date' => [$creating ? 'required' : 'nullable', 'date_format:Y-m-d', 'before_or_equal:today'],
             'gender' => [$creating ? 'required' : 'nullable', Rule::in(['M', 'F', 'Altul'])],
             'country' => ['sometimes', $creating ? 'nullable' : 'filled', 'string', 'max:100'],
-            'region_id' => [$required, $creating ? 'filled' : 'nullable', 'integer', Rule::exists('regions', 'id')->where('is_active', true)],
-            'locality_id' => [$required, $creating ? 'filled' : 'nullable', 'integer', Rule::exists('localities', 'id')->where(function ($query) use ($request) {
+            'country_code' => ['sometimes', 'filled', Rule::in(array_keys($geography->countries()))],
+            'region' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'city' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'locality' => [$foreign && $locationRequired ? 'required' : 'sometimes', 'nullable', 'string', 'max:120'],
+            'region_id' => $foreign ? ['prohibited'] : [$locationRequired ? 'required' : 'sometimes', 'nullable', 'integer', Rule::exists('regions', 'id')->where('is_active', true)->whereIn('country', ['Republica Moldova', 'Moldova', 'MD'])],
+            'locality_id' => $foreign ? ['prohibited'] : [$locationRequired ? 'required' : 'sometimes', 'nullable', 'integer', Rule::exists('localities', 'id')->where(function ($query) use ($request, $profile) {
                 $query->where('is_active', true);
-                if ($request->filled('region_id')) {
-                    $query->where('region_id', $request->integer('region_id'));
+                if ($regionId = $request->input('region_id', $profile?->region_id)) {
+                    $query->where('region_id', $regionId);
                 }
             })],
             'address' => ['sometimes', 'nullable', 'string', 'max:255'],
@@ -478,11 +497,30 @@ class PatientProfileController extends Controller
             'gender.required' => 'Alege sexul pacientului.',
         ]);
 
-        if ($creating && blank($validated['country'] ?? null)) {
-            $validated['country'] = 'Republica Moldova';
+        if ($countryCode) {
+            $validated['country_code'] = $countryCode;
+            $validated['country'] = $geography->countries()[$countryCode];
+        }
+        if ($foreign) {
+            $validated['region_id'] = null;
+            $validated['locality_id'] = null;
+            foreach (['region', 'city', 'locality'] as $field) {
+                if (($creating || $countryChanged) && ! array_key_exists($field, $validated)) {
+                    $validated[$field] = null;
+                }
+                if (array_key_exists($field, $validated)) {
+                    $validated[$field] = filled($validated[$field]) ? Str::squish($validated[$field]) : null;
+                }
+            }
+
+            return $validated;
         }
 
         // Keep the denormalized region/locality name columns in sync with the catalog.
+        unset($validated['region'], $validated['locality'], $validated['city']);
+        if ($creating || $countryChanged) {
+            $validated['city'] = null;
+        }
         if (array_key_exists('region_id', $validated)) {
             $validated['region'] = Region::find($validated['region_id'])?->name;
         }
@@ -498,6 +536,7 @@ class PatientProfileController extends Controller
     {
         return [
             ...$profile->toArray(),
+            'country_code' => $profile->country_code ?? app(PatientGeography::class)->countryCode($profile->country),
             'display_name' => $profile->display_name,
             'can_request_consultation' => $this->canRequestConsultation($profile),
             'request_unavailable_reason' => $this->requestUnavailableReason($profile),
@@ -517,8 +556,7 @@ class PatientProfileController extends Controller
 
     private function canRequestConsultation(PatientProfile $profile): bool
     {
-        return $profile->status === 'active'
-            && ($profile->active_until === null || $profile->active_until->isFuture())
+        return $profile->isActiveForNewConsultations()
             && filled($profile->first_name)
             && filled($profile->last_name);
     }
@@ -529,7 +567,7 @@ class PatientProfileController extends Controller
             return 'Profilul nu are cartelă activă.';
         }
 
-        if ($profile->active_until && ! $profile->active_until->isFuture()) {
+        if (! $profile->is_free && $profile->active_until && ! $profile->active_until->isFuture()) {
             return 'Cartela profilului a expirat.';
         }
 

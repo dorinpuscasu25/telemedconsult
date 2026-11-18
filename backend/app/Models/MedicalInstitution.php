@@ -7,9 +7,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['name', 'legal_name', 'fiscal_code', 'iban', 'bank_name', 'email', 'phone', 'address', 'doctor_share_percent', 'status', 'notes'])]
+#[Fillable(['name', 'legal_name', 'fiscal_code', 'iban', 'bank_name', 'email', 'phone', 'address', 'doctor_share_percent', 'revenue_share_percent', 'status', 'notes'])]
 class MedicalInstitution extends Model
 {
+    protected $attributes = ['revenue_share_percent' => 85];
+
     public function managers(): BelongsToMany
     {
         return $this->belongsToMany(User::class)->withTimestamps();
@@ -44,6 +46,7 @@ class MedicalInstitution extends Model
     {
         return [
             'doctor_share_percent' => 'float',
+            'revenue_share_percent' => 'float',
         ];
     }
 }

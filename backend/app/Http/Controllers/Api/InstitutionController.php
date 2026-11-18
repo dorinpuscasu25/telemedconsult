@@ -16,6 +16,8 @@ use App\Rules\ValidPhoneNumber;
 use App\Services\InstitutionLedger;
 use App\Services\InstitutionMembership;
 use App\Services\InstitutionReports;
+use App\Services\InstitutionTransferService;
+use App\Services\PlatformConfig;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -373,13 +375,16 @@ class InstitutionController extends Controller
             'status' => 'pending',
         ]);
 
-        $admins = User::whereHas('roles', fn ($query) => $query->where('name', 'admin'))->get();
-        Notification::send($admins, new AppEventNotification(
-            'Cerere de plată de la o instituție',
-            $institution->name.' a solicitat '.number_format($amountMinor / 100, 2).' MDL.',
-            '/admin/transactions',
-            'warning',
-        ));
+        if (app(PlatformConfig::class)->bool('notify_withdrawals', true)) {
+            $admins = User::where('status', 'active')->whereHas('roles', fn ($query) => $query->where('name', 'admin'))->get();
+            Notification::send($admins, new AppEventNotification(
+                'Cerere de plată de la o instituție',
+                $institution->name.' a solicitat '.number_format($amountMinor / 100, 2).' MDL.',
+                '/admin/transactions',
+                'warning',
+                category: 'payments',
+            ));
+        }
 
         return response()->json([
             'message' => 'Cererea de plată a fost trimisă platformei.',
@@ -399,8 +404,24 @@ class InstitutionController extends Controller
             'phone' => ['nullable', 'string', 'max:50', new ValidPhoneNumber],
             'address' => ['nullable', 'string', 'max:255'],
             'doctor_share_percent' => ['required', 'numeric', 'min:0', 'max:100'],
+            'apply_share_to_all_doctors' => ['sometimes', 'boolean'],
         ]);
-        $institution->update($validated);
+        DB::transaction(function () use ($institution, $validated): void {
+            $locked = MedicalInstitution::whereKey($institution->id)->lockForUpdate()->firstOrFail();
+            abort_unless($locked->isActive(), 403, 'Instituția este suspendată.');
+            $applyToAll = (bool) ($validated['apply_share_to_all_doctors'] ?? false);
+            if ($applyToAll || (float) $locked->doctor_share_percent !== (float) $validated['doctor_share_percent']) {
+                $locked->doctorProfiles()->with('medicalInstitution')->lockForUpdate()->chunkById(100, function ($profiles) use ($applyToAll): void {
+                    foreach ($profiles as $profile) {
+                        app(InstitutionTransferService::class)->freezeLegacyAppointments($profile);
+                        if ($applyToAll) {
+                            $profile->forceFill(['institution_share_percent' => null])->save();
+                        }
+                    }
+                });
+            }
+            $locked->update(collect($validated)->except('apply_share_to_all_doctors')->all());
+        }, attempts: 3);
 
         return response()->json([
             'message' => 'Setările instituției au fost salvate.',
@@ -443,6 +464,7 @@ class InstitutionController extends Controller
             'phone' => $institution->phone,
             'address' => $institution->address,
             'doctor_share_percent' => $institution->doctor_share_percent,
+            'revenue_share_percent' => $institution->revenue_share_percent,
             'status' => $institution->status,
         ];
     }

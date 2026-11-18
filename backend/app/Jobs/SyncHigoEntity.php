@@ -64,10 +64,6 @@ class SyncHigoEntity implements ShouldQueue
 
     public function handle(HigoProvisioner $provisioner): void
     {
-        if (! $provisioner->enabled()) {
-            return;
-        }
-
         if ($this->linkOperator && $this->entity instanceof PatientProfile) {
             $provisioner->linkPatientToOperator($this->entity, $this->linkOperator);
 

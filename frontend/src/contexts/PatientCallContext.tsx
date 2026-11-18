@@ -50,6 +50,15 @@ export function PatientCallProvider({ children }: { children: ReactNode }) {
       try {
         const status = await apiRequest<VideoStatus>(`/requests/${session.requestId}/video`);
         if (!status.available || (status.consultation?.session_id ?? null) !== (session.connection.session_id ?? null)) stop(status.status === 'completed' ? 'completed' : 'unavailable');
+        else if (alive) {
+          const serverStart = status.consultation?.doctor_started_at ? Date.parse(status.consultation.doctor_started_at) : null;
+          setSession((current) => {
+            if (!current || current.connection.participant_token !== session.connection.participant_token) return current;
+            const startedAt = serverStart !== null && Number.isFinite(serverStart) ? serverStart : current.startedAt;
+            const durationMinutes = status.consultation?.duration_minutes ?? current.durationMinutes;
+            return startedAt === current.startedAt && durationMinutes === current.durationMinutes ? current : { ...current, startedAt, durationMinutes };
+          });
+        }
       } catch (error) { if ([401, 403, 404].includes((error as ApiError).status ?? 0)) stop('unavailable'); }
       finally { fetching = false; }
     };

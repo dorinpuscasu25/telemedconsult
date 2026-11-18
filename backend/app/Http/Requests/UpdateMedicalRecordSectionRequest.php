@@ -8,6 +8,13 @@ use Illuminate\Validation\Rule;
 
 class UpdateMedicalRecordSectionRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if ($this->input('section') === 'birth' && is_numeric($this->input('data.apgar'))) {
+            $this->merge(['data' => [...$this->input('data', []), 'apgar' => (string) $this->input('data.apgar')]]);
+        }
+    }
+
     public function authorize(): bool
     {
         $profile = $this->route('patientProfile');
@@ -28,10 +35,16 @@ class UpdateMedicalRecordSectionRequest extends FormRequest
             return [...$base, 'data' => ['prohibited']];
         }
 
-        return [
+        $rules = [
             ...$base,
             ...(in_array($section, MedicalRecordSchema::SECTIONS, true) ? MedicalRecordSchema::rules($section) : []),
         ];
+        $legacyWeeks = $this->route('patientProfile')?->medical_record['birth']['gestational_weeks'] ?? null;
+        if ($section === 'birth' && is_numeric($legacyWeeks) && (int) $legacyWeeks > 42 && (string) $this->input('data.gestational_weeks') === (string) $legacyWeeks) {
+            $rules['data.gestational_weeks'] = ['nullable', 'integer'];
+        }
+
+        return $rules;
     }
 
     public function messages(): array

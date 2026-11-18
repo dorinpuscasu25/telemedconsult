@@ -10,6 +10,25 @@ use Throwable;
 
 class PublicImageStorage
 {
+    public function canonicalUrl(?string $url): ?string
+    {
+        if (! $url) {
+            return $url;
+        }
+        $path = parse_url($url, PHP_URL_PATH);
+        $host = parse_url($url, PHP_URL_HOST);
+        $currentHost = parse_url((string) config('filesystems.disks.public.url'), PHP_URL_HOST);
+        if (! is_string($path) || ! Str::startsWith($path, '/storage/') || ($host && $host !== $currentHost && ! in_array($host, ['localhost', '127.0.0.1', '[::1]'], true))) {
+            return $url;
+        }
+        $relative = rawurldecode(Str::after($path, '/storage/'));
+        if ($relative === '' || Str::contains($relative, ['..', '\\'])) {
+            return $url;
+        }
+
+        return Storage::disk('public')->url($relative);
+    }
+
     /**
      * @template TResult
      *

@@ -20,7 +20,7 @@ type BlogListItem = {
  * N1/N3: ultimul articol mare, restul în grilă; categoriile filtrează lista.
  * `basePath` permite aceeași listă și în aplicație (ex. /patient/noutati).
  */
-export function BlogListPage({ basePath = '/noutati' }: { basePath?: string } = {}) {
+export function BlogListPage({ basePath = '/noutati', audience, seenAt, onLoaded }: { basePath?: string; audience?: 'doctors'; seenAt?: number; onLoaded?: () => void } = {}) {
   const { text } = useSiteContent();
   const [posts, setPosts] = useState<BlogListItem[] | null>(null);
   const [category, setCategory] = useState<string | null>(null);
@@ -28,15 +28,15 @@ export function BlogListPage({ basePath = '/noutati' }: { basePath?: string } = 
 
   useEffect(() => {
     document.title = 'Noutăți · telemedconsult.md';
-    apiRequest<{ data: BlogListItem[] }>('/catalog/blog', { auth: false })
-      .then((response) => setPosts(response.data ?? []))
+    apiRequest<{ data: BlogListItem[] }>(`/catalog/blog${audience ? `?audience=${audience}` : ''}`, { auth: false })
+      .then((response) => { setPosts(response.data ?? []); onLoaded?.(); })
       .catch((err) => { setPosts([]); setError(err instanceof Error ? err.message : 'Nu am putut încărca articolele.'); });
-  }, []);
+  }, [audience, onLoaded]);
 
   const categories = useMemo(() => [null, ...new Set((posts ?? []).map((post) => post.category).filter((value): value is string => Boolean(value)))], [posts]);
   const shown = (posts ?? []).filter((post) => category === null || post.category === category);
   const [featured, ...rest] = shown;
-  const meta = (post: BlogListItem) => <>{post.category && <><b className="font-semibold text-blue-600">{post.category}</b> · </>}{longDate(post.published_at)}</>;
+  const meta = (post: BlogListItem) => <>{post.category && <><b className="font-semibold text-blue-600">{post.category}</b> · </>}{longDate(post.published_at)}{seenAt !== undefined && post.published_at && Date.parse(post.published_at) > seenAt && <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">Nou</span>}</>;
 
   return (
     <div className="mx-auto flex max-w-[1200px] flex-col gap-3.5 px-4 pb-16 pt-5 md:gap-7 md:px-10 md:pb-20 md:pt-12">

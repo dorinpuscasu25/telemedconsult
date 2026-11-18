@@ -21,14 +21,16 @@ class HigoReviewEvidence
         $exams = $this->exams($request);
         if ($input['higo_status'] === 'not_performed') {
             if ($exams !== []) {
-                throw ValidationException::withMessages(['higo_status' => ['Există o examinare HIGO pentru această consultație. Consultă datele și selectează examinarea.']]);
+                throw ValidationException::withMessages(['higo_status' => ['Există date HIGO pentru această consultație. Consultă toate datele și confirmă examinarea.']]);
             }
 
             return ['higo_status' => 'not_performed', 'higo_reviewed' => false, 'higo_exam_id' => null, 'higo_exam_performed_at' => null, 'higo_reviewed_at' => null];
         }
-        $exam = collect($exams)->firstWhere('id', (string) ($input['higo_exam_id'] ?? ''));
+        $exam = isset($input['higo_exam_id'])
+            ? collect($exams)->firstWhere('id', (string) $input['higo_exam_id'])
+            : ($exams[0] ?? null);
         if (! $exam) {
-            throw ValidationException::withMessages(['higo_exam_id' => ['Selectează examinarea HIGO a acestei consultații, cu date disponibile.']]);
+            throw ValidationException::withMessages([isset($input['higo_exam_id']) ? 'higo_exam_id' : 'higo_status' => ['Confirmarea necesită date HIGO disponibile și asociate acestei consultații.']]);
         }
 
         return ['higo_status' => 'reviewed', 'higo_reviewed' => true, 'higo_exam_id' => (int) $exam['id'], 'higo_exam_performed_at' => $exam['performed_at'], 'higo_reviewed_at' => now()];

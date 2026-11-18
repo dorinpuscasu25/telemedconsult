@@ -84,8 +84,8 @@ export function buildHomeAlerts({ requests, reviewable, profiles, needsPackage, 
 
   if (requestable.length === 0 && profiles.length === 0) {
     alerts.push(needsPackage
-      ? { id: 'setup', kind: 'setup', level: 1, chip: 'Pasul 1 din 3', title: 'Alege pachetul', sub: 'Un profil este o persoană din familie, cu fișa ei medicală, activ un an. Apoi adaugi pacientul și alegi medicul.' }
-      : { id: 'setup', kind: 'setup', level: 1, chip: 'Pasul 2 din 3', title: 'Adaugă pacientul', sub: freeProfileAvailable ? 'Ai un profil gratuit pentru o persoană, valabil un an. Alege pacientul; consultațiile se achită separat.' : 'Spune-ne pentru cine e prima consultație, apoi alegi medicul.' });
+      ? { id: 'setup', kind: 'setup', level: 1, chip: 'Pasul 1 din 3', title: 'Alege pachetul', sub: 'Un profil este o persoană din familie, cu fișa ei medicală și valabilitatea indicată în opțiunea aleasă. Apoi adaugi pacientul și alegi medicul.' }
+      : { id: 'setup', kind: 'setup', level: 1, chip: 'Pasul 2 din 3', title: 'Adaugă pacientul', sub: freeProfileAvailable ? 'Ai un profil gratuit permanent pentru o persoană. Alege pacientul; consultațiile se achită separat.' : 'Spune-ne pentru cine e prima consultație, apoi alegi medicul.' });
   }
 
   for (const request of active) {

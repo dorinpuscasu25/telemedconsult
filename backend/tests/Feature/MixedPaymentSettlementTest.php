@@ -11,6 +11,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use App\Services\ConsultationSettlement;
 use App\Services\FinancialBreakdown;
 use App\Services\PlatformConfig;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -22,7 +23,7 @@ class MixedPaymentSettlementTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_cash_split_is_frozen_at_booking_and_paid_once_after_review(): void
+    public function test_cash_split_is_frozen_at_booking_and_publication_pays_once_independently_of_review(): void
     {
         [$patient, $doctor, $payload] = $this->scenario();
         Sanctum::actingAs($patient);
@@ -35,6 +36,7 @@ class MixedPaymentSettlementTest extends TestCase
         $this->assertSame(0, InstitutionEarning::count());
         $doctor->doctorProfile->update(['institution_share_percent' => 90, 'accepts_points' => false]);
         $item->update(['status' => 'completed', 'completed_at' => now(), 'conclusion_sent_at' => now()]);
+        app(ConsultationSettlement::class)->close($item);
         $this->postJson("/api/v1/requests/{$id}/review", ['rating' => 1, 'comment' => 'Efectuată'])->assertCreated();
         $this->postJson("/api/v1/requests/{$id}/review", ['rating' => 5, 'comment' => 'Repetată'])->assertCreated();
         $earning = InstitutionEarning::firstOrFail();

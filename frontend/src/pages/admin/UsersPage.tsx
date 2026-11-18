@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Ban, MoreHorizontal, Pencil, Plus, RefreshCw, Search, ShieldCheck, Trash2, Unlock, UsersRound, Wallet } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Ban, MessageSquare, MoreHorizontal, Pencil, Plus, RefreshCw, Search, ShieldCheck, Trash2, Unlock, UsersRound, Wallet } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -105,7 +105,7 @@ const ROLE_LABELS: Record<RoleName, string> = {
   doctor: 'Medic',
   operator: 'Operator',
   coordinator: 'Coordonator',
-  institution: 'Instituție medicală'
+  institution: 'Manager instituție medicală'
 };
 
 const MANAGED_ROLES: RoleName[] = ['admin', 'patient', 'doctor', 'operator'];
@@ -115,12 +115,15 @@ const STATUS_LABELS: Record<string, string> = {
   suspended: 'Blocat'
 };
 
-const ROLE_TABS: { value: 'doctor' | 'operator' | 'admin' | 'patient' | 'all'; label: string }[] = [
+type UserRoleTab = 'doctor' | 'operator' | 'admin' | 'patient' | 'institution' | 'all';
+
+const ROLE_TABS: { value: UserRoleTab; label: string }[] = [
   { value: 'doctor', label: 'Medici' },
   { value: 'operator', label: 'Operatori' },
   { value: 'admin', label: 'Admin' },
   { value: 'patient', label: 'Pacienți' },
-  { value: 'all', label: 'All' }
+  { value: 'institution', label: 'Manageri instituții medicale' },
+  { value: 'all', label: 'Toți' }
 ];
 
 const DEFAULT_FORM = {
@@ -152,10 +155,13 @@ export function UsersPage() {
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [regionsCatalog, setRegionsCatalog] = useState<CatalogRegion[]>([]);
   const [investigationsCatalog, setInvestigationsCatalog] = useState<CatalogInvestigation[]>([]);
-  const [activeTab, setActiveTab] = useState<'doctor' | 'operator' | 'admin' | 'patient' | 'all'>(
+  const [activeTab, setActiveTab] = useState<UserRoleTab>(
     location.pathname.includes('/operators') ? 'operator' : 'all'
   );
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [lastPage, setLastPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [form, setForm] = useState(DEFAULT_FORM);
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -166,13 +172,20 @@ export function UsersPage() {
   const [walletUser, setWalletUser] = useState<AdminUser | null>(null);
   const navigate = useNavigate();
 
-  const loadUsers = () => {
-    const params = new URLSearchParams();
+  const loadUsers = useCallback(() => {
+    const params = new URLSearchParams({ page: String(page) });
     if (searchTerm) params.set('search', searchTerm);
+    if (activeTab !== 'all') params.set('role', activeTab);
 
-    apiRequest<{data: AdminUser[]}>(`/admin/users?${params.toString()}`)
-      .then((response) => setUsers(response.data ?? []))
-      .catch(() => setUsers([]));
+    return apiRequest<{data: AdminUser[]; meta: { last_page: number; total: number }}>(`/admin/users?${params.toString()}`);
+  }, [page, searchTerm, activeTab]);
+
+  const refreshUsers = () => {
+    void loadUsers().then((response) => {
+      setUsers(response.data ?? []);
+      setLastPage(response.meta.last_page);
+      setTotal(response.meta.total);
+    }).catch(() => { setUsers([]); setTotal(0); });
   };
 
   useEffect(() => {
@@ -188,8 +201,17 @@ export function UsersPage() {
   }, []);
 
   useEffect(() => {
-    loadUsers();
-  }, []);
+    let cancelled = false;
+    const timeout = window.setTimeout(() => {
+      void loadUsers().then((response) => {
+        if (cancelled) return;
+        setUsers(response.data ?? []);
+        setLastPage(response.meta.last_page);
+        setTotal(response.meta.total);
+      }).catch(() => { if (!cancelled) { setUsers([]); setTotal(0); } });
+    }, 250);
+    return () => { cancelled = true; window.clearTimeout(timeout); };
+  }, [loadUsers]);
 
   const roles = useMemo(() => {
     return Array.from(new Set(form.roles)).filter((role) => MANAGED_ROLES.includes(role));
@@ -202,29 +224,12 @@ export function UsersPage() {
     return users.filter((user) => user.roles.includes(activeTab));
   }, [activeTab, users]);
 
-  const tabCounts = useMemo(() => {
-    return ROLE_TABS.reduce<Record<string, number>>((acc, tab) => {
-      if (tab.value === 'all') {
-        acc[tab.value] = users.length;
-        return acc;
-      }
-
-      // `tab.value` este restrâns aici la un RoleName real, deci `includes`
-      // primește tipul corect în loc de uniunea care conținea și 'all'.
-      const role = tab.value;
-      acc[tab.value] = users.filter((user) => user.roles.includes(role)).length;
-      return acc;
-    }, {});
-  }, [users]);
-
   const userToForm = (adminUser: AdminUser) => ({
     name: adminUser.name,
     email: adminUser.email,
     phone: adminUser.phone || '',
     password: '',
-    roles: adminUser.roles.filter((role) => MANAGED_ROLES.includes(role)).length
-      ? adminUser.roles.filter((role) => MANAGED_ROLES.includes(role))
-      : ['patient'] as RoleName[],
+    roles: adminUser.roles.filter((role) => MANAGED_ROLES.includes(role)),
     specialty_id: adminUser.profiles?.doctor?.specialty_id ? String(adminUser.profiles.doctor.specialty_id) : '',
     license_number: adminUser.profiles?.doctor?.license_number || '',
     experience_years: '0',
@@ -311,6 +316,8 @@ export function UsersPage() {
         region: form.region || null
       };
 
+      if (isEditing && roles.length === 0) delete payload.roles;
+
       if (roles.includes('operator')) {
         payload.base_fee = Number(form.base_fee || 0);
         payload.accepting_requests = form.accepting_requests;
@@ -340,7 +347,7 @@ export function UsersPage() {
       setForm(DEFAULT_FORM);
       setEditingUser(null);
       setIsCreateOpen(false);
-      loadUsers();
+      refreshUsers();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nu am putut salva utilizatorul.');
     } finally {
@@ -358,7 +365,7 @@ export function UsersPage() {
         method: 'PUT',
         body: JSON.stringify({ status: nextStatus })
       });
-      loadUsers();
+      refreshUsers();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Nu am putut actualiza statusul.');
     } finally {
@@ -377,7 +384,7 @@ export function UsersPage() {
       await apiRequest(`/admin/users/${adminUser.id}`, {
         method: 'DELETE'
       });
-      loadUsers();
+      refreshUsers();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Nu am putut șterge utilizatorul.');
     } finally {
@@ -413,30 +420,28 @@ export function UsersPage() {
         <CardHeader className="gap-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <CardTitle>Lista utilizatorilor</CardTitle>
-            <Button variant="outline" size="sm" className="h-9 self-start rounded-lg lg:self-center" onClick={loadUsers}>
+            <Button variant="outline" size="sm" className="h-9 self-start rounded-lg lg:self-center" onClick={refreshUsers}>
               <RefreshCw className="mr-2 h-4 w-4" /> Reîncarcă
             </Button>
           </div>
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)}>
+            <Tabs value={activeTab} onValueChange={(value) => { setActiveTab(value as UserRoleTab); setPage(1); setUsers([]); }}>
               <TabsList className="h-auto w-full flex-wrap justify-start gap-1 rounded-lg bg-slate-100/80 p-1 sm:w-fit">
                 {ROLE_TABS.map((tab) => (
                   <TabsTrigger key={tab.value} value={tab.value} className="h-9 flex-none px-3">
                     {tab.label}
-                    <span className="ml-1 rounded-full bg-slate-200 px-1.5 py-0.5 text-xs text-slate-600">
-                      {tabCounts[tab.value] ?? 0}
-                    </span>
+                    {tab.value === activeTab && <span className="ml-1 rounded-full bg-slate-200 px-1.5 py-0.5 text-xs text-slate-600">{total}</span>}
                   </TabsTrigger>
                 ))}
               </TabsList>
             </Tabs>
 
-            <form onSubmit={(event) => { event.preventDefault(); loadUsers(); }} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] xl:w-[460px]">
+            <form onSubmit={(event) => { event.preventDefault(); refreshUsers(); }} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] xl:w-[460px]">
               <Input
                 className="h-10 rounded-lg bg-white"
                 placeholder="Caută după nume sau email"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
               />
               <Button type="submit" variant="outline" className="h-10 rounded-lg">
                 <Search className="mr-2 h-4 w-4" />
@@ -501,7 +506,7 @@ export function UsersPage() {
                             <Pencil className="h-4 w-4" />
                             Editează
                           </DropdownMenuItem>
-                          {adminUser.roles.some(role => ['doctor','operator','institution'].includes(role)) && <DropdownMenuItem className="cursor-pointer" onClick={() => navigate(`/admin/admin-messages?target=${adminUser.id}`)}>Trimite mesaj</DropdownMenuItem>}
+                          {adminUser.roles.some(role => ['doctor','operator','institution'].includes(role)) && <DropdownMenuItem className="cursor-pointer" onClick={() => navigate(`/admin/admin-messages?target=${adminUser.id}`)}><MessageSquare className="mr-2 h-4 w-4" />Trimite mesaj</DropdownMenuItem>}
                           <DropdownMenuItem className="cursor-pointer" onClick={() => setWalletUser(adminUser)}>
                             <Wallet className="h-4 w-4" />
                             Portofel
@@ -546,6 +551,11 @@ export function UsersPage() {
                 )}
               </TableBody>
             </Table>
+            {lastPage > 1 && <div className="flex items-center justify-between gap-3 border-t p-4 text-sm text-slate-600">
+              <Button type="button" variant="outline" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Înapoi</Button>
+              <span>Pagina {page} din {lastPage} · {total} utilizatori</span>
+              <Button type="button" variant="outline" disabled={page >= lastPage} onClick={() => setPage((current) => current + 1)}>Înainte</Button>
+            </div>}
           </div>
         </CardContent>
       </Card>

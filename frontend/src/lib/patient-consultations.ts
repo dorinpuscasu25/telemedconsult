@@ -71,14 +71,13 @@ export function patientNextStep(request: PatientConsultation): string | null {
 
 
 /**
- * Banii stau rezervați până închizi consultația cu o recenzie; atunci ajung la
- * medic. Fără recenzie, rezultatul și plata rămân în așteptare.
+ * Publicarea rezultatului decontează consultația; recenzia rămâne opțională.
  */
 export function paymentNote(request: Pick<PatientConsultation, 'status' | 'payment_status' | 'closed_at' | 'auto_close_at' | 'amount'>): string | null {
   if (request.status !== 'completed') return null;
   const amount = request.amount ? `${Math.round(Number(request.amount))} MDL` : 'plata';
   if (request.payment_status === 'held' && !request.closed_at) {
-    return `Lasă o recenzie pentru a vedea rezultatul și a închide consultația: abia atunci ${request.amount ? `cei ${amount}` : 'banii'} ajung la medic.`;
+    return 'Rezultatul este disponibil. Plata consultației este în curs de decontare; recenzia este opțională.';
   }
   if (request.payment_status === 'captured') return `Consultația e închisă și ${amount} au ajuns la medic. Concluzia rămâne în documentul PDF.`;
   return null;

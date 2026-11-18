@@ -17,6 +17,7 @@ use App\Services\InstitutionLedger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -73,6 +74,112 @@ class MedicalInstitutionTest extends TestCase
         $this->postJson('/api/v1/admin/institutions', $payload)->assertCreated()->assertJsonPath('institution.managers.0.email', 'receptieclinicapediatru@gmail.com');
         $this->postJson('/api/v1/admin/institutions', $payload)->assertUnprocessable()
             ->assertJsonPath('errors.manager_email.0', 'Există deja un cont cu acest email. Alege alt email pentru manager.');
+    }
+
+    public function test_institution_can_be_created_with_an_existing_doctor_and_patient_account(): void
+    {
+        $user = $this->userWithRole('doctor');
+        $user->roles()->attach(Role::firstOrCreate(['name' => 'patient'], ['label' => 'Pacient']));
+        $attributes = $user->only(['name', 'email', 'phone', 'password', 'active_role_id', 'status', 'email_verified_at']);
+        Sanctum::actingAs($this->userWithRole('admin'));
+        $count = User::count();
+
+        $response = $this->postJson('/api/v1/admin/institutions', [
+            'name' => 'Clinica nouă', 'doctor_share_percent' => 30, 'manager_user_id' => $user->id,
+            'manager_name' => 'Nu schimba', 'manager_email' => $user->email, 'manager_password' => 'Alta-parola-123',
+        ])->assertCreated()->assertJsonPath('generated_password', null);
+
+        $this->assertSame($count, User::count());
+        $this->assertEquals($attributes, $user->fresh()->only(array_keys($attributes)));
+        $this->assertEqualsCanonicalizing(['doctor', 'patient', 'institution'], $user->fresh()->roles()->pluck('name')->all());
+        $this->assertSame($response->json('institution.id'), $user->fresh()->managedInstitution()?->id);
+        Sanctum::actingAs($user->fresh());
+        $this->getJson('/api/v1/institution/dashboard')->assertOk()->assertJsonPath('institution.name', 'Clinica nouă');
+        foreach (['institution', 'patient', 'doctor'] as $role) {
+            $this->postJson('/api/v1/auth/switch-role', ['role' => $role])->assertOk()->assertJsonPath('user.active_role', $role);
+        }
+    }
+
+    public function test_creating_an_institution_rejects_invalid_existing_managers_without_creating_records(): void
+    {
+        $inactive = $this->userWithRole('patient');
+        $inactive->update(['status' => 'suspended']);
+        Sanctum::actingAs($this->userWithRole('admin'));
+
+        foreach ([$inactive->id, 999999, 'invalid'] as $userId) {
+            $this->postJson('/api/v1/admin/institutions', [
+                'name' => 'Nu se creează', 'doctor_share_percent' => 30, 'manager_user_id' => $userId,
+            ])->assertUnprocessable()->assertJsonValidationErrors('manager_user_id');
+        }
+        $this->assertSame(0, MedicalInstitution::count());
+        $this->assertFalse($inactive->fresh()->hasRole('institution'));
+    }
+
+    public function test_existing_manager_conflict_rolls_back_the_new_institution(): void
+    {
+        [$institution, $manager] = $this->institution();
+        Sanctum::actingAs($this->userWithRole('admin'));
+
+        $this->postJson('/api/v1/admin/institutions', [
+            'name' => 'Nu se creează', 'doctor_share_percent' => 30, 'manager_user_id' => $manager->id,
+        ])->assertUnprocessable()->assertJsonValidationErrors('manager_user_id');
+
+        $this->assertSame(1, MedicalInstitution::count());
+        $this->assertSame($institution->id, $manager->fresh()->managedInstitution()?->id);
+    }
+
+    public function test_institution_creation_requires_a_manager_and_admin_authorization(): void
+    {
+        $patient = $this->userWithRole('patient');
+        $payload = ['name' => 'Clinica nouă', 'doctor_share_percent' => 30, 'manager_user_id' => $patient->id];
+        Sanctum::actingAs($patient);
+        $this->postJson('/api/v1/admin/institutions', $payload)->assertForbidden();
+        Sanctum::actingAs($this->userWithRole('admin'));
+        unset($payload['manager_user_id']);
+        $this->postJson('/api/v1/admin/institutions', $payload)->assertUnprocessable()->assertJsonValidationErrors(['manager_name', 'manager_email']);
+        $this->assertSame(0, MedicalInstitution::count());
+    }
+
+    public function test_admin_summary_counts_institutions_separately_from_managers(): void
+    {
+        [$institution] = $this->institution();
+        $institution->managers()->attach($this->userWithRole('institution'));
+        $this->institution('A doua clinică');
+        Sanctum::actingAs($this->userWithRole('admin'));
+        $this->getJson('/api/v1/admin/summary')->assertOk()->assertJsonPath('institutions', 2);
+        $this->getJson('/api/v1/admin/users?role=institution')->assertOk()->assertJsonCount(3, 'data');
+        Sanctum::actingAs($this->userWithRole('patient'));
+        $this->getJson('/api/v1/admin/summary')->assertForbidden();
+    }
+
+    public function test_admin_password_and_role_updates_preserve_institution_manager_access(): void
+    {
+        Queue::fake();
+        Role::firstOrCreate(['name' => 'patient'], ['label' => 'Pacient']);
+        [$institution, $manager] = $this->institution();
+        $activeRoleId = $manager->active_role_id;
+        Sanctum::actingAs($this->userWithRole('admin'));
+
+        $this->putJson('/api/v1/admin/users/'.$manager->id, [
+            'password' => 'Parola-noua-123', 'roles' => ['patient'],
+        ])->assertOk();
+
+        $this->assertTrue(\Hash::check('Parola-noua-123', $manager->fresh()->password));
+        $this->assertTrue($manager->fresh()->hasRole('institution'));
+        $this->assertSame($activeRoleId, $manager->fresh()->active_role_id);
+        $this->assertSame($institution->id, $manager->fresh()->managedInstitution()?->id);
+    }
+
+    public function test_manager_filter_searches_all_accounts_before_pagination(): void
+    {
+        [, $manager] = $this->institution();
+        User::factory()->count(55)->create();
+        Sanctum::actingAs($this->userWithRole('admin'));
+
+        $this->getJson('/api/v1/admin/users?role=institution')->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', (string) $manager->id)->assertJsonPath('meta.total', 1);
+        $this->getJson('/api/v1/admin/users?role=institution&search='.$manager->email)->assertOk()->assertJsonPath('data.0.id', (string) $manager->id);
+        $this->getJson('/api/v1/admin/users?page=2')->assertOk()->assertJsonPath('meta.current_page', 2)->assertJsonPath('meta.last_page', 2);
     }
 
     public function test_admin_assigns_existing_user_as_manager_without_changing_their_account(): void
@@ -302,8 +409,7 @@ class MedicalInstitutionTest extends TestCase
 
         Sanctum::actingAs($doctor);
         $this->postJson('/api/v1/requests/'.$request->id.'/complete', ['higo_status' => 'not_performed', 'diagnosis' => 'Test'])->assertOk();
-        // Partea instituției se fixează abia când pacientul închide consultația.
-        $this->assertSame(0, InstitutionEarning::count());
+        $this->assertSame(1, InstitutionEarning::count());
         Sanctum::actingAs(User::findOrFail($request->patient_id));
         $this->postJson('/api/v1/requests/'.$request->id.'/review', ['rating' => 5, 'comment' => 'Mulțumesc'])->assertCreated();
         Sanctum::actingAs($doctor);

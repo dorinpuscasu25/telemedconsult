@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Consultation;
 use App\Models\ConsultationRequest;
+use App\Models\DoctorReview;
 use App\Models\MedicalDocument;
+use App\Models\OperatorReview;
 use App\Models\User;
 use App\Notifications\AppEventNotification;
 use App\Services\ConsultationPdf;
@@ -13,6 +15,7 @@ use App\Services\ConsultationResultAccess;
 use App\Services\HigoReviewEvidence;
 use App\Services\MedicalDocumentPublisher;
 use App\Services\PatientRecordAccess;
+use App\Services\PrescriptionAttachment;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -30,12 +33,19 @@ class ConsultationDocumentController extends Controller
         $base = $documents->first(fn ($item) => $item->type === 'consultation_summary' && $item->published_at);
         $deadline = $base ? (app(PatientRecordAccess::class)->expiresAt($consultationRequest) ?? $base->published_at->copy()->addDays(MedicalDocumentPublisher::ADDENDUM_DAYS)) : null;
         $locked = $consultationRequest->status === 'completed' && ! app(ConsultationResultAccess::class)->canRead($consultationRequest, $request->user());
+        $isPatient = (int) $consultationRequest->patient_id === (int) $request->user()->id;
+        $providers = [
+            'doctor' => (bool) ($isPatient && $consultationRequest->doctor_id && ! DoctorReview::where('consultation_request_id', $consultationRequest->id)->where('patient_id', $consultationRequest->patient_id)->exists()),
+            'operator' => (bool) ($isPatient && $consultationRequest->operator_id && ! OperatorReview::where('consultation_request_id', $consultationRequest->id)->where('patient_id', $consultationRequest->patient_id)->exists()),
+        ];
 
         return response()->json([
             'documents' => $locked ? [] : $documents->map(fn ($item) => self::serialize($item)),
             'result_locked' => $locked,
-            'review_required' => $locked,
-            'review_providers' => ['doctor' => (bool) $consultationRequest->doctor_id, 'operator' => (bool) $consultationRequest->operator_id],
+            'review_required' => false,
+            'can_review' => $consultationRequest->status === 'completed' && in_array(true, $providers, true),
+            'review_bonus_points' => 10,
+            'review_providers' => $providers,
             'can_addendum' => (bool) ($deadline && now()->lt($deadline) && (int) $consultationRequest->doctor_id === (int) $request->user()->id),
             'addendum_until' => $deadline,
             'prescription_instructions' => MedicalDocumentPublisher::PRESCRIPTION_INSTRUCTIONS,
@@ -84,22 +94,29 @@ class ConsultationDocumentController extends Controller
             'investigation_recommendations' => ['nullable', 'string', 'max:4000'], 'prescription_notes' => ['nullable', 'string', 'max:4000'],
             'current_illness_history' => ['prohibited'], 'doctor_history_notes' => ['nullable', 'string', 'max:4000'], 'objective_exam' => ['nullable', 'string', 'max:4000'],
             'higo_status' => ['required', 'in:not_performed,reviewed'],
-            'higo_exam_id' => ['required_if:higo_status,reviewed', 'prohibited_if:higo_status,not_performed', 'integer'],
+            'higo_exam_id' => ['sometimes', 'prohibited_if:higo_status,not_performed', 'integer'],
             'higo_reviewed' => ['prohibited'], 'has_prescription' => ['sometimes', 'boolean'],
+            'prescription' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
         ]);
-        $hasPrescription = (bool) ($content['has_prescription'] ?? false);
-        unset($content['has_prescription']);
+        $prescription = $request->hasFile('prescription') ? app(PrescriptionAttachment::class)->prepare($request->file('prescription')) : null;
+        unset($content['has_prescription'], $content['prescription']);
         $consultation = new Consultation([
+            'consultation_request_id' => $consultationRequest->id,
             ...$content, ...app(HigoReviewEvidence::class)->resolve($consultationRequest, $content), 'patient_id' => $consultationRequest->patient_id, 'doctor_id' => $consultationRequest->doctor_id,
             'current_illness_history' => $consultationRequest->current_illness_history,
             'patient_profile_id' => $consultationRequest->patient_profile_id, 'patient_complaints' => $consultationRequest->symptoms,
             'objective_data_snapshot' => $consultationRequest->objectiveData()->pluck('payload')->all(),
         ]);
-        $snapshot = app(MedicalDocumentPublisher::class)->snapshot($consultation, ['has_prescription' => $hasPrescription]);
+        $snapshot = app(MedicalDocumentPublisher::class)->snapshot($consultation, ['prescription' => $prescription]);
         $snapshot['consultation_id'] = $consultationRequest->id;
         $snapshot['document_id'] = 'PREVIZUALIZARE';
+        $snapshot['decision_number'] = 'PREVIZUALIZARE';
+        $bytes = app(ConsultationPdf::class)->render($snapshot);
+        if ($prescription) {
+            $bytes = app(PrescriptionAttachment::class)->append($bytes, $prescription['pdf']);
+        }
 
-        return response(app(ConsultationPdf::class)->render($snapshot), 200, ['Content-Type' => 'application/pdf', 'Cache-Control' => 'no-store']);
+        return response($bytes, 200, ['Content-Type' => 'application/pdf', 'Cache-Control' => 'no-store']);
     }
 
     public static function serialize(MedicalDocument $item): array
@@ -116,7 +133,7 @@ class ConsultationDocumentController extends Controller
             'id' => $item->id, 'title' => $item->title, 'type' => $item->type, 'status' => $item->status,
             'parent_document_id' => $item->parent_document_id, 'published_at' => $item->published_at,
             'url' => $canRead && $item->status === 'published' && $item->pdf_path ? URL::temporarySignedRoute('medical-document.file', now()->addMinutes(15), $parameters) : null,
-            'prescription_instructions' => $item->content_snapshot['prescription_instructions'] ?? MedicalDocumentPublisher::PRESCRIPTION_INSTRUCTIONS,
+            'prescription_instructions' => MedicalDocumentPublisher::PRESCRIPTION_INSTRUCTIONS,
             'prescription_url' => $canRead && $item->prescription_path ? URL::temporarySignedRoute('medical-document.prescription', now()->addMinutes(15), $parameters) : null,
         ];
     }
@@ -125,7 +142,7 @@ class ConsultationDocumentController extends Controller
     {
         $consultation = ConsultationRequest::findOrFail($document->consultation_request_id);
         $viewer = $request->filled('viewer') ? User::find($request->integer('viewer')) : null;
-        abort_unless(app(ConsultationResultAccess::class)->canRead($consultation, $viewer), 403, 'Lasă o recenzie pentru a vedea rezultatul.');
+        abort_unless(app(ConsultationResultAccess::class)->canRead($consultation, $viewer), 403, 'Rezultatul nu este disponibil.');
     }
 
     private function authorizeParticipant(Request $request, ConsultationRequest $consultation): void

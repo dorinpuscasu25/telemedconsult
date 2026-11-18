@@ -385,6 +385,7 @@ export function DoctorsList() {
     : selectedDoctor?.investigation_requirements?.optional ?? [];
   const pickService = (service: DoctorServiceItem) => {
     setServiceId(service.id);
+    setScheduledAt('');
     setConsultationKind(service.type === 'home' ? 'with_exam' : 'video');
     setSelectedOptionalIds([]);
   };
@@ -703,7 +704,7 @@ export function DoctorsList() {
                 {step === 2 && (
                   <>
                     <ConsultationComplaintFields symptomsFirst history={illnessHistory} symptoms={symptoms} onHistoryChange={setIllnessHistory} onSymptomsChange={setSymptoms} />
-                    <SlotPicker doctorId={String(selectedDoctor.id)} value={scheduledAt} onChange={setScheduledAt} />
+                    <SlotPicker doctorId={String(selectedDoctor.id)} serviceId={serviceId} value={scheduledAt} onChange={setScheduledAt} />
                     {effectiveKind === 'with_exam' && optionalInvestigations.length > 0 && (
                       <fieldset>
                         <legend className="mb-2 text-sm font-medium text-slate-900">Investigații opționale</legend>
@@ -759,7 +760,7 @@ export function DoctorsList() {
                         ) : (
                           <div className="flex gap-2.5 rounded-xl bg-blue-50 px-3.5 py-3 text-[13px] leading-[1.45] text-blue-950">
                             <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
-                            <span>Rezervăm {mdl(preview.payment.real_amount)} MDL din Bani{preview.payment.points_amount > 0 ? ` și ${mdl(preview.payment.points_amount)} bonusuri` : ''}{preview.wallet ? ` (rămân ${mdl(Math.max(0, preview.wallet.balance - preview.payment.real_amount))} MDL)` : ''}. Medicul primește banii abia după ce închizi consultația lăsând o recenzie. Dacă medicul refuză, se anulează sau consultația nu are loc{preview.settlement ? ` în ${preview.settlement.no_show_refund_hours} h de la ora stabilită` : ''}, banii revin în portofel.</span>
+                            <span>Rezervăm {mdl(preview.payment.real_amount)} MDL din Bani{preview.payment.points_amount > 0 ? ` și ${mdl(preview.payment.points_amount)} bonusuri` : ''}{preview.wallet ? ` (rămân ${mdl(Math.max(0, preview.wallet.balance - preview.payment.real_amount))} MDL)` : ''}. Plata se decontează după publicarea rezultatului. Recenzia este opțională și îți aduce 10 puncte bonus. Dacă medicul refuză, se anulează sau consultația nu are loc{preview.settlement ? ` în ${preview.settlement.no_show_refund_hours} h de la ora stabilită` : ''}, banii revin în portofel.</span>
                           </div>
                         )}
                       </>

@@ -7,9 +7,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['user_id', 'higo_operator_id', 'country', 'region', 'locality', 'equipment', 'base_fee_minor', 'served_areas', 'travel_fees', 'service_catalog', 'has_device_subscription', 'contract_number', 'affiliate_code', 'is_available', 'accepting_requests', 'is_approved'])]
+#[Fillable(['user_id', 'higo_operator_id', 'country', 'region', 'locality', 'equipment', 'base_fee_minor', 'served_areas', 'travel_fees', 'service_catalog', 'has_device_subscription', 'contract_number', 'person_type', 'contract_type', 'affiliate_code', 'is_available', 'accepting_requests', 'is_approved'])]
 class OperatorProfile extends Model
 {
+    public const PERSON_TYPES = ['individual', 'legal_entity'];
+
+    public const CONTRACT_TYPES = ['employment', 'services', 'freelance'];
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

@@ -1,9 +1,11 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePageTitle } from '../../lib/use-page-title';
 import { Avatar } from '../doctor/DoctorHome';
+import { apiRequest } from '../../lib/api';
+import { OPERATOR_PERSON_TYPES, OPERATOR_CONTRACT_TYPES, type OperatorContract } from '../../lib/operator-contracts';
 
 /**
  * Profilul operatorului. Datele contului le modifică administratorul, așa că
@@ -12,6 +14,12 @@ import { Avatar } from '../doctor/DoctorHome';
 export function OperatorProfilePage() {
   usePageTitle('Profil');
   const { user } = useAuth();
+  const [contract, setContract] = useState<OperatorContract | null>(null);
+  const [contractError, setContractError] = useState('');
+  const loadContract = () => apiRequest<{ user: { profiles?: { operator?: OperatorContract } } }>('/auth/me')
+    .then((response) => { setContract(response.user.profiles?.operator ?? null); setContractError(''); })
+    .catch(() => setContractError('Datele contractuale nu au putut fi încărcate.'));
+  useEffect(() => { void loadContract(); }, []);
 
   return (
     <div className="flex flex-col gap-5">
@@ -31,6 +39,14 @@ export function OperatorProfilePage() {
           <Info label="Email" value={user?.email} />
           <Info label="Telefon" value={user?.phone || 'Necompletat'} />
           <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">Pentru a schimba aceste date, scrie administratorului platformei.</p>
+        </Group>
+
+        <Group title="RELAȚIA CONTRACTUALĂ">
+          <Info label="Persoană" value={OPERATOR_PERSON_TYPES[contract?.person_type ?? '']} />
+          <Info label="Contract" value={OPERATOR_CONTRACT_TYPES[contract?.contract_type ?? '']} />
+          <Info label="Număr" value={contract?.contract_number} />
+          <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">Datele sunt gestionate de administrator, conform contractului tău.</p>
+          {contractError && <p role="alert" className="px-5 pb-3 text-xs text-red-700">{contractError} <button type="button" className="underline" onClick={() => void loadContract()}>Reîncearcă</button></p>}
         </Group>
 
         <Group title="SETĂRI">

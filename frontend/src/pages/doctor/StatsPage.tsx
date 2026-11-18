@@ -23,6 +23,7 @@ interface DoctorStats {
     reviews_count: number;
     available_balance: number;
     payout_account?: string | null;
+    payout_window?: { start_day: number; end_day: number; open: boolean; valid: boolean; today: string; timezone: string };
   };
   revenue: Array<{ name: string; total: number }>;
   by_service?: Array<{ name: string; count: number; total: number }>;
@@ -44,14 +45,10 @@ const STATUS: Record<string, [string, string]> = {
   rejected: ['Respinsă', 'bg-red-50 text-red-700']
 };
 
-/** Fereastra de extragere: zilele 1–10 ale lunii. */
-function withdrawalWindow(today = new Date()) {
-  const day = today.getDate();
-  const month = MONTHS[today.getMonth()];
-  const next = MONTHS[(today.getMonth() + 1) % 12];
-  if (day === 10) return { open: true, text: `Azi, ${day} ${month}, e ultima zi pentru cereri luna aceasta. Următoarea fereastră: 1–10 ${next}.` };
-  if (day < 10) return { open: true, text: `Poți trimite cereri până pe 10 ${month}. Următoarea fereastră: 1–10 ${next}.` };
-  return { open: false, text: `Extragerile se cer în zilele 1–10 ale lunii. Următoarea fereastră: 1–10 ${next}.` };
+function withdrawalWindow(window?: DoctorStats['summary']['payout_window']) {
+  if (!window) return { open: false, text: 'Se verifică perioada pentru cereri de plată…' };
+  if (!window.valid) return { open: false, text: 'Perioada pentru cereri de plată nu este configurată corect. Contactează administratorul.' };
+  return { open: window.open, text: `Cererile către platformă se depun în zilele ${window.start_day}–${window.end_day} ale lunii, inclusiv, după ora Chișinăului. Perioada este ${window.open ? 'deschisă' : 'închisă'} acum.` };
 }
 
 /**
@@ -76,7 +73,7 @@ export function StatsPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const summary = data?.summary;
-  const today = new Date();
+  const today = data?.summary.payout_window?.today ? new Date(`${data.summary.payout_window.today}T12:00:00`) : new Date();
   const bars = data?.revenue ?? [];
   const max = Math.max(1, ...bars.map((bar) => bar.total));
   const services = data?.by_service ?? [];
@@ -187,7 +184,7 @@ function WithdrawDialog({ open, onOpenChange, data, onSent }: { open: boolean; o
 
   const fromInstitution = source === 'institution';
   const balance = fromInstitution ? Math.max(0, (institution?.balance ?? 0) - (institution?.pending ?? 0)) : data?.summary.available_balance ?? 0;
-  const windowInfo = withdrawalWindow();
+  const windowInfo = withdrawalWindow(data?.summary.payout_window);
   const minimum = fromInstitution ? 1 : MIN_WITHDRAWAL;
   const value = Number(amount) || 0;
   const valid = value >= minimum && value <= balance && (fromInstitution || windowInfo.open);

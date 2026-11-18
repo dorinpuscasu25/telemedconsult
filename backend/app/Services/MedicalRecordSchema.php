@@ -19,16 +19,20 @@ class MedicalRecordSchema
         $text = ['nullable', 'string', 'max:4000'];
         $date = ['nullable', 'date_format:Y-m-d', 'before_or_equal:today'];
         $birth = [
-            'birth_method' => ['nullable', Rule::in(['natural', 'cesarean', 'forceps', 'vacuum'])],
-            'gestational_weeks' => ['nullable', 'integer', 'min:24', 'max:43'],
+            'birth_method' => ['nullable', Rule::in(['natural', 'cesarean', 'forceps', 'vacuum', 'other'])],
+            'birth_method_details' => $text,
+            'gestational_weeks' => ['nullable', 'integer', 'min:24', 'max:42'],
             'birth_weight' => ['nullable', 'numeric', 'min:1', 'max:10000'],
             'head_circumference' => ['nullable', 'numeric', 'min:1', 'max:100'],
-            'apgar' => ['nullable', 'integer', 'min:1', 'max:10'],
+            'apgar' => ['nullable', 'string', 'max:30', 'regex:/^(?:10|[0-9])(?:\s*(?:[\/\-]|din|pe)\s*(?:10|[0-9]))?$/u'],
             'feeding' => ['nullable', Rule::in(['natural', 'artificial', 'mixed'])],
+            'feeding_natural_period' => $text, 'feeding_artificial_period' => $text, 'feeding_mixed_period' => $text,
             'blood_group' => ['nullable', Rule::in(['A', 'B', 'AB', 'O'])],
             'rh' => ['nullable', Rule::in(['positive', 'negative'])],
             'congenital_conditions' => $text, 'other_details' => $text,
             'development' => $text, 'development_age' => $text,
+            'development_6_months' => $text, 'development_1_year' => $text,
+            'development_2_years' => $text, 'development_3_years' => $text,
         ];
         $lifestyle = [
             'activity' => ['nullable', Rule::in(['sedentary', 'active', 'regular_sport'])],

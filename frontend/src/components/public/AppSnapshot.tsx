@@ -13,7 +13,7 @@ export function AppSnapshot({ kind }: { kind: 'search' | 'service' | 'conclusion
       {kind === 'search' && (
         <>
           <div className="flex h-[38px] items-center gap-2 rounded-[10px] border border-slate-200 bg-white px-3 text-[13px]"><Search className="h-3.5 w-3.5 text-slate-400" />Pediatru</div>
-          {[['IP', 'Dr. Ion Popescu', 'Clinica Pediatru', '250 MDL'], ['MR', 'Dr. Maria Rusu', 'IMSP CMF nr. 4', '200 MDL']].map(([ini, name, inst, from]) => (
+          {[['IP', 'Dr. Igor Pletoșu', 'Clinica Pediatru', '500 MDL'], ['EP', 'Dr. Ecaterina Prepeliță', 'Clinica Pediatru', '500 MDL']].map(([ini, name, inst, from]) => (
             <div key={name} className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white p-3">
               <span className="grid h-[60px] w-[54px] shrink-0 place-items-center rounded-lg bg-blue-100 text-[13px] font-semibold text-blue-700">{ini}</span>
               <span className="flex min-w-0 flex-1 flex-col gap-0.5"><span className="text-[13px] font-semibold">{name}</span><span className="text-[11px] text-slate-500">{inst}</span></span>
@@ -24,8 +24,8 @@ export function AppSnapshot({ kind }: { kind: 'search' | 'service' | 'conclusion
       )}
       {kind === 'service' && (
         <>
-          <span className="px-0.5 pt-0.5 text-[13px] font-semibold">Alege serviciul</span>
-          {[['Consultație video + chat', '30 min · monitorizare în chat', '250 MDL'], ['Consultație în chat', 'Răspuns în 24 h', '150 MDL'], ...(homeVisits ? [['Vizită la domiciliu', 'Include ECG, tensiune', '600 MDL']] : [])].map(([name, meta, price], index) => (
+          <span className="px-0.5 pt-0.5 text-[13px] font-semibold">Alege serviciul sau serviciile</span>
+          {[['Consultație video + chat', 'Monitorizare în chat', '600 MDL'], ['Consultație în chat', 'Comunicare cu medicul', '500 MDL'], ...(homeVisits ? [['Vizita operatorului la domiciliu', 'Examinare cu dispozitive medicale', '350 MDL']] : [])].map(([name, meta, price], index) => (
             <div key={name} className={cn('flex items-center gap-2.5 rounded-xl bg-white px-3 py-2.5', index === 0 ? 'border-[1.5px] border-blue-600' : 'border border-slate-200')}>
               <span className={cn('h-4 w-4 shrink-0 rounded-full', index === 0 ? 'border-[5px] border-blue-600 bg-white' : 'border-[1.5px] border-slate-300')} />
               <span className="flex flex-1 flex-col gap-px"><span className="text-xs font-semibold">{name}</span><span className="text-[11px] text-slate-500">{meta}</span></span>
@@ -38,7 +38,7 @@ export function AppSnapshot({ kind }: { kind: 'search' | 'service' | 'conclusion
       {kind === 'conclusion' && (
         <div className="flex flex-col gap-2.5 rounded-xl border border-slate-200 bg-white p-3.5">
           <div className="flex items-center gap-2.5"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600"><LockKeyhole size={18} /></span><span className="text-[13px] font-semibold">Rezultatul consultației este pregătit</span></div>
-          <p className="text-xs leading-5 text-slate-600">Lasă o recenzie pentru a vedea rezultatul.</p>
+          <p className="text-xs leading-5 text-slate-600">Rezultatul este disponibil. Lasă o recenzie și primești 10 puncte bonus.</p>
           <div className="flex gap-1 text-slate-300" aria-hidden="true">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={21} />)}</div>
           <div className="flex h-9 items-center justify-center rounded-[9px] bg-blue-600 text-xs font-semibold text-white">Lasă recenzie</div>
         </div>

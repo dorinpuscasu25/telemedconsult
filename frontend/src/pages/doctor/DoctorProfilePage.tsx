@@ -505,6 +505,9 @@ function MobileServiceRows({ services, onToggle, onEdit }: { services: DoctorSer
 function WeekSchedule({ slots, onChange }: { slots: Slot[]; onChange: (slots: Slot[]) => void }) {
   return (
     <div className="flex flex-col">
+      <p className="mb-3 text-xs text-slate-500">Ora de sfârșit 00:00 înseamnă sfârșitul zilei (24:00). Intervalul 00:00–00:00 acoperă întreaga zi.</p>
+      {slots.length === 0 && <p className="mb-3 text-xs text-slate-500">Nu ai salvat încă un program. Pacienților li se propun implicit ore luni–vineri, 09:00–18:00.</p>}
+      {slots.length > 0 && !slots.some((slot) => slot.is_active) && <p role="status" className="mb-3 text-xs text-amber-700">Toate zilele sunt oprite. Activează un interval pentru a primi programări în calendar.</p>}
       {DAYS.map(([day, label], index) => {
         const daySlots = slots.map((slot, position) => ({ slot, position })).filter(({ slot }) => slot.weekday === day);
         const on = daySlots.some(({ slot }) => slot.is_active);

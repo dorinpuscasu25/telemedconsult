@@ -2,6 +2,7 @@ import "./index.css";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 
 const container = document.getElementById("root");
 
@@ -23,5 +24,12 @@ container.dataset.mounted = 'true';
 createRoot(container).render(
   <ErrorBoundary label="root">
     <App />
+    <PwaInstallPrompt />
   </ErrorBoundary>
 );
+
+if (import.meta.env.PROD && window.isSecureContext && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch((error) => console.error('[pwa]', error));
+  });
+}

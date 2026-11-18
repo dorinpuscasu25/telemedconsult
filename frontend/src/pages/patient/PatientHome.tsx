@@ -374,7 +374,7 @@ function DismissButton({ onClick, className }: { onClick: () => void; className?
 function PatientTile({ profile, canBook }: { profile: Profile; canBook: boolean }) {
   const progress = recordProgress(profile);
   const name = `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim();
-  const expires = profile.active_until ? new Date(profile.active_until) : null;
+  const expires = !profile.is_free && profile.active_until ? new Date(profile.active_until) : null;
   const soon = expires ? expires.getTime() - Date.now() < 30 * 86400000 : false;
   return (
     <div className="flex w-[200px] shrink-0 flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 lg:w-auto">
@@ -385,7 +385,7 @@ function PatientTile({ profile, canBook }: { profile: Profile; canBook: boolean 
       <Link to={`/patient/patients/${profile.id}`} className="flex flex-col gap-0.5">
         <span className="text-[15px] font-semibold text-slate-950">{name}</span>
         <span className="text-xs text-slate-500">{profile.birth_date ? `${patientAge(profile.birth_date)} · ` : ''}Fișa {progress.done}/{progress.total}</span>
-        {profile.is_free && <span className="text-xs font-medium text-blue-600">Profil gratuit</span>}
+        {profile.is_free && <span className="text-xs font-medium text-blue-600">Profil gratuit · permanent</span>}
         {expires && <span className={cn('text-xs', soon ? 'text-orange-700' : 'text-slate-500')}>{soon ? 'Profilul expiră' : 'Activ'} până la {expires.toLocaleDateString('ro-RO', { timeZone: TZ })}</span>}
       </Link>
       {canBook && profile.can_request_consultation && (

@@ -7,6 +7,8 @@ import { cn } from '../../ui/utils';
 import { apiRequest } from '../../../lib/api';
 import { patientAge, todayDate } from '../../../lib/medical-record';
 import type { CatalogRegion } from '../PatientBasicsFields';
+import { CountrySelect } from '../CountrySelect';
+import { toast } from 'sonner';
 
 export interface PersonalProfile {
   id: number;
@@ -14,6 +16,11 @@ export interface PersonalProfile {
   last_name?: string | null;
   birth_date?: string | null;
   gender?: string | null;
+  country?: string | null;
+  country_code?: string | null;
+  region?: string | null;
+  city?: string | null;
+  locality?: string | null;
   residential_environment?: string | null;
   region_id?: number | null;
   locality_id?: number | null;
@@ -26,6 +33,7 @@ export interface PersonalProfile {
 type FormState = {
   first_name: string; last_name: string; birth_date: string; gender: string; residential_environment: string;
   region_id: string; locality_id: string; address: string;
+  country_code: string; country: string; region: string; city: string; locality: string;
   building: string; entrance: string; apartment: string; floor: string;
   emergency_name: string; emergency_phone: string; pseudonymized: boolean;
 };
@@ -38,6 +46,8 @@ function initialState(profile: PersonalProfile): FormState {
   return {
     first_name: profile.first_name ?? '', last_name: profile.last_name ?? '', birth_date: (profile.birth_date ?? '').slice(0, 10),
     gender: profile.gender ?? '', residential_environment: profile.residential_environment ?? '',
+    country_code: profile.country_code ?? (profile.country && profile.country !== 'Republica Moldova' ? '' : 'MD'), country: profile.country ?? 'Republica Moldova',
+    region: profile.region ?? '', city: profile.city ?? '', locality: profile.locality ?? '',
     region_id: profile.region_id ? String(profile.region_id) : '', locality_id: profile.locality_id ? String(profile.locality_id) : '',
     address: profile.address ?? '', building: details.building ?? '', entrance: details.entrance ?? '', apartment: details.apartment ?? '', floor: details.floor ?? '',
     emergency_name: emergencyName, emergency_phone: emergencyPhone, pseudonymized: Boolean(profile.pseudonymized)
@@ -50,8 +60,15 @@ export function PersonalDataForm({ profile, regions, onSaved }: { profile: Perso
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [error, setError] = useState('');
   const timer = useRef<number | null>(null);
+  const pendingSave = useRef<(() => Promise<void>) | null>(null);
+  const saveQueue = useRef(Promise.resolve());
 
-  useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); }, []);
+  useEffect(() => () => {
+    if (timer.current) window.clearTimeout(timer.current);
+    const pending = pendingSave.current;
+    pendingSave.current = null;
+    if (pending) void pending();
+  }, []);
 
   const save = async (next: FormState) => {
     if (!next.first_name.trim() || !next.last_name.trim()) { setSaveState('error'); setError('Prenumele și numele sunt obligatorii.'); return; }
@@ -60,10 +77,13 @@ export function PersonalDataForm({ profile, regions, onSaved }: { profile: Perso
     try {
       await apiRequest(`/patient/profiles/${profile.id}`, {
         method: 'PUT',
+        keepalive: true,
         body: JSON.stringify({
           first_name: next.first_name.trim(), last_name: next.last_name.trim(),
           birth_date: next.birth_date || null, gender: next.gender || null, residential_environment: next.residential_environment || null,
-          region_id: next.region_id ? Number(next.region_id) : null, locality_id: next.locality_id ? Number(next.locality_id) : null,
+          country_code: next.country_code,
+          ...(next.country_code === 'MD' ? { region_id: next.region_id ? Number(next.region_id) : null, locality_id: next.locality_id ? Number(next.locality_id) : null }
+            : { region: next.region.trim() || null, city: next.city.trim() || null, locality: next.locality.trim() || null }),
           address: next.address.trim() || null,
           address_details: { building: next.building || null, entrance: next.entrance || null, apartment: next.apartment || null, floor: next.floor || null },
           emergency_contact: [next.emergency_name.trim(), next.emergency_phone.trim()].filter(Boolean).join(CONTACT_SEPARATOR) || null,
@@ -74,7 +94,9 @@ export function PersonalDataForm({ profile, regions, onSaved }: { profile: Perso
       onSaved();
     } catch (err) {
       setSaveState('error');
-      setError(err instanceof Error ? err.message : 'Nu am putut salva.');
+      const message = err instanceof Error ? err.message : 'Nu am putut salva.';
+      setError(message);
+      toast.error(message);
     }
   };
 
@@ -83,7 +105,9 @@ export function PersonalDataForm({ profile, regions, onSaved }: { profile: Perso
     setForm(next);
     if (timer.current) window.clearTimeout(timer.current);
     setSaveState('saving');
-    timer.current = window.setTimeout(() => { void save(next); }, immediate ? 0 : 800);
+    const persist = () => { saveQueue.current = saveQueue.current.then(() => save(next)); return saveQueue.current; };
+    pendingSave.current = persist;
+    timer.current = window.setTimeout(() => { pendingSave.current = null; void persist(); }, immediate ? 0 : 800);
   };
 
   const region = regions.find((item) => String(item.id) === form.region_id);
@@ -97,7 +121,7 @@ export function PersonalDataForm({ profile, regions, onSaved }: { profile: Perso
           {saveState === 'saved' ? '✓ Salvat' : saveState === 'error' ? 'Nesalvat' : saveState === 'saving' ? 'Se salvează…' : ''}
         </span>
       </div>
-      {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error} <button type="button" onClick={() => update({}, true)} className="underline">Reîncearcă salvarea</button></p>}
 
       <div className="grid grid-cols-2 gap-2.5">
         <TextField id="pd-first" label="Prenume" value={form.first_name} onChange={(value) => update({ first_name: value })} />
@@ -118,13 +142,23 @@ export function PersonalDataForm({ profile, regions, onSaved }: { profile: Perso
       <div className="my-1 h-px bg-slate-100" />
       <span className="text-[15px] font-semibold text-slate-950">Adresa</span>
       <div className="flex flex-col gap-1.5">
+        <FieldLabel>Țara de trai</FieldLabel>
+        <CountrySelect value={form.country_code} label={form.country} onChange={(country_code, country) => update({ country_code, country, region_id: '', locality_id: '', region: '', city: '', locality: '' })} className="h-11 rounded-[10px] border border-slate-200 bg-white px-3 text-[15px]" />
+      </div>
+      {form.country_code === 'MD' ? <>
+      <div className="flex flex-col gap-1.5">
         <FieldLabel>Raion / municipiu</FieldLabel>
-        <SearchSelect value={form.region_id} options={regions.map((item) => [String(item.id), item.name])} placeholder="Alege raionul" onChange={(value) => update({ region_id: value, locality_id: '' })} />
+        <SearchSelect value={form.region_id} options={regions.filter((item) => !item.country || ['Republica Moldova', 'Moldova', 'MD'].includes(item.country)).map((item) => [String(item.id), item.name])} placeholder="Alege raionul" onChange={(value) => update({ region_id: value, locality_id: '' })} />
       </div>
       <div className="flex flex-col gap-1.5">
         <FieldLabel>Localitate</FieldLabel>
         <SearchSelect value={form.locality_id} options={(region?.localities ?? []).map((item) => [String(item.id), item.name])} placeholder={region ? 'Alege localitatea' : 'Alege întâi raionul'} disabled={!region} onChange={(value) => update({ locality_id: value }, true)} />
       </div>
+      </> : <>
+        <TextField id="pd-region" label="Regiune / district (opțional)" value={form.region} onChange={(value) => update({ region: value })} />
+        <TextField id="pd-city" label="Oraș (opțional)" value={form.city} onChange={(value) => update({ city: value })} />
+        <TextField id="pd-locality" label="Localitate" value={form.locality} onChange={(value) => update({ locality: value })} />
+      </>}
       <TextField id="pd-street" label="Strada și numărul" value={form.address} onChange={(value) => update({ address: value })} placeholder="str. Cartușa 12" />
       <div className="grid grid-cols-4 gap-2">
         <SmallField id="pd-building" label="Bloc" value={form.building} onChange={(value) => update({ building: value })} />

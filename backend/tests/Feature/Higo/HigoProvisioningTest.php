@@ -229,6 +229,29 @@ class HigoProvisioningTest extends TestCase
         $this->assertNull(DoctorProfile::firstOrFail()->higo_doctor_id);
     }
 
+    public function test_operator_provisioning_and_backfill_work_when_home_visits_are_hidden(): void
+    {
+        $this->fakeHigo();
+        app(PlatformConfig::class)->upsert('feature.with_exam_consultations', false, 'features', 'boolean');
+        Sanctum::actingAs($this->userWithRole('admin'));
+        $this->postJson('/api/v1/admin/users', [
+            'name' => 'Operator ascuns', 'email' => 'operator-hidden@example.test', 'phone' => '069484967',
+            'roles' => ['operator'], 'region' => $this->activeRegionName(),
+        ])->assertCreated();
+        $this->assertSame('higo-practitioner-1', OperatorProfile::firstOrFail()->higo_operator_id);
+        $this->getJson('/api/v1/admin/higo/sync')->assertOk()->assertJsonPath('summary.enabled', false)->assertJsonPath('summary.operator_sync_enabled', true);
+    }
+
+    public function test_unsynchronized_operator_can_be_backfilled_with_the_module_hidden(): void
+    {
+        $this->fakeHigo();
+        app(PlatformConfig::class)->upsert('feature.with_exam_consultations', false, 'features', 'boolean');
+        $operator = $this->userWithRole('operator');
+        $profile = OperatorProfile::create(['user_id' => $operator->id, 'is_approved' => true]);
+        $this->artisan('higo:sync', ['--kind' => ['operator']])->assertSuccessful();
+        $this->assertSame('higo-practitioner-1', $profile->fresh()->higo_operator_id);
+    }
+
     public function test_nothing_is_sent_without_a_configured_base_url(): void
     {
         $this->fakeHigo();

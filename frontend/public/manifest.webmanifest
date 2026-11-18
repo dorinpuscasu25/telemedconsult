@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "telemedconsult.md",
+  "short_name": "Telemedconsult",
+  "description": "Consultații și fișa ta medicală pe telemedconsult.md.",
+  "lang": "ro",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "/icons/app-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/app-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

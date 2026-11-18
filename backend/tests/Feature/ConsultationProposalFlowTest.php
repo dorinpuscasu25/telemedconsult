@@ -12,6 +12,7 @@ use App\Models\Wallet;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -143,6 +144,91 @@ class ConsultationProposalFlowTest extends TestCase
         $this->postJson("/api/v1/requests/{$item->id}/accept")->assertOk();
         $this->postJson("/api/v1/requests/{$item->id}/reject", ['reason' => 'Nu pot prelua.'])->assertOk()->assertJsonPath('request.stage', 'cancel');
         $this->assertSame(125000, $this->balance());
+    }
+
+    public function test_withdrawing_a_reschedule_keeps_the_original_reply_deadline_cleared(): void
+    {
+        $item = $this->book('2026-11-12 10:30');
+        Sanctum::actingAs($this->doctor);
+        $this->postJson("/api/v1/requests/{$item->id}/accept")->assertOk();
+        $this->postJson("/api/v1/requests/{$item->id}/propose-time", ['slots' => $this->slots('2026-11-13 11:00')])->assertOk();
+        $this->postJson("/api/v1/requests/{$item->id}/withdraw-proposal")->assertOk()->assertJsonPath('request.stage', 'conf');
+        $this->assertNull($item->fresh()->doctor_reply_due_at);
+    }
+
+    public function test_patient_cannot_confirm_a_proposed_slot_taken_while_waiting_for_confirmation(): void
+    {
+        $item = $this->book('2026-11-11 10:30');
+        Sanctum::actingAs($this->doctor);
+        $this->postJson("/api/v1/requests/{$item->id}/propose-time", ['slots' => $this->slots('2026-11-12 11:00')])->assertOk();
+        $balance = $this->balance();
+        $level = DB::transactionLevel();
+        $inserted = false;
+        User::retrieved(function (User $user) use ($item, $level, &$inserted) {
+            if (! $inserted && $user->id === $this->doctor->id && DB::transactionLevel() > $level) {
+                $inserted = true;
+                ConsultationRequest::create([
+                    'patient_id' => $this->patientUser->id, 'patient_profile_id' => $this->patient->id,
+                    'doctor_id' => $user->id, 'type' => 'video', 'status' => 'accepted',
+                    'scheduled_at' => $item->fresh()->proposed_scheduled_at, 'symptoms' => 'Interval rezervat între timp',
+                ]);
+            }
+        });
+        Sanctum::actingAs($this->patientUser);
+        $this->postJson("/api/v1/requests/{$item->id}/accept-proposed-time")
+            ->assertUnprocessable()->assertJsonPath('message', 'Acest interval este deja ocupat.');
+        $this->assertTrue($inserted);
+        $this->assertSame('rescheduled', $item->fresh()->status);
+        $this->assertSame('2026-11-11 10:30', $item->fresh()->scheduled_at->setTimezone('Europe/Chisinau')->format('Y-m-d H:i'));
+        $this->assertSame($balance, $this->balance());
+    }
+
+    public function test_confirmation_uses_the_latest_proposed_slots_instead_of_the_route_binding_copy(): void
+    {
+        $item = $this->book('2026-11-11 10:30');
+        Sanctum::actingAs($this->doctor);
+        $this->postJson("/api/v1/requests/{$item->id}/propose-time", ['slots' => $this->slots('2026-11-12 11:00')])->assertOk();
+        $changed = false;
+        ConsultationRequest::retrieved(function (ConsultationRequest $bound) use ($item, &$changed) {
+            if (! $changed && $bound->id === $item->id) {
+                $changed = true;
+                DB::table('consultation_requests')->where('id', $item->id)->update([
+                    'proposed_scheduled_at' => '2026-11-12 10:00:00',
+                    'proposed_slots' => json_encode($this->slots('2026-11-12 12:00')),
+                ]);
+            }
+        });
+        Sanctum::actingAs($this->patientUser);
+        $this->postJson("/api/v1/requests/{$item->id}/accept-proposed-time", ['scheduled_at' => $this->slots('2026-11-12 11:00')[0]])->assertUnprocessable();
+        $this->assertTrue($changed);
+        $this->assertSame('rescheduled', $item->fresh()->status);
+        $this->postJson("/api/v1/requests/{$item->id}/accept-proposed-time", ['scheduled_at' => $this->slots('2026-11-12 12:00')[0]])->assertOk();
+        $this->assertSame('2026-11-12 12:00', $item->fresh()->scheduled_at->setTimezone('Europe/Chisinau')->format('Y-m-d H:i'));
+    }
+
+    public function test_stale_proposal_actions_cannot_reopen_a_cancelled_consultation(): void
+    {
+        Wallet::where('user_id', $this->patientUser->id)->where('type', 'real')->update(['balance_minor' => 500000]);
+        foreach (['propose-time', 'request-other-times', 'keep-current-time', 'withdraw-proposal', 'accept-proposed-time'] as $action) {
+            $item = $this->book('2026-11-11 10:30');
+            $item->forceFill([
+                'status' => 'rescheduled', 'proposal_is_reschedule' => true,
+                'proposed_scheduled_at' => CarbonImmutable::parse($this->slots('2026-11-12 11:00')[0]),
+                'proposed_slots' => $this->slots('2026-11-12 11:00'),
+                'proposal_expires_at' => now()->addHour(),
+            ])->save();
+            $changed = false;
+            ConsultationRequest::retrieved(function (ConsultationRequest $bound) use ($item, &$changed) {
+                if (! $changed && $bound->id === $item->id) {
+                    $changed = true;
+                    DB::table('consultation_requests')->where('id', $item->id)->update(['status' => 'cancelled']);
+                }
+            });
+            Sanctum::actingAs(in_array($action, ['propose-time', 'withdraw-proposal'], true) ? $this->doctor : $this->patientUser);
+            $this->postJson("/api/v1/requests/{$item->id}/{$action}", ['slots' => $this->slots('2026-11-12 11:00')])->assertUnprocessable();
+            $this->assertTrue($changed);
+            $this->assertSame('cancelled', $item->fresh()->status);
+        }
     }
 
     public function test_conclusion_draft_is_saved_and_read_back_by_the_doctor_only(): void

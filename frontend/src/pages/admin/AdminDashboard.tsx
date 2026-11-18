@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Activity, ShieldCheck, Stethoscope, UserCog, Users } from 'lucide-react';
+import { Activity, Building2, ShieldCheck, Stethoscope, UserCog, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { CurrentTimeCard } from '../../components/app/CurrentTimeCard';
@@ -11,6 +11,7 @@ interface Summary {
   doctors: number;
   operators: number;
   coordinators: number;
+  institutions: number;
   pending_doctors: number;
 }
 
@@ -34,7 +35,8 @@ export function AdminDashboard() {
     { label: 'Total conturi', value: summary?.users ?? 0, icon: Users, tone: 'bg-blue-100 text-blue-700' },
     { label: 'Pacienți', value: summary?.patients ?? 0, icon: Activity, tone: 'bg-emerald-100 text-emerald-700' },
     { label: 'Medici', value: summary?.doctors ?? 0, icon: Stethoscope, tone: 'bg-purple-100 text-purple-700' },
-    { label: 'Operatori', value: summary?.operators ?? 0, icon: UserCog, tone: 'bg-amber-100 text-amber-700' }
+    { label: 'Operatori', value: summary?.operators ?? 0, icon: UserCog, tone: 'bg-amber-100 text-amber-700' },
+    { label: 'Instituții medicale', value: summary?.institutions ?? 0, icon: Building2, tone: 'bg-cyan-100 text-cyan-700' }
   ];
 
   return (
@@ -51,7 +53,7 @@ export function AdminDashboard() {
         <CurrentTimeCard />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {stats.map((stat) => {
           const Icon = stat.icon;
           return (

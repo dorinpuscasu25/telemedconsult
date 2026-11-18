@@ -119,6 +119,7 @@ interface SyncResponse {
   exam_summary: { mapped: number; unmatched: number; failed: number };
   summary: {
     enabled: boolean;
+    operator_sync_enabled: boolean;
     base_url_configured: boolean;
     credentials_configured: boolean;
     synced: number;
@@ -478,7 +479,7 @@ export function HigoSyncPage() {
         <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <div>
-            <p className="font-medium">Sincronizarea este oprită — nimic nu pleacă spre HIGO.</p>
+            <p className="font-medium">{summary.operator_sync_enabled ? 'Modulul este ascuns. Sincronizarea operatorilor rămâne activă.' : 'Sincronizarea este oprită.'}</p>
             <p className="mt-1">
               {!summary.base_url_configured && 'Lipsește HIGO_BASE_URL. '}
               {!summary.credentials_configured && 'Lipsesc credențialele (HIGO_CLIENT_ID / HIGO_USERNAME). '}
@@ -569,7 +570,7 @@ export function HigoSyncPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => retry(entity)}
-                        disabled={retrying === key || !summary?.enabled}>
+                        disabled={retrying === key || !(entity.kind === 'operator' ? summary?.operator_sync_enabled : summary?.enabled)}>
                         {retrying === key ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
                         {entity.status === 'synced' ? 'Retrimite' : 'Trimite'}
                       </Button>

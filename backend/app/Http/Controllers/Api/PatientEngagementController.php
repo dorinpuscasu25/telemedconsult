@@ -12,7 +12,7 @@ use App\Models\OperatorReview;
 use App\Models\PlatformSetting;
 use App\Models\User;
 use App\Notifications\AppEventNotification;
-use App\Services\ConsultationSettlement;
+use App\Services\WalletLedger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -145,16 +145,17 @@ class PatientEngagementController extends Controller
             'comment' => ['required', 'string', 'max:2000'],
         ]);
 
-        $review = DB::transaction(function () use ($consultationRequest, $user, $validated) {
+        [$review, $awardedMinor] = DB::transaction(function () use ($consultationRequest, $validated) {
             $consultationRequest = ConsultationRequest::lockForUpdate()->findOrFail($consultationRequest->id);
             abort_unless($consultationRequest->status === 'completed', 422);
             $review = null;
+            $awardedMinor = 0;
             $providerType = $validated['provider_type'] ?? 'both';
 
             if ($consultationRequest->doctor_id && in_array($providerType, ['doctor', 'both'], true)) {
                 $review = DoctorReview::updateOrCreate(
                     [
-                        'patient_id' => $user->id,
+                        'patient_id' => $consultationRequest->patient_id,
                         'consultation_request_id' => $consultationRequest->id,
                     ],
                     [
@@ -164,13 +165,17 @@ class PatientEngagementController extends Controller
                     ],
                 );
 
+                if ($review->wasRecentlyCreated) {
+                    $awardedMinor += $this->rewardReview($consultationRequest, 'doctor', $review->id);
+                }
+
                 $this->refreshDoctorRating($consultationRequest->doctor_id);
             }
 
             if ($consultationRequest->operator_id && in_array($providerType, ['operator', 'both'], true)) {
-                OperatorReview::updateOrCreate(
+                $operatorReview = OperatorReview::updateOrCreate(
                     [
-                        'patient_id' => $user->id,
+                        'patient_id' => $consultationRequest->patient_id,
                         'consultation_request_id' => $consultationRequest->id,
                     ],
                     [
@@ -180,17 +185,12 @@ class PatientEngagementController extends Controller
                         'comment' => $validated['operator_comment'] ?? $validated['comment'],
                     ],
                 );
+                if ($operatorReview->wasRecentlyCreated) {
+                    $awardedMinor += $this->rewardReview($consultationRequest, 'operator', $operatorReview->id);
+                }
             }
 
-            $doctorDone = ! $consultationRequest->doctor_id || DoctorReview::where('patient_id', $user->id)->where('consultation_request_id', $consultationRequest->id)->exists();
-            $operatorDone = ! $consultationRequest->operator_id || OperatorReview::where('patient_id', $user->id)->where('consultation_request_id', $consultationRequest->id)->exists();
-
-            // Recenzia închide consultația; abia acum plata rezervată ajunge la prestator.
-            if ($doctorDone && $operatorDone) {
-                app(ConsultationSettlement::class)->close($consultationRequest);
-            }
-
-            return $review;
+            return [$review, $awardedMinor];
         });
 
         $doctor = User::find($consultationRequest->doctor_id);
@@ -203,7 +203,19 @@ class PatientEngagementController extends Controller
             ));
         }
 
-        return response()->json(['message' => 'Recenzia a fost salvată.', 'review' => $review?->fresh()], 201);
+        return response()->json(['message' => $awardedMinor > 0 ? 'Recenzia a fost salvată. Ai primit '.($awardedMinor / 100).' puncte bonus.' : 'Recenzia a fost salvată.', 'review' => $review?->fresh(), 'bonus_points_awarded' => $awardedMinor / 100], 201);
+    }
+
+    private function rewardReview(ConsultationRequest $request, string $providerType, int $reviewId): int
+    {
+        $ledger = app(WalletLedger::class);
+        $wallet = $ledger->locked($request->patient_id, WalletLedger::POINTS);
+        if ($wallet->transactions()->where('type', 'review_bonus')->where('consultation_request_id', $request->id)->where('metadata->provider_type', $providerType)->exists()) {
+            return 0;
+        }
+        $ledger->move($wallet, 1000, 'review_bonus', 'Bonus pentru recenzia '.($providerType === 'doctor' ? 'medicului' : 'operatorului'), ['source' => 'review', 'provider_type' => $providerType, 'review_id' => $reviewId], $request->id);
+
+        return 1000;
     }
 
     public function doctorReviews(User $doctor): JsonResponse
@@ -277,10 +289,13 @@ class PatientEngagementController extends Controller
         ]);
     }
 
-    private function notifyAdmins(string $title, string $body, string $url, bool $sendEmail, string $level = 'info'): void
+    private function notifyAdmins(string $title, string $body, string $url, bool $enabled, string $level = 'info'): void
     {
-        $admins = User::whereHas('roles', fn ($query) => $query->where('name', 'admin'))->get();
-        Notification::send($admins, new AppEventNotification($title, $body, $url, $level, $sendEmail));
+        if (! $enabled) {
+            return;
+        }
+        $admins = User::where('status', 'active')->whereHas('roles', fn ($query) => $query->where('name', 'admin'))->get();
+        Notification::send($admins, new AppEventNotification($title, $body, $url, $level));
     }
 
     private function settingBool(string $key, bool $default): bool

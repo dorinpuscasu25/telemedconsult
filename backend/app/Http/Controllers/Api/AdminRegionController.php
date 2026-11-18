@@ -4,13 +4,35 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Locality;
+use App\Models\PatientProfile;
 use App\Models\Region;
+use App\Services\PatientGeography;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class AdminRegionController extends Controller
 {
+    public function patients(Request $request): JsonResponse
+    {
+        $this->authorizeAdmin($request);
+        $geography = app(PatientGeography::class);
+        $countries = [];
+        foreach (PatientProfile::query()->select(['country_code', 'country', 'region', 'city', 'locality'])->cursor() as $profile) {
+            $code = $profile->country_code ?? $geography->countryCode($profile->country);
+            $key = $code ?? $geography->normalize($profile->country);
+            $countries[$key] ??= ['code' => $code, 'name' => $geography->countries()[$code] ?? $profile->country, 'profiles' => 0, 'localities' => []];
+            $countries[$key]['profiles']++;
+            $location = ['region' => $profile->region, 'city' => $profile->city, 'locality' => $profile->locality];
+            $locationKey = json_encode(array_map(fn ($value) => Str::ascii($geography->normalize($value)), $location));
+            $countries[$key]['localities'][$locationKey] ??= [...$location, 'profiles' => 0];
+            $countries[$key]['localities'][$locationKey]['profiles']++;
+        }
+
+        return response()->json(['data' => collect($countries)->sortBy('name')->map(fn ($country) => [...$country, 'localities' => array_values($country['localities'])])->values(), 'unit' => 'patient_profiles']);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $this->authorizeAdmin($request);

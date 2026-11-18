@@ -1,15 +1,18 @@
-import { useRef, useState, type DragEvent } from 'react';
+import { useRef, useState, type DragEvent, type FormEvent } from 'react';
 import { Activity, Camera, Files, FlaskConical, Loader2, ScanLine, Trash2, Upload } from 'lucide-react';
 import { cn } from '../../ui/utils';
 import { useDialogs } from '../../app/DialogProvider';
 import { apiRequest } from '../../../lib/api';
 import { todayDate } from '../../../lib/medical-record';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../ui/dialog';
+import { Button } from '../../ui/button';
+import { Input } from '../../ui/input';
+import { useSiteContent } from '../../../contexts/SiteContentContext';
 
 export type RecordDocument = { id: number; title: string; type: string; performed_at?: string | null; created_at: string; url?: string | null; mime_type?: string | null; notes?: string | null };
 
 type DocumentCategory = 'analysis' | 'functional' | 'imaging';
 const TYPES: Array<[DocumentCategory, string]> = [['analysis', 'Analize de laborator'], ['functional', 'Investigații funcționale'], ['imaging', 'Investigații imagistice']];
-const EXAMPLES: Record<string, string> = { analysis: 'De exemplu: hemoleucogramă, biochimie, hormoni.', functional: 'De exemplu: ECG, EEG, spirometrie.', imaging: 'De exemplu: radiografie, ecografie, RMN, tomografie.' };
 const CATEGORY_ICONS: Record<string, typeof Files> = { analysis: FlaskConical, functional: Activity, imaging: ScanLine, investigation: Files };
 const ACCEPT = '.jpg,.jpeg,.png,.webp,.pdf,.doc,.docx';
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -17,6 +20,8 @@ const MAX_BYTES = 20 * 1024 * 1024;
 /** Încărcare directă în categorie și documente afișate în listă, cu miniatură. */
 export function DocumentsPanel({ profileId, documents, onChanged }: { profileId: number; documents: RecordDocument[]; onChanged: () => void }) {
   const dialogs = useDialogs();
+  const { text } = useSiteContent();
+  const examples: Record<string, string> = { analysis: text('patient_record.analysis_examples'), functional: text('patient_record.functional_examples'), imaging: text('patient_record.imaging_examples') };
   const [error, setError] = useState('');
   const [classifying, setClassifying] = useState<number | null>(null);
 
@@ -60,7 +65,7 @@ export function DocumentsPanel({ profileId, documents, onChanged }: { profileId:
                   <h3 className="min-w-0 flex-1 text-sm font-semibold text-slate-900">{label}</h3>
                   <span aria-label={`${items.length} ${items.length === 1 ? 'document' : 'documente'}`} className="grid h-7 min-w-7 shrink-0 place-items-center rounded-full border border-slate-200 bg-white px-2 text-xs font-semibold tabular-nums text-slate-600">{items.length}</span>
                 </div>
-                {EXAMPLES[key] && <p className="mt-3 text-xs leading-5 text-slate-500">{EXAMPLES[key]}</p>}
+                {examples[key] && <p className="mt-3 text-xs leading-5 text-slate-500">{examples[key]}</p>}
               </div>
               <div className="flex flex-col gap-4 p-4 lg:p-5">
                 {category && <CategoryUpload key={`${profileId}-${category}`} profileId={profileId} category={category} label={label} onChanged={onChanged} />}
@@ -99,72 +104,72 @@ function CategoryUpload({ profileId, category, label, onChanged }: { profileId: 
   const [saving, setSaving] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
+  const [pending, setPending] = useState<Array<{ file: File; title: string; date: string }>>([]);
 
-  const upload = async (files: File[]) => {
-    if (!files.length || uploading.current) return;
-    uploading.current = true;
-    setSaving(true);
-    setErrors([]);
+  const choose = (files: File[]) => {
+    if (uploading.current) return;
     const failures: string[] = [];
+    const valid = files.filter((file) => {
+      if (file.size > MAX_BYTES) { failures.push(`${file.name}: fișierul depășește 20 MB.`); return false; }
+      if (!/\.(jpe?g|png|webp|pdf|docx?)$/i.test(file.name)) { failures.push(`${file.name}: alege PDF, JPG, PNG, WEBP, DOC sau DOCX.`); return false; }
+      return true;
+    });
+    setPending(valid.map((file) => ({ file, title: '', date: '' })));
+    setErrors(failures);
+    if (fileInput.current) fileInput.current.value = '';
+    if (cameraInput.current) cameraInput.current.value = '';
+  };
+
+  const upload = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!pending.length || uploading.current || pending.some((item) => !item.title.trim() || !item.date)) return;
+    uploading.current = true; setSaving(true); setErrors([]);
+    const failures: string[] = [];
+    const remaining: typeof pending = [];
     let saved = false;
-    const performedAt = todayDate();
     try {
-      for (const file of files) {
-        if (file.size > MAX_BYTES) {
-          failures.push(`${file.name}: fișierul depășește 20 MB.`);
-          continue;
-        }
-        if (!/\.(jpe?g|png|webp|pdf|docx?)$/i.test(file.name)) {
-          failures.push(`${file.name}: alege un fișier PDF, JPG, PNG, WEBP, DOC sau DOCX.`);
-          continue;
-        }
+      for (const item of pending) {
         const form = new FormData();
-        form.append('type', category);
-        form.append('title', file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim().slice(0, 255) || 'Document');
-        form.append('performed_at', performedAt);
-        form.append('file', file);
-        try {
-          await apiRequest(`/patient/profiles/${profileId}/investigations`, { method: 'POST', body: form });
-          saved = true;
-        } catch (err) {
-          failures.push(`${file.name}: ${err instanceof Error ? err.message : 'Nu am putut încărca documentul.'}`);
-        }
+        form.append('type', category); form.append('title', item.title.trim()); form.append('performed_at', item.date); form.append('file', item.file);
+        try { await apiRequest(`/patient/profiles/${profileId}/investigations`, { method: 'POST', body: form }); saved = true; }
+        catch (err) { remaining.push(item); failures.push(`${item.file.name}: ${err instanceof Error ? err.message : 'Nu am putut încărca documentul.'}`); }
       }
     } finally {
-      uploading.current = false;
-      setSaving(false);
-      setErrors(failures);
-      if (fileInput.current) fileInput.current.value = '';
-      if (cameraInput.current) cameraInput.current.value = '';
+      uploading.current = false; setSaving(false); setErrors(failures); setPending(remaining);
       if (saved) onChanged();
     }
   };
 
-  const onDrop = (event: DragEvent) => {
-    event.preventDefault();
-    setDragging(false);
-    void upload(Array.from(event.dataTransfer.files));
-  };
+  const onDrop = (event: DragEvent) => { event.preventDefault(); setDragging(false); choose(Array.from(event.dataTransfer.files)); };
+  const update = (index: number, patch: { title?: string; date?: string }) => setPending((items) => items.map((item, current) => current === index ? { ...item, ...patch } : item));
 
-  return (
-    <div className="flex flex-col gap-3">
-      <input ref={fileInput} type="file" multiple accept={ACCEPT} aria-label={`Alege fișiere pentru ${label}`} className="hidden" disabled={saving} onChange={(event) => void upload(Array.from(event.target.files ?? []))} />
-      <input ref={cameraInput} type="file" accept="image/*" capture="environment" aria-label={`Fă o poză pentru ${label}`} className="hidden" disabled={saving} onChange={(event) => void upload(Array.from(event.target.files ?? []))} />
-      <div onDragOver={(event) => { event.preventDefault(); if (!uploading.current) setDragging(true); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); }} onDrop={onDrop}
-        className={cn('flex flex-col items-center gap-3 rounded-xl border-2 border-dashed p-4 text-center transition-colors', dragging ? 'border-blue-600 bg-blue-100' : 'border-blue-200 bg-blue-50/50')}>
-        <div className="flex w-full items-center gap-2">
-          <button type="button" disabled={saving} aria-label={`Încarcă fișiere în ${label}`} onClick={() => fileInput.current?.click()} className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline-blue-600 focus-visible:outline-offset-2 disabled:cursor-wait disabled:opacity-60">
-            {saving ? <Loader2 aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin" /> : <Upload aria-hidden="true" className="h-4 w-4 shrink-0" />}
-            <span role="status">{saving ? 'Se încarcă…' : 'Încarcă fișiere'}</span>
-          </button>
-          <button type="button" disabled={saving} aria-label={`Fă o poză pentru ${label}`} onClick={() => cameraInput.current?.click()} className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-blue-200 bg-white text-blue-700 hover:bg-blue-100 focus-visible:outline-blue-600 disabled:opacity-60 lg:hidden"><Camera aria-hidden="true" className="h-5 w-5" /></button>
-        </div>
-        <p className="hidden text-xs text-blue-800 lg:block">sau trage fișierele aici</p>
-        <p className="text-[11px] leading-4 text-slate-500">PDF, JPG, PNG, WEBP, DOC, DOCX · până la 20 MB / fișier</p>
+  return <div className="flex flex-col gap-3">
+    <input ref={fileInput} type="file" multiple accept={ACCEPT} aria-label={`Alege fișiere pentru ${label}`} className="hidden" disabled={saving} onChange={(event) => choose(Array.from(event.target.files ?? []))} />
+    <input ref={cameraInput} type="file" accept="image/*" capture="environment" aria-label={`Fotografiază pentru ${label}`} className="hidden" disabled={saving} onChange={(event) => choose(Array.from(event.target.files ?? []))} />
+    <div onDragOver={(event) => { event.preventDefault(); if (!saving) setDragging(true); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); }} onDrop={onDrop} className={cn('flex flex-col items-center gap-3 rounded-xl border-2 border-dashed p-4 text-center transition-colors', dragging ? 'border-blue-600 bg-blue-100' : 'border-blue-200 bg-blue-50/50')}>
+      <div className="flex w-full items-center gap-2">
+        <button type="button" disabled={saving} aria-label={`Încarcă fișiere în ${label}`} onClick={() => fileInput.current?.click()} className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">{saving ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <Upload aria-hidden="true" className="h-4 w-4" />}<span role="status">{saving ? 'Se încarcă…' : 'Alege fișiere'}</span></button>
+        <button type="button" disabled={saving} aria-label={`Fă o poză pentru ${label}`} onClick={() => cameraInput.current?.click()} className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-blue-200 bg-white text-blue-700 lg:hidden"><Camera aria-hidden="true" className="h-5 w-5" /></button>
       </div>
-      {errors.length > 0 && <ul role="alert" className="space-y-1 rounded-lg bg-red-50 p-3 text-xs leading-5 text-red-700">{errors.map((message, index) => <li key={index} className="break-words">{message}</li>)}</ul>}
+      <p className="hidden text-xs text-blue-800 lg:block">sau trage fișierele aici</p>
+      <p className="text-[11px] leading-4 text-slate-500">PDF, JPG, PNG, WEBP, DOC, DOCX · până la 20 MB / fișier</p>
     </div>
-  );
+    {!pending.length && errors.length > 0 && <ul role="alert" className="rounded-lg bg-red-50 p-3 text-xs text-red-700">{errors.map((error, index) => <li key={index}>{error}</li>)}</ul>}
+    <Dialog open={pending.length > 0} onOpenChange={(open) => { if (!open && !saving) setPending([]); }}>
+      <DialogContent className="sm:max-w-xl" onInteractOutside={(event) => { if (saving) event.preventDefault(); }} onEscapeKeyDown={(event) => { if (saving) event.preventDefault(); }} showCloseButton={!saving}>
+        <form onSubmit={(event) => void upload(event)} className="space-y-5">
+          <DialogHeader><DialogTitle>Detaliile investigațiilor</DialogTitle><DialogDescription>Completează denumirea și data efectuării pentru fiecare document din categoria „{label}”. Fișierele se salvează după confirmare.</DialogDescription></DialogHeader>
+          {errors.length > 0 && <ul role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{errors.map((error, index) => <li key={index}>{error}</li>)}</ul>}
+          <fieldset disabled={saving} className="space-y-4">{pending.map((item, index) => <div key={`${index}-${item.file.name}`} className="space-y-3 rounded-xl border border-slate-200 p-4">
+            <p className="break-all text-xs text-slate-500">{item.file.name}</p>
+            <label className="block space-y-1.5 text-sm font-medium">Denumirea investigației<Input required maxLength={255} value={item.title} onChange={(event) => update(index, { title: event.target.value })} placeholder="De exemplu: analiza generală de sânge" /></label>
+            <label className="block space-y-1.5 text-sm font-medium">Data efectuării<Input required type="date" max={todayDate()} value={item.date} onChange={(event) => update(index, { date: event.target.value })} /></label>
+          </div>)}</fieldset>
+          <DialogFooter><Button type="button" variant="outline" disabled={saving} onClick={() => setPending([])}>Renunță</Button><Button type="submit" disabled={saving || pending.some((item) => !item.title.trim() || !item.date)}>{saving ? 'Se salvează…' : 'Salvează documentele'}</Button></DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  </div>;
 }
 
 function DocumentThumbnail({ item }: { item: RecordDocument }) {

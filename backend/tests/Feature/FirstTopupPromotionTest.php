@@ -256,9 +256,8 @@ class FirstTopupPromotionTest extends TestCase
         $request = ConsultationRequest::findOrFail($id);
         Sanctum::actingAs($doctor);
         $this->postJson('/api/v1/requests/'.$id.'/complete', ['higo_status' => 'not_performed', 'diagnosis' => 'Test'])->assertOk();
-        // Concluzia nu ia banii: rămân rezervați până când pacientul închide consultația.
-        $this->assertSame('held', $request->fresh()->payment_status);
-        $this->assertSame(0, $this->balance($doctor, 'real'));
+        $this->assertSame('captured', $request->fresh()->payment_status);
+        $this->assertSame($request->provider_amount_minor, $this->balance($doctor, 'real'));
         Sanctum::actingAs($patient);
         $this->postJson('/api/v1/requests/'.$id.'/review', ['rating' => 5, 'comment' => 'Mulțumesc'])->assertCreated();
         $this->assertSame($request->provider_amount_minor, $this->balance($doctor, 'real'));

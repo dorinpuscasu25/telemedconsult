@@ -11,18 +11,26 @@ const period: MedicalField = { key: 'period', label: 'Data aproximativă sau vâ
 const notes: MedicalField = { key: 'notes', label: 'Alte detalii', type: 'textarea' };
 export const MEDICAL_SECTIONS: MedicalSection[] = [
   { key: 'birth', title: 'Date despre naștere', description: 'Completează doar informațiile cunoscute. Părintele poate descrie dezvoltarea copilului.', fields: [
-    { key: 'birth_method', label: 'Modul nașterii', type: 'select', options: [['natural', 'Natural'], ['cesarean', 'Operație cezariană'], ['forceps', 'Natural cu forceps'], ['vacuum', 'Natural cu vacuum extracție']] },
-    { key: 'gestational_weeks', label: 'Termenul nașterii', type: 'select', options: Array.from({ length: 20 }, (_, i) => [String(i + 24), `${i + 24} săptămâni`]) },
+    { key: 'birth_method', label: 'Modul nașterii', type: 'select', options: [['natural', 'Natural'], ['cesarean', 'Operație cezariană'], ['forceps', 'Natural cu forceps'], ['vacuum', 'Natural cu vacuum extracție'], ['other', 'Altă modalitate']] },
+    { key: 'birth_method_details', label: 'Detalii despre modul nașterii', type: 'textarea' },
+    { key: 'gestational_weeks', label: 'Termenul nașterii', type: 'select', options: Array.from({ length: 19 }, (_, i) => [String(i + 24), `${i + 24} săptămâni`]) },
     { key: 'birth_weight', label: 'Masa la naștere', type: 'number', unit: 'g', min: 1, max: 10000 },
     { key: 'head_circumference', label: 'Circumferința craniană la naștere', type: 'number', unit: 'cm', min: 1, max: 100 },
-    { key: 'apgar', label: 'Scor APGAR', type: 'select', options: Array.from({ length: 10 }, (_, i) => [String(i + 1), String(i + 1)]) },
+    { key: 'apgar', label: 'Scor APGAR', placeholder: 'De exemplu: 8/8, 9/10' },
     { key: 'feeding', label: 'Alimentație', type: 'select', options: [['natural', 'Naturală'], ['artificial', 'Artificială'], ['mixed', 'Mixtă']] },
+    { key: 'feeding_natural_period', label: 'Alimentație naturală — perioadă', type: 'textarea' },
+    { key: 'feeding_artificial_period', label: 'Alimentație artificială — perioadă', type: 'textarea' },
+    { key: 'feeding_mixed_period', label: 'Alimentație mixtă — perioadă', type: 'textarea' },
     { key: 'blood_group', label: 'Grupa sangvină ABO', type: 'select', options: ['A', 'B', 'AB', 'O'].map((v) => [v, v]) },
     { key: 'rh', label: 'Rh', type: 'select', options: [['positive', 'Pozitiv'], ['negative', 'Negativ']] },
     { key: 'congenital_conditions', label: 'Boli congenitale depistate la naștere', type: 'textarea' },
     { key: 'other_details', label: 'Alte date importante', type: 'textarea' },
     { key: 'development_age', label: 'Vârsta la care se referă descrierea dezvoltării', placeholder: 'De exemplu: 6 luni, 2 ani' },
-    { key: 'development', label: 'Dezvoltare neuropsihică și motorie', type: 'textarea', placeholder: 'Descrie ce știe să facă copilul, cum se mișcă și comunică.' }
+    { key: 'development_6_months', label: 'Dezvoltare la 6 luni', type: 'textarea' },
+    { key: 'development_1_year', label: 'Dezvoltare la 1 an', type: 'textarea' },
+    { key: 'development_2_years', label: 'Dezvoltare la 2 ani', type: 'textarea' },
+    { key: 'development_3_years', label: 'Dezvoltare la 3 ani', type: 'textarea' },
+    { key: 'development', label: 'Alte particularități de dezvoltare neuropsihică și motorie', type: 'textarea', placeholder: 'Descrie ce știe să facă copilul, cum se mișcă și comunică.' }
   ] },
   { key: 'vaccinations', title: 'Vaccinări', description: 'Adaugă vaccinurile din carnet. Dacă nu cunoști data, o poți lăsa necompletată.', repeated: true, fields: [name('Vaccin'), date, { key: 'dose', label: 'Doză / rapel' }, { key: 'reaction', label: 'Reacții după vaccinare', type: 'textarea' }, notes] },
   { key: 'surgeries', title: 'Intervenții chirurgicale', description: 'Include și intervențiile stomatologice.', repeated: true, fields: [name('Denumirea operației'), date, period, { key: 'complications', label: 'Complicații (dacă au existat)', type: 'textarea' }] },
